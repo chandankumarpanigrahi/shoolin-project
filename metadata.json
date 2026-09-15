@@ -1,0 +1,6 @@
+{
+  "name": "PulsePM - Modern Project Management System",
+  "description": "A high-density, modern project management platform for managing projects, hierarchical tasks, meetings, dependencies, links, and KPI dashboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
