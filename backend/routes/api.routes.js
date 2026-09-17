@@ -10,6 +10,9 @@ import { User } from '../models/User.js';
 import { Template } from '../models/Template.js';
 import { MasterStatus } from '../models/MasterStatus.js';
 import { Role } from '../models/Role.js';
+import { RolePermission } from '../models/RolePermission.js';
+import { UserOverride } from '../models/UserOverride.js';
+import { AuditLog } from '../models/AuditLog.js';
 import { broadcastRealtimeEvent } from '../server.js';
 
 const router = express.Router();
@@ -396,18 +399,95 @@ router.post('/auth/login', async (req, res) => {
   }
 });
 
-router.get('/auth/me', async (req, res) => {
+// ----------------------------------------------------
+// 11. TIT-TO-BIT RBAC GOVERNANCE & ACCESS CONTROL
+// ----------------------------------------------------
+router.get('/rbac/matrix', async (req, res) => {
   try {
-    const users = await User.find().limit(1);
-    if (users.length > 0) {
-      const u = transform(users[0]);
-      delete u.passwordHash;
-      return res.json({ user: u });
-    }
-    res.json({ user: null });
+    const docs = await RolePermission.find();
+    const result = {};
+    docs.forEach((doc) => {
+      result[doc.roleName] = doc.permissions || {};
+    });
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+router.put('/rbac/matrix', async (req, res) => {
+  try {
+    const { roleName, permissions } = req.body;
+    if (!roleName) return res.status(400).json({ error: 'roleName required' });
+    const updated = await RolePermission.findOneAndUpdate(
+      { roleName },
+      { roleName, permissions },
+      { upsert: true, new: true }
+    );
+    broadcastRealtimeEvent('rbac_matrix_updated', { roleName, permissions });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/rbac/user-overrides', async (req, res) => {
+  try {
+    const docs = await UserOverride.find();
+    const result = {};
+    docs.forEach((doc) => {
+      result[doc.userId] = doc.permissions || {};
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/rbac/user-overrides/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { permissions } = req.body;
+    const updated = await UserOverride.findOneAndUpdate(
+      { userId },
+      { userId, permissions },
+      { upsert: true, new: true }
+    );
+    broadcastRealtimeEvent('rbac_user_overrides_updated', { userId, permissions });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/rbac/user-overrides/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    await UserOverride.deleteOne({ userId });
+    broadcastRealtimeEvent('rbac_user_overrides_deleted', { userId });
+    res.json({ success: true, userId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/rbac/audit-log', async (req, res) => {
+  try {
+    const logs = await AuditLog.find().sort({ createdAt: -1 }).limit(100);
+    res.json(transformArr(logs));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/rbac/audit-log', async (req, res) => {
+  try {
+    const created = await AuditLog.create(req.body);
+    res.status(201).json(transform(created));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 export default router;
+

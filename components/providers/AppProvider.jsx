@@ -18,6 +18,7 @@ import {
 } from '@/data/permissions';
 import { getUrlParam, setUrlParam, removeUrlParam } from '@/hooks/useUrlState';
 import { api } from '@/lib/api';
+import { subscribeToRealtimeEvent } from '@/lib/socket';
 
 const AppContext = createContext(null);
 
@@ -124,18 +125,33 @@ export function AppProvider({ children }) {
       // Sync live collections directly from MongoDB backend
       const loadLiveMongoDBData = async () => {
         try {
-          const [dbProjects, dbTasks, dbMeetings, dbDeps, dbLinks, dbUsers, dbTemplates, dbStatuses, dbRoles] =
-            await Promise.all([
-              api.projects.getAll().catch(() => null),
-              api.tasks.getAll().catch(() => null),
-              api.meetings.getAll().catch(() => null),
-              api.dependencies.getAll().catch(() => null),
-              api.links.getAll().catch(() => null),
-              api.users.getAll().catch(() => null),
-              api.templates.getAll().catch(() => null),
-              api.statuses.getAll().catch(() => null),
-              api.roles.getAll().catch(() => null),
-            ]);
+          const [
+            dbProjects,
+            dbTasks,
+            dbMeetings,
+            dbDeps,
+            dbLinks,
+            dbUsers,
+            dbTemplates,
+            dbStatuses,
+            dbRoles,
+            dbRbacMatrix,
+            dbUserOverrides,
+            dbAuditLogs,
+          ] = await Promise.all([
+            api.projects.getAll().catch(() => null),
+            api.tasks.getAll().catch(() => null),
+            api.meetings.getAll().catch(() => null),
+            api.dependencies.getAll().catch(() => null),
+            api.links.getAll().catch(() => null),
+            api.users.getAll().catch(() => null),
+            api.templates.getAll().catch(() => null),
+            api.statuses.getAll().catch(() => null),
+            api.roles.getAll().catch(() => null),
+            api.rbac.getMatrix().catch(() => null),
+            api.rbac.getUserOverrides().catch(() => null),
+            api.rbac.getAuditLog().catch(() => null),
+          ]);
 
           if (Array.isArray(dbProjects) && dbProjects.length > 0) setProjects(dbProjects);
           if (Array.isArray(dbTasks) && dbTasks.length > 0) setTasks(dbTasks);
@@ -146,12 +162,80 @@ export function AppProvider({ children }) {
           if (Array.isArray(dbTemplates) && dbTemplates.length > 0) setTemplates(dbTemplates);
           if (Array.isArray(dbStatuses) && dbStatuses.length > 0) setMasterStatuses(dbStatuses);
           if (Array.isArray(dbRoles) && dbRoles.length > 0) setRolesList(dbRoles);
+          if (dbRbacMatrix && typeof dbRbacMatrix === 'object' && Object.keys(dbRbacMatrix).length > 0) {
+            setRolePermissions(dbRbacMatrix);
+          }
+          if (dbUserOverrides && typeof dbUserOverrides === 'object') {
+            setUserOverrides(dbUserOverrides);
+          }
+          if (Array.isArray(dbAuditLogs) && dbAuditLogs.length > 0) {
+            setAccessAuditLog(dbAuditLogs);
+          }
         } catch (e) {
           console.warn('MongoDB connection fallback to local cache:', e);
         }
       };
 
       loadLiveMongoDBData();
+
+      // Multi-device Instant Real-Time WebSocket Synchronization Engine
+      const unsubProjectCreated = subscribeToRealtimeEvent('project_created', (newProj) => {
+        setProjects((prev) => [newProj, ...prev.filter((p) => p.id !== newProj.id && p._id !== newProj._id)]);
+      });
+
+      const unsubProjectUpdated = subscribeToRealtimeEvent('project_updated', (updatedProj) => {
+        setProjects((prev) =>
+          prev.map((p) => (p.id === updatedProj.id || p._id === updatedProj._id ? { ...p, ...updatedProj } : p))
+        );
+      });
+
+      const unsubProjectDeleted = subscribeToRealtimeEvent('project_deleted', ({ id }) => {
+        setProjects((prev) => prev.filter((p) => p.id !== id && p._id !== id));
+      });
+
+      const unsubTaskCreated = subscribeToRealtimeEvent('task_created', (newTask) => {
+        setTasks((prev) => [newTask, ...prev.filter((t) => t.id !== newTask.id && t._id !== newTask._id)]);
+      });
+
+      const unsubTaskUpdated = subscribeToRealtimeEvent('task_updated', (updatedTask) => {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === updatedTask.id || t._id === updatedTask._id ? { ...t, ...updatedTask } : t))
+        );
+      });
+
+      const unsubTaskStatus = subscribeToRealtimeEvent('task_status_changed', (updatedTask) => {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === updatedTask.id || t._id === updatedTask._id ? { ...t, ...updatedTask } : t))
+        );
+      });
+
+      const unsubTaskDeleted = subscribeToRealtimeEvent('task_deleted', ({ id }) => {
+        setTasks((prev) => prev.filter((t) => t.id !== id && t._id !== id));
+      });
+
+      const unsubMeetingCreated = subscribeToRealtimeEvent('meeting_created', (newMeeting) => {
+        setMeetings((prev) => [newMeeting, ...prev.filter((m) => m.id !== newMeeting.id)]);
+      });
+
+      const unsubMeetingDeleted = subscribeToRealtimeEvent('meeting_deleted', ({ id }) => {
+        setMeetings((prev) => prev.filter((m) => m.id !== id));
+      });
+
+      const unsubRbacMatrix = subscribeToRealtimeEvent('rbac_matrix_updated', ({ roleName, permissions }) => {
+        setRolePermissions((prev) => ({ ...prev, [roleName]: permissions }));
+      });
+
+      const unsubRbacUser = subscribeToRealtimeEvent('rbac_user_overrides_updated', ({ userId, permissions }) => {
+        setUserOverrides((prev) => ({ ...prev, [userId]: permissions }));
+      });
+
+      const unsubRbacUserDelete = subscribeToRealtimeEvent('rbac_user_overrides_deleted', ({ userId }) => {
+        setUserOverrides((prev) => {
+          const updated = { ...prev };
+          delete updated[userId];
+          return updated;
+        });
+      });
 
       // Load active user session from localStorage
       const savedUser = localStorage.getItem('pulsepm_current_user');
@@ -168,6 +252,21 @@ export function AppProvider({ children }) {
       } else {
         setIsAuthenticated(false);
       }
+
+      return () => {
+        unsubProjectCreated();
+        unsubProjectUpdated();
+        unsubProjectDeleted();
+        unsubTaskCreated();
+        unsubTaskUpdated();
+        unsubTaskStatus();
+        unsubTaskDeleted();
+        unsubMeetingCreated();
+        unsubMeetingDeleted();
+        unsubRbacMatrix();
+        unsubRbacUser();
+        unsubRbacUserDelete();
+      };
     } catch (e) {
       console.error('Theme, users, templates, statuses or permissions init error:', e);
     }
@@ -825,24 +924,20 @@ export function AppProvider({ children }) {
   // ACCESS CONTROL & RBAC ENGINE ("TIT TO BIT" GRANULAR PERMISSIONS)
   // =========================================================================
 
-  const addAuditEntry = (action, details, targetUser = null) => {
+  const addAuditEntry = async (action, details, targetUser = null) => {
     const entry = {
-      id: 'aud-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-      timestamp: new Date().toISOString(),
-      performedBy: currentUser ? { id: currentUser.id, name: currentUser.name, role: currentUser.role } : { name: 'System' },
-      target: targetUser ? { id: targetUser.id, name: targetUser.name, role: targetUser.role } : null,
       action,
-      details
+      details,
+      performedBy: currentUser ? currentUser.name || currentUser.id : 'System',
+      target: targetUser ? targetUser.name || targetUser.id : '',
+      timestamp: new Date().toISOString(),
     };
-    setAccessAuditLog((prev) => {
-      const updated = [entry, ...prev].slice(0, 100);
-      try {
-        localStorage.setItem('pulsepm_access_audit_v1', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to persist audit log', e);
-      }
-      return updated;
-    });
+    try {
+      await api.rbac.addAuditLog(entry);
+    } catch (e) {
+      console.error('Failed to log audit entry to MongoDB', e);
+    }
+    setAccessAuditLog((prev) => [entry, ...prev].slice(0, 100));
   };
 
   const hasPermission = (user, permissionKey) => {
@@ -897,7 +992,8 @@ export function AppProvider({ children }) {
     };
   };
 
-  const setUserPermissionOverride = (userId, permissionKey, valueOrNull) => {
+  const setUserPermissionOverride = async (userId, permissionKey, valueOrNull) => {
+    let newOverrides = {};
     setUserOverrides((prev) => {
       const updated = { ...prev };
       if (!updated[userId]) updated[userId] = {};
@@ -911,14 +1007,19 @@ export function AppProvider({ children }) {
       } else {
         updated[userId][permissionKey] = !!valueOrNull;
       }
-
-      try {
-        localStorage.setItem('pulsepm_user_overrides_v3', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to save user overrides', e);
-      }
+      newOverrides = updated[userId] || {};
       return updated;
     });
+
+    try {
+      if (Object.keys(newOverrides).length === 0) {
+        await api.rbac.deleteUserOverride(userId);
+      } else {
+        await api.rbac.setUserOverride(userId, newOverrides);
+      }
+    } catch (e) {
+      console.error('Failed to sync user override to MongoDB', e);
+    }
 
     const targetUser = users.find((u) => u.id === userId);
     addAuditEntry(
@@ -928,70 +1029,73 @@ export function AppProvider({ children }) {
     );
   };
 
-  const bulkSetUserPermissions = (userId, overrideMap) => {
+  const bulkSetUserPermissions = async (userId, overrideMap) => {
+    let nextMap = {};
     setUserOverrides((prev) => {
-      const updated = { ...prev, [userId]: { ...(prev[userId] || {}), ...overrideMap } };
-      try {
-        localStorage.setItem('pulsepm_user_overrides_v3', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to save user overrides', e);
-      }
-      return updated;
+      nextMap = { ...(prev[userId] || {}), ...overrideMap };
+      return { ...prev, [userId]: nextMap };
     });
+    try {
+      await api.rbac.setUserOverride(userId, nextMap);
+    } catch (e) {
+      console.error('Failed to sync bulk user override to MongoDB', e);
+    }
     const targetUser = users.find((u) => u.id === userId);
     addAuditEntry('Bulk User Overrides', `Applied bulk permissions to ${targetUser?.name || userId}`, targetUser);
   };
 
-  const resetUserPermissions = (userId) => {
+  const resetUserPermissions = async (userId) => {
     setUserOverrides((prev) => {
       const updated = { ...prev };
       delete updated[userId];
-      try {
-        localStorage.setItem('pulsepm_user_overrides_v3', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to reset user overrides', e);
-      }
       return updated;
     });
+    try {
+      await api.rbac.deleteUserOverride(userId);
+    } catch (e) {
+      console.error('Failed to delete user override in MongoDB', e);
+    }
     const targetUser = users.find((u) => u.id === userId);
     addAuditEntry('Reset User Permissions', `Cleared all overrides; restored role defaults for ${targetUser?.name || userId}`, targetUser);
   };
 
-  const setRolePermission = (roleName, permissionKey, booleanValue) => {
+  const setRolePermission = async (roleName, permissionKey, booleanValue) => {
+    let updatedRolePerms = {};
     setRolePermissions((prev) => {
-      const updated = {
-        ...prev,
-        [roleName]: {
-          ...(prev[roleName] || {}),
-          [permissionKey]: !!booleanValue
-        }
+      updatedRolePerms = {
+        ...(prev[roleName] || {}),
+        [permissionKey]: !!booleanValue
       };
-      try {
-        localStorage.setItem('pulsepm_role_permissions_v3', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to save role permissions', e);
-      }
-      return updated;
+      return {
+        ...prev,
+        [roleName]: updatedRolePerms
+      };
     });
+    try {
+      await api.rbac.updateRolePermissions(roleName, updatedRolePerms);
+    } catch (e) {
+      console.error('Failed to update role permissions in MongoDB', e);
+    }
     addAuditEntry('Modify Role Matrix', `Set ${permissionKey} = ${booleanValue} for role "${roleName}"`);
   };
 
-  const bulkSetRolePermissions = (roleName, permMap) => {
+  const bulkSetRolePermissions = async (roleName, permMap) => {
+    let updatedRolePerms = {};
     setRolePermissions((prev) => {
-      const updated = {
-        ...prev,
-        [roleName]: {
-          ...(prev[roleName] || {}),
-          ...permMap
-        }
+      updatedRolePerms = {
+        ...(prev[roleName] || {}),
+        ...permMap
       };
-      try {
-        localStorage.setItem('pulsepm_role_permissions_v3', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to save role permissions', e);
-      }
-      return updated;
+      return {
+        ...prev,
+        [roleName]: updatedRolePerms
+      };
     });
+    try {
+      await api.rbac.updateRolePermissions(roleName, updatedRolePerms);
+    } catch (e) {
+      console.error('Failed to bulk update role permissions in MongoDB', e);
+    }
     addAuditEntry('Bulk Role Update', `Applied bulk matrix changes for role "${roleName}"`);
   };
 
