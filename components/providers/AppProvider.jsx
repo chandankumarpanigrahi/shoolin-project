@@ -17,6 +17,7 @@ import {
   PERMISSION_MODULES
 } from '@/data/permissions';
 import { getUrlParam, setUrlParam, removeUrlParam } from '@/hooks/useUrlState';
+import { api } from '@/lib/api';
 
 const AppContext = createContext(null);
 
@@ -120,122 +121,37 @@ export function AppProvider({ children }) {
         applyBrandColorToDOM('indigo');
       }
 
-      // Load custom projects from localStorage
-      const savedProjects = localStorage.getItem('pulsepm_projects_v1');
-      if (savedProjects) {
+      // Sync live collections directly from MongoDB backend
+      const loadLiveMongoDBData = async () => {
         try {
-          const parsed = JSON.parse(savedProjects);
-          if (Array.isArray(parsed) && parsed.length > 0) setProjects(parsed);
-        } catch {}
-      }
+          const [dbProjects, dbTasks, dbMeetings, dbDeps, dbLinks, dbUsers, dbTemplates, dbStatuses, dbRoles] =
+            await Promise.all([
+              api.projects.getAll().catch(() => null),
+              api.tasks.getAll().catch(() => null),
+              api.meetings.getAll().catch(() => null),
+              api.dependencies.getAll().catch(() => null),
+              api.links.getAll().catch(() => null),
+              api.users.getAll().catch(() => null),
+              api.templates.getAll().catch(() => null),
+              api.statuses.getAll().catch(() => null),
+              api.roles.getAll().catch(() => null),
+            ]);
 
-      // Load custom tasks from localStorage
-      const savedTasks = localStorage.getItem('pulsepm_tasks_v1');
-      if (savedTasks) {
-        try {
-          const parsed = JSON.parse(savedTasks);
-          if (Array.isArray(parsed) && parsed.length > 0) setTasks(parsed);
-        } catch {}
-      }
-
-      // Load custom meetings from localStorage
-      const savedMeetings = localStorage.getItem('pulsepm_meetings_v1');
-      if (savedMeetings) {
-        try {
-          const parsed = JSON.parse(savedMeetings);
-          if (Array.isArray(parsed) && parsed.length > 0) setMeetings(parsed);
-        } catch {}
-      }
-
-      // Load custom dependencies from localStorage
-      const savedDeps = localStorage.getItem('pulsepm_dependencies_v1');
-      if (savedDeps) {
-        try {
-          const parsed = JSON.parse(savedDeps);
-          if (Array.isArray(parsed) && parsed.length > 0) setDependencies(parsed);
-        } catch {}
-      }
-
-      // Load custom links from localStorage
-      const savedLinks = localStorage.getItem('pulsepm_links_v1');
-      if (savedLinks) {
-        try {
-          const parsed = JSON.parse(savedLinks);
-          if (Array.isArray(parsed) && parsed.length > 0) setLinks(parsed);
-        } catch {}
-      }
-
-      // Load custom templates from localStorage
-      const savedTemplates = localStorage.getItem('pulsepm_custom_templates');
-      if (savedTemplates) {
-        const parsed = JSON.parse(savedTemplates);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setTemplates(parsed);
+          if (Array.isArray(dbProjects) && dbProjects.length > 0) setProjects(dbProjects);
+          if (Array.isArray(dbTasks) && dbTasks.length > 0) setTasks(dbTasks);
+          if (Array.isArray(dbMeetings) && dbMeetings.length > 0) setMeetings(dbMeetings);
+          if (Array.isArray(dbDeps) && dbDeps.length > 0) setDependencies(dbDeps);
+          if (Array.isArray(dbLinks) && dbLinks.length > 0) setLinks(dbLinks);
+          if (Array.isArray(dbUsers) && dbUsers.length > 0) setUsers(dbUsers);
+          if (Array.isArray(dbTemplates) && dbTemplates.length > 0) setTemplates(dbTemplates);
+          if (Array.isArray(dbStatuses) && dbStatuses.length > 0) setMasterStatuses(dbStatuses);
+          if (Array.isArray(dbRoles) && dbRoles.length > 0) setRolesList(dbRoles);
+        } catch (e) {
+          console.warn('MongoDB connection fallback to local cache:', e);
         }
-      }
+      };
 
-      // Load master blueprint categories from localStorage
-      const savedBlueprintCats = localStorage.getItem('pulsepm_master_blueprint_cats_v1');
-      if (savedBlueprintCats) {
-        const parsed = JSON.parse(savedBlueprintCats);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setBlueprintCategories(parsed);
-        }
-      }
-
-      // Load custom users from localStorage
-      const savedUsers = localStorage.getItem('pulsepm_users');
-      if (savedUsers) {
-        const parsedUsers = JSON.parse(savedUsers);
-        if (Array.isArray(parsedUsers) && parsedUsers.length > 0) {
-          setUsers(parsedUsers);
-        }
-      }
-
-      // Load master statuses from localStorage
-      const savedStatuses = localStorage.getItem('pulsepm_master_statuses_v2');
-      if (savedStatuses) {
-        const parsedStatuses = JSON.parse(savedStatuses);
-        if (Array.isArray(parsedStatuses) && parsedStatuses.length > 0) {
-          setMasterStatuses(parsedStatuses);
-        }
-      }
-
-      // Load master roles from localStorage
-      const savedRoles = localStorage.getItem('pulsepm_master_roles_v2');
-      if (savedRoles) {
-        const parsedRoles = JSON.parse(savedRoles);
-        if (Array.isArray(parsedRoles) && parsedRoles.length > 0) {
-          setRolesList(parsedRoles);
-        }
-      }
-
-      // Load role permissions matrix from localStorage
-      const savedRolePerms = localStorage.getItem('pulsepm_role_permissions_v3');
-      if (savedRolePerms) {
-        const parsedRolePerms = JSON.parse(savedRolePerms);
-        if (parsedRolePerms && typeof parsedRolePerms === 'object') {
-          setRolePermissions(parsedRolePerms);
-        }
-      }
-
-      // Load user-specific overrides from localStorage
-      const savedUserOverrides = localStorage.getItem('pulsepm_user_overrides_v3');
-      if (savedUserOverrides) {
-        const parsedUserOverrides = JSON.parse(savedUserOverrides);
-        if (parsedUserOverrides && typeof parsedUserOverrides === 'object') {
-          setUserOverrides(parsedUserOverrides);
-        }
-      }
-
-      // Load access audit log from localStorage
-      const savedAudit = localStorage.getItem('pulsepm_access_audit_v1');
-      if (savedAudit) {
-        const parsedAudit = JSON.parse(savedAudit);
-        if (Array.isArray(parsedAudit)) {
-          setAccessAuditLog(parsedAudit);
-        }
-      }
+      loadLiveMongoDBData();
 
       // Load active user session from localStorage
       const savedUser = localStorage.getItem('pulsepm_current_user');
@@ -511,44 +427,37 @@ export function AppProvider({ children }) {
     router.push(`/project/${project.id}`);
   };
 
-  const handleCreateProject = (newProj) => {
-    setProjects((prev) => {
-      const updated = [newProj, ...prev];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updated));
-      }
-      return updated;
-    });
+  const handleCreateProject = async (newProj) => {
+    try {
+      const created = await api.projects.create(newProj);
+      const projItem = created || newProj;
+      setProjects((prev) => [projItem, ...prev]);
+    } catch (err) {
+      console.error('Failed to create project in MongoDB:', err);
+      setProjects((prev) => [newProj, ...prev]);
+    }
   };
 
-  const handleUpdateProject = (projectId, updates) => {
-    setProjects((prev) => {
-      const updated = prev.map((p) => (p.id === projectId ? { ...p, ...updates } : p));
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updated));
-      }
-      return updated;
-    });
+  const handleUpdateProject = async (projectId, updates) => {
+    try {
+      await api.projects.update(projectId, updates);
+    } catch (err) {
+      console.error('Failed to update project in MongoDB:', err);
+    }
+    setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, ...updates } : p)));
     if (selectedProject?.id === projectId) {
       setSelectedProject((prev) => (prev ? { ...prev, ...updates } : null));
     }
   };
 
-  const handleDeleteProject = (projectId) => {
-    setProjects((prev) => {
-      const updated = prev.filter((p) => p.id !== projectId);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updated));
-      }
-      return updated;
-    });
-    setTasks((prev) => {
-      const updatedTasks = prev.filter((t) => t.projectId !== projectId);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pulsepm_tasks_v1', JSON.stringify(updatedTasks));
-      }
-      return updatedTasks;
-    });
+  const handleDeleteProject = async (projectId) => {
+    try {
+      await api.projects.delete(projectId);
+    } catch (err) {
+      console.error('Failed to delete project in MongoDB:', err);
+    }
+    setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    setTasks((prev) => prev.filter((t) => t.projectId !== projectId));
     if (selectedProject?.id === projectId) {
       setSelectedProject(null);
       router.push('/projects');
@@ -571,18 +480,18 @@ export function AppProvider({ children }) {
     setIsCreateTaskOpen(true);
   };
 
-  const handleCreateTask = (newTask) => {
-    let updatedTasksList = [];
-    setTasks((prev) => {
-      updatedTasksList = [newTask, ...prev];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pulsepm_tasks_v1', JSON.stringify(updatedTasksList));
-      }
-      return updatedTasksList;
-    });
+  const handleCreateTask = async (newTask) => {
+    try {
+      const created = await api.tasks.create(newTask);
+      const taskItem = created || newTask;
+      setTasks((prev) => [taskItem, ...prev]);
+    } catch (err) {
+      console.error('Failed to create task in MongoDB:', err);
+      setTasks((prev) => [newTask, ...prev]);
+    }
     if (newTask.projectId) {
-      setProjects((prev) => {
-        const updated = prev.map((p) => {
+      setProjects((prev) =>
+        prev.map((p) => {
           if (p.id === newTask.projectId) {
             const projTasks = [newTask, ...tasks.filter((t) => t.projectId === p.id)];
             const completedCount = projTasks.filter((t) => isCompletedStatus(t.status)).length;
@@ -590,26 +499,24 @@ export function AppProvider({ children }) {
             return { ...p, tasksCount: projTasks.length, progress };
           }
           return p;
-        });
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updated));
-        }
-        return updated;
-      });
+        })
+      );
     }
   };
 
-  const handleDeleteTask = (taskId) => {
+  const handleDeleteTask = async (taskId) => {
+    try {
+      await api.tasks.delete(taskId);
+    } catch (err) {
+      console.error('Failed to delete task in MongoDB:', err);
+    }
     const taskToDelete = tasks.find((t) => t.id === taskId);
     const updatedTasks = tasks.filter((t) => t.id !== taskId);
     setTasks(updatedTasks);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('pulsepm_tasks_v1', JSON.stringify(updatedTasks));
-    }
 
     if (taskToDelete?.projectId) {
-      setProjects((prev) => {
-        const updated = prev.map((p) => {
+      setProjects((prev) =>
+        prev.map((p) => {
           if (p.id === taskToDelete.projectId) {
             const projTasks = updatedTasks.filter((t) => t.projectId === p.id);
             const completedCount = projTasks.filter((t) => isCompletedStatus(t.status)).length;
@@ -617,12 +524,8 @@ export function AppProvider({ children }) {
             return { ...p, tasksCount: projTasks.length, progress };
           }
           return p;
-        });
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updated));
-        }
-        return updated;
-      });
+        })
+      );
     }
 
     if (selectedTask?.id === taskId) {
@@ -631,7 +534,12 @@ export function AppProvider({ children }) {
     }
   };
 
-  const handleUpdateTaskStatus = (taskId, newStatus) => {
+  const handleUpdateTaskStatus = async (taskId, newStatus) => {
+    try {
+      await api.tasks.updateStatus(taskId, newStatus);
+    } catch (err) {
+      console.error('Failed to update task status in MongoDB:', err);
+    }
     let targetProjectId = null;
     const updatedTasks = tasks.map((t) => {
       if (t.id === taskId) {
@@ -641,9 +549,6 @@ export function AppProvider({ children }) {
       return t;
     });
     setTasks(updatedTasks);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('pulsepm_tasks_v1', JSON.stringify(updatedTasks));
-    }
     if (selectedTask?.id === taskId) {
       setSelectedTask((prev) => (prev ? { ...prev, status: newStatus } : null));
     }

@@ -64,26 +64,11 @@ export function broadcastRealtimeEvent(event, data, room = null) {
   }
 }
 
-// Routes
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'online',
-    timestamp: new Date().toISOString(),
-    service: 'Shoolin Innovations OS Backend',
-    realtime: 'Socket.io active',
-  });
-});
+import apiRoutes from './routes/api.routes.js';
 
-// Notifications Web Push Subscription Endpoint
-app.post('/api/notifications/subscribe', (req, res) => {
-  const { subscription, userId } = req.body;
-  if (!subscription || !subscription.endpoint) {
-    return res.status(400).json({ error: 'Valid subscription object required.' });
-  }
-  // Will persist to NotificationConfig in MongoDB when connected
-  console.log(`[Push Subscription] User ${userId || 'anonymous'} subscribed endpoint`);
-  res.status(201).json({ success: true, message: 'Web push subscription registered.' });
-});
+// Register API Router
+app.use('/api', apiRoutes);
+
 
 // Boot Server
 async function start() {
