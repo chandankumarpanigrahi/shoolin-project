@@ -2,8 +2,7 @@
 
 /**
  * app/global-error.jsx
- * Required by Next.js App Router to gracefully handle root-level errors.
- * Defines its own <html> and <body> tags since it replaces the root layout.
+ * Root error handler for Next.js App Router.
  */
 export default function GlobalError({ error, reset }) {
   return (
@@ -20,7 +19,7 @@ export default function GlobalError({ error, reset }) {
           <div className="pt-2 flex justify-center gap-3">
             <button
               type="button"
-              onClick={() => reset()}
+              onClick={() => (typeof reset === 'function' ? reset() : window.location.reload())}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
             >
               Try Again

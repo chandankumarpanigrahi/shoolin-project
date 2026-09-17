@@ -9,15 +9,16 @@
 import React, { useEffect } from 'react';
 import { AlertTriangle, RefreshCcw, Home } from 'lucide-react';
 
-export default function GlobalError({ error, reset }) {
+export default function ErrorPage({ error, reset }) {
   useEffect(() => {
-    console.error('[Shoolin OS] Uncaught render error:', error);
+    if (error) {
+      console.error('[Shoolin OS] Uncaught render error:', error);
+    }
   }, [error]);
 
   return (
     <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-6">
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-8 max-w-md w-full text-center space-y-5">
-
         {/* Error Icon */}
         <div className="w-16 h-16 mx-auto rounded-full bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 flex items-center justify-center">
           <AlertTriangle className="w-8 h-8 text-rose-500" />
@@ -47,8 +48,8 @@ export default function GlobalError({ error, reset }) {
         <div className="flex items-center justify-center gap-3">
           <button
             type="button"
-            onClick={reset}
-            className="flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-bold rounded-lg transition-colors shadow-lg shadow-brand/20"
+            onClick={() => (typeof reset === 'function' ? reset() : window.location.reload())}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors shadow-lg shadow-indigo-500/20"
           >
             <RefreshCcw className="w-3.5 h-3.5" />
             Try Again
