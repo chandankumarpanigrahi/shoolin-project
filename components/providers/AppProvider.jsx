@@ -884,28 +884,31 @@ export function AppProvider({ children }) {
 
   // User CRUD Handlers
   const handleAddUser = async (newUser) => {
+    setUsers((prev) => [newUser, ...prev]);
+    showSuccess('User Added!', `${newUser.name} added to directory.`);
     try {
       const created = await api.users.create(newUser);
-      const userDoc = created || newUser;
-      setUsers((prev) => [userDoc, ...prev.filter((u) => u.id !== userDoc.id && u._id !== userDoc._id)]);
-      showSuccess('User Added!', `${newUser.name} added to directory.`);
+      if (created) {
+        setUsers((prev) => prev.map((u) => (u.id === newUser.id ? transform(created) : u)));
+      }
     } catch (e) {
       console.error('Failed to create user in MongoDB', e);
-      setUsers((prev) => [newUser, ...prev]);
     }
   };
 
   const handleUpdateUser = async (updatedUser) => {
+    const targetId = updatedUser.id || updatedUser._id;
+    setUsers((prev) =>
+      prev.map((u) => (u.id === targetId || u._id === targetId ? { ...u, ...updatedUser } : u))
+    );
+    if (currentUser.id === targetId || currentUser._id === targetId) {
+      setCurrentUser((prev) => ({ ...prev, ...updatedUser }));
+    }
+    showSuccess('User Updated', `${updatedUser.name} details saved.`);
     try {
-      await api.users.update(updatedUser.id || updatedUser._id, updatedUser);
+      await api.users.update(targetId, updatedUser);
     } catch (e) {
       console.error('Failed to update user in MongoDB', e);
-    }
-    setUsers((prev) =>
-      prev.map((u) => (u.id === updatedUser.id || u._id === updatedUser._id ? { ...u, ...updatedUser } : u))
-    );
-    if (currentUser.id === updatedUser.id || currentUser._id === updatedUser._id) {
-      setCurrentUser((prev) => ({ ...prev, ...updatedUser }));
     }
   };
 
@@ -918,26 +921,32 @@ export function AppProvider({ children }) {
     });
     if (!confirmed) return;
 
+    // OPTIMISTIC UPDATE: Instantly remove from UI table (0ms lag)
+    setUsers((prev) => prev.filter((u) => u.id !== userId && u._id !== userId));
+    showSuccess('User Removed', `${targetUser?.name || 'User'} has been removed.`);
+
     try {
       await api.users.delete(userId);
-      showSuccess('User Removed', 'User has been removed from directory.');
     } catch (e) {
       console.error('Failed to delete user in MongoDB', e);
+      if (targetUser) {
+        setUsers((prev) => [...prev, targetUser]);
+      }
+      showError('Delete Failed', 'Could not remove user from database.');
     }
-    setUsers((prev) => prev.filter((u) => u.id !== userId && u._id !== userId));
   };
 
   const handleToggleUserStatus = async (userId, newStatus) => {
-    try {
-      await api.users.update(userId, { status: newStatus });
-    } catch (e) {
-      console.error('Failed to update user status in MongoDB', e);
-    }
     setUsers((prev) =>
       prev.map((u) => (u.id === userId || u._id === userId ? { ...u, status: newStatus } : u))
     );
     if (currentUser.id === userId || currentUser._id === userId) {
       setCurrentUser((prev) => ({ ...prev, status: newStatus }));
+    }
+    try {
+      await api.users.update(userId, { status: newStatus });
+    } catch (e) {
+      console.error('Failed to update user status in MongoDB', e);
     }
   };
 
