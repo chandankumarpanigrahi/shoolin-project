@@ -17,6 +17,7 @@ import {
   Tag
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { showConfirm } from '@/lib/swal';
 import { ProjectTypeBadge } from '@/components/common/Badges';
 import { countTreeNodes, getMaxTreeDepth } from '@/data/templates';
 import { useUrlParam } from '@/hooks/useUrlState';
@@ -105,9 +106,13 @@ export function TemplatesView({ onSelectTemplateForCreation }) {
     });
   }, [templates, selectedCategory, searchQuery]);
 
-  const handleDelete = (e, tmpl) => {
+  const handleDelete = async (e, tmpl) => {
     e.stopPropagation();
-    if (confirm(`Are you sure you want to remove template "${tmpl.name}"?`)) {
+    const confirmed = await showConfirm({
+      title: `Remove Template "${tmpl.name}"?`,
+      confirmButtonText: 'Yes, Remove Template',
+    });
+    if (confirmed) {
       handleDeleteTemplate(tmpl.id);
     }
   };

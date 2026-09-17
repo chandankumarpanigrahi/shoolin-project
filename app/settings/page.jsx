@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { showConfirm } from '@/lib/swal';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { useToast } from '@/components/common/Toast';
 import { useUrlTab } from '@/hooks/useUrlState';
@@ -1480,8 +1481,13 @@ function SecurityTab({ toast }) {
     }
   };
 
-  const handleResetWorkspace = () => {
-    if (window.confirm('Are you sure you want to reset local storage caches to factory defaults?')) {
+  const handleResetWorkspace = async () => {
+    const confirmed = await showConfirm({
+      title: 'Reset Workspace Caches?',
+      text: 'Are you sure you want to reset local storage caches to factory defaults?',
+      confirmButtonText: 'Yes, Reset Workspace',
+    });
+    if (confirmed) {
       try {
         localStorage.removeItem('shoolin_workspace_settings');
         localStorage.removeItem('shoolin_notification_prefs');

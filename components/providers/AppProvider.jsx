@@ -663,33 +663,31 @@ export function AppProvider({ children }) {
     }
     let targetProjectId = null;
     const updatedTasks = tasks.map((t) => {
-      if (t.id === taskId) {
+      if (t.id === taskId || t._id === taskId || t.code === taskId) {
         targetProjectId = t.projectId;
         return { ...t, status: newStatus };
       }
       return t;
     });
     setTasks(updatedTasks);
-    if (selectedTask?.id === taskId) {
+    if (selectedTask && (selectedTask.id === taskId || selectedTask._id === taskId || selectedTask.code === taskId)) {
       setSelectedTask((prev) => (prev ? { ...prev, status: newStatus } : null));
     }
 
     // Auto-recalculate project progress dynamically
     if (targetProjectId) {
-      const projectTasks = updatedTasks.filter((t) => t.projectId === targetProjectId);
+      const projectTasks = updatedTasks.filter((t) => t.projectId === targetProjectId || t.projectId === targetProjectId);
       if (projectTasks.length > 0) {
         const completedCount = projectTasks.filter((t) => isCompletedStatus(t.status)).length;
         const calculatedProgress = Math.round((completedCount / projectTasks.length) * 100);
         setProjects((prev) => {
-          const updatedProjects = prev.map((p) =>
-            p.id === targetProjectId ? { ...p, progress: calculatedProgress, tasksCount: projectTasks.length } : p
+          return prev.map((p) =>
+            p.id === targetProjectId || p._id === targetProjectId || p.code === targetProjectId
+              ? { ...p, progress: calculatedProgress, tasksCount: projectTasks.length }
+              : p
           );
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updatedProjects));
-          }
-          return updatedProjects;
         });
-        if (selectedProject?.id === targetProjectId) {
+        if (selectedProject && (selectedProject.id === targetProjectId || selectedProject._id === targetProjectId)) {
           setSelectedProject((prev) =>
             prev ? { ...prev, progress: calculatedProgress, tasksCount: projectTasks.length } : null
           );
@@ -720,21 +718,22 @@ export function AppProvider({ children }) {
   };
 
   const toggleTaskComplete = (taskId) => {
-    const task = tasks.find((t) => t.id === taskId);
+    const task = tasks.find((t) => t.id === taskId || t._id === taskId || t.code === taskId);
     if (!task) return;
+    const targetId = task.id || task._id || taskId;
 
     if (isCompletedStatus(task.status)) {
       // Return to an active uncompleted status (In Progress or Not Started)
       const activeStatus = masterStatuses.find(
         (s) => (s.scope === 'Task' || s.scope === 'Global') && !s.marksAsCompleted && s.status === 'Active' && (s.behavior === 'inprogress' || s.behavior === 'backlog')
       )?.name || 'In Progress';
-      handleUpdateTaskStatus(taskId, activeStatus);
+      handleUpdateTaskStatus(targetId, activeStatus);
     } else {
       // Mark completed: find first active status with marksAsCompleted: true
       const completedStatus = masterStatuses.find(
         (s) => (s.scope === 'Task' || s.scope === 'Global') && s.marksAsCompleted && s.status === 'Active'
       )?.name || 'Completed';
-      handleUpdateTaskStatus(taskId, completedStatus);
+      handleUpdateTaskStatus(targetId, completedStatus);
     }
   };
 

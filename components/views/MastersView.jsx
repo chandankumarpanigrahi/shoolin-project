@@ -36,6 +36,7 @@ import {
   ListTodo
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { showConfirm } from '@/lib/swal';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { RoleBadge } from '@/components/common/Badges';
 import { AccessControlView } from '@/components/views/AccessControlView';
@@ -528,12 +529,16 @@ export function MastersView() {
     saveRoles(rolesList.map((r) => (r.id === role.id ? { ...r, status: nextStatus } : r)));
   };
 
-  const handleDeleteRole = (role) => {
+  const handleDeleteRole = async (role) => {
     if (role.isSystem) {
       alert('System primary roles cannot be deleted.');
       return;
     }
-    if (confirm(`Permanently delete custom role "${role.name}"?`)) {
+    const confirmed = await showConfirm({
+      title: `Delete Custom Role "${role.name}"?`,
+      confirmButtonText: 'Yes, Delete Role',
+    });
+    if (confirmed) {
       saveRoles(rolesList.filter((r) => r.id !== role.id));
     }
   };
@@ -618,8 +623,12 @@ export function MastersView() {
     saveStatuses(statusesList.map((s) => (s.id === st.id ? { ...s, status: nextStatus } : s)));
   };
 
-  const handleDeleteStatus = (st) => {
-    if (confirm(`Permanently delete status "${st.name}"?`)) {
+  const handleDeleteStatus = async (st) => {
+    const confirmed = await showConfirm({
+      title: `Delete Status "${st.name}"?`,
+      confirmButtonText: 'Yes, Delete Status',
+    });
+    if (confirmed) {
       saveStatuses(statusesList.filter((s) => s.id !== st.id));
     }
   };
@@ -654,8 +663,12 @@ export function MastersView() {
     saveBrands(brandsList.map((br) => (br.id === b.id ? { ...br, status: nextStatus } : br)));
   };
 
-  const handleDeleteBrand = (b) => {
-    if (confirm(`Permanently delete brand folder "${b.name}"?`)) {
+  const handleDeleteBrand = async (b) => {
+    const confirmed = await showConfirm({
+      title: `Delete Brand Folder "${b.name}"?`,
+      confirmButtonText: 'Yes, Delete Brand',
+    });
+    if (confirmed) {
       saveBrands(brandsList.filter((br) => br.id !== b.id));
     }
   };
@@ -689,8 +702,12 @@ export function MastersView() {
     saveCats(catsList.map((cat) => (cat.id === c.id ? { ...cat, status: nextStatus } : cat)));
   };
 
-  const handleDeleteCat = (c) => {
-    if (confirm(`Permanently delete link category "${c.name}"?`)) {
+  const handleDeleteCat = async (c) => {
+    const confirmed = await showConfirm({
+      title: `Delete Link Category "${c.name}"?`,
+      confirmButtonText: 'Yes, Delete Category',
+    });
+    if (confirmed) {
       saveCats(catsList.filter((cat) => cat.id !== c.id));
     }
   };
@@ -734,13 +751,18 @@ export function MastersView() {
     }
   };
 
-  const handleDeleteBlueprintCat = (c) => {
+  const handleDeleteBlueprintCat = async (c) => {
     const usageCount = (templates || []).filter((t) => t.category === c.name).length;
     const confirmMsg =
       usageCount > 0
-        ? `Category "${c.name}" is currently associated with ${usageCount} template(s). Are you sure you want to remove it?`
-        : `Permanently remove template category "${c.name}"?`;
-    if (confirm(confirmMsg)) {
+        ? `Category "${c.name}" is associated with ${usageCount} template(s). Remove it?`
+        : `Remove template category "${c.name}"?`;
+    const confirmed = await showConfirm({
+      title: `Remove Category "${c.name}"?`,
+      text: confirmMsg,
+      confirmButtonText: 'Yes, Remove Category',
+    });
+    if (confirmed) {
       if (handleDeleteBlueprintCategory) handleDeleteBlueprintCategory(c.id);
     }
   };
@@ -787,8 +809,12 @@ export function MastersView() {
     saveDeps(depsList.map((dp) => (dp.id === d.id ? { ...dp, status: nextStatus } : dp)));
   };
 
-  const handleDeleteDep = (d) => {
-    if (confirm(`Permanently delete department "${d.name}"?`)) {
+  const handleDeleteDep = async (d) => {
+    const confirmed = await showConfirm({
+      title: `Delete Department "${d.name}"?`,
+      confirmButtonText: 'Yes, Delete Department',
+    });
+    if (confirmed) {
       saveDeps(depsList.filter((dp) => dp.id !== d.id));
     }
   };
@@ -1344,9 +1370,7 @@ export function MastersView() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (confirm(`Permanently delete user "${u.name}"?`)) {
-                                    if (handleDeleteUser) handleDeleteUser(u.id);
-                                  }
+                                  if (handleDeleteUser) handleDeleteUser(u.id || u._id);
                                 }}
                                 className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded transition-colors"
                                 title="Delete User"
