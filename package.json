@@ -18,6 +18,7 @@
     "react-dom": "^19.2.0",
     "serwist": "^9.5.12",
     "socket.io-client": "^4.8.3",
+    "sweetalert2": "^11.26.25",
     "thesvg": "^3.3.6"
   },
   "devDependencies": {

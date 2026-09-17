@@ -304,11 +304,39 @@ router.post('/users', async (req, res) => {
     const created = await User.create(req.body);
     const result = transform(created);
     delete result.passwordHash;
+    broadcastRealtimeEvent('user_created', result);
     res.status(201).json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
+
+router.put('/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await User.findByIdAndUpdate(id, req.body, { new: true });
+    if (!updated) return res.status(404).json({ error: 'User not found' });
+    const result = transform(updated);
+    delete result.passwordHash;
+    broadcastRealtimeEvent('user_updated', result);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await User.findByIdAndDelete(id);
+    if (!deleted) return res.status(404).json({ error: 'User not found' });
+    broadcastRealtimeEvent('user_deleted', { id });
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ----------------------------------------------------
 // 7. TEMPLATES

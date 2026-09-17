@@ -19,6 +19,7 @@ import {
 import { getUrlParam, setUrlParam, removeUrlParam } from '@/hooks/useUrlState';
 import { api } from '@/lib/api';
 import { subscribeToRealtimeEvent } from '@/lib/socket';
+import { showConfirm, showSuccess, showError } from '@/lib/swal';
 
 const AppContext = createContext(null);
 
@@ -237,6 +238,20 @@ export function AppProvider({ children }) {
         });
       });
 
+      const unsubUserCreated = subscribeToRealtimeEvent('user_created', (newUser) => {
+        setUsers((prev) => [newUser, ...prev.filter((u) => u.id !== newUser.id && u._id !== newUser._id)]);
+      });
+
+      const unsubUserUpdated = subscribeToRealtimeEvent('user_updated', (updatedUser) => {
+        setUsers((prev) =>
+          prev.map((u) => (u.id === updatedUser.id || u._id === updatedUser._id ? { ...u, ...updatedUser } : u))
+        );
+      });
+
+      const unsubUserDeleted = subscribeToRealtimeEvent('user_deleted', ({ id }) => {
+        setUsers((prev) => prev.filter((u) => u.id !== id && u._id !== id));
+      });
+
       // Load active user session from localStorage
       const savedUser = localStorage.getItem('pulsepm_current_user');
       if (savedUser) {
@@ -263,6 +278,9 @@ export function AppProvider({ children }) {
         unsubTaskDeleted();
         unsubMeetingCreated();
         unsubMeetingDeleted();
+        unsubUserCreated();
+        unsubUserUpdated();
+        unsubUserDeleted();
         unsubRbacMatrix();
         unsubRbacUser();
         unsubRbacUserDelete();
@@ -862,56 +880,60 @@ export function AppProvider({ children }) {
   };
 
   // User CRUD Handlers
-  const handleAddUser = (newUser) => {
-    setUsers((prev) => {
-      const updated = [newUser, ...prev];
-      try {
-        localStorage.setItem('pulsepm_users', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to save users', e);
-      }
-      return updated;
-    });
-  };
-
-  const handleUpdateUser = (updatedUser) => {
-    setUsers((prev) => {
-      const updated = prev.map((u) => (u.id === updatedUser.id ? updatedUser : u));
-      try {
-        localStorage.setItem('pulsepm_users', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to update user', e);
-      }
-      return updated;
-    });
-    if (currentUser.id === updatedUser.id) {
-      setCurrentUser(updatedUser);
+  const handleAddUser = async (newUser) => {
+    try {
+      const created = await api.users.create(newUser);
+      const userDoc = created || newUser;
+      setUsers((prev) => [userDoc, ...prev.filter((u) => u.id !== userDoc.id && u._id !== userDoc._id)]);
+      showSuccess('User Added!', `${newUser.name} added to directory.`);
+    } catch (e) {
+      console.error('Failed to create user in MongoDB', e);
+      setUsers((prev) => [newUser, ...prev]);
     }
   };
 
-  const handleDeleteUser = (userId) => {
-    setUsers((prev) => {
-      const updated = prev.filter((u) => u.id !== userId);
-      try {
-        localStorage.setItem('pulsepm_users', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to delete user', e);
-      }
-      return updated;
-    });
+  const handleUpdateUser = async (updatedUser) => {
+    try {
+      await api.users.update(updatedUser.id || updatedUser._id, updatedUser);
+    } catch (e) {
+      console.error('Failed to update user in MongoDB', e);
+    }
+    setUsers((prev) =>
+      prev.map((u) => (u.id === updatedUser.id || u._id === updatedUser._id ? { ...u, ...updatedUser } : u))
+    );
+    if (currentUser.id === updatedUser.id || currentUser._id === updatedUser._id) {
+      setCurrentUser((prev) => ({ ...prev, ...updatedUser }));
+    }
   };
 
-  const handleToggleUserStatus = (userId, newStatus) => {
-    setUsers((prev) => {
-      const updated = prev.map((u) => (u.id === userId ? { ...u, status: newStatus } : u));
-      try {
-        localStorage.setItem('pulsepm_users', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to update user status', e);
-      }
-      return updated;
+  const handleDeleteUser = async (userId) => {
+    const targetUser = users.find((u) => u.id === userId || u._id === userId);
+    const confirmed = await showConfirm({
+      title: `Delete User ${targetUser?.name || ''}?`,
+      text: 'This user will be permanently removed from the directory and access privileges revoked.',
+      confirmButtonText: 'Yes, Delete User',
     });
-    if (currentUser.id === userId) {
+    if (!confirmed) return;
+
+    try {
+      await api.users.delete(userId);
+      showSuccess('User Removed', 'User has been removed from directory.');
+    } catch (e) {
+      console.error('Failed to delete user in MongoDB', e);
+    }
+    setUsers((prev) => prev.filter((u) => u.id !== userId && u._id !== userId));
+  };
+
+  const handleToggleUserStatus = async (userId, newStatus) => {
+    try {
+      await api.users.update(userId, { status: newStatus });
+    } catch (e) {
+      console.error('Failed to update user status in MongoDB', e);
+    }
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId || u._id === userId ? { ...u, status: newStatus } : u))
+    );
+    if (currentUser.id === userId || currentUser._id === userId) {
       setCurrentUser((prev) => ({ ...prev, status: newStatus }));
     }
   };
