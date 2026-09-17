@@ -105,7 +105,7 @@ export function LoginView() {
       try {
         localStorage.setItem('pulsepm_current_user', JSON.stringify(targetUser));
         localStorage.setItem('pulsepm_is_authenticated', 'true');
-      } catch (err) {}
+      } catch (err) { }
     }
 
     setLoadingMessage(`Welcome back, ${targetUser.name}! Loading workspace...`);
@@ -165,7 +165,7 @@ export function LoginView() {
 
   return (
     <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col justify-between relative overflow-hidden font-sans select-none transition-colors duration-200">
-      
+
       {/* Background Decorative Glows (Mode-Adaptive) */}
       <div className="absolute -top-32 -left-32 w-80 h-80 bg-brand/10 dark:bg-brand/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 -right-32 w-80 h-80 bg-amber-500/10 dark:bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
@@ -199,10 +199,10 @@ export function LoginView() {
       {/* Main Login Screen Content (No Header, Branding Embedded Inside) */}
       <main className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-8 my-auto">
         <div className="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          
+
           {/* Left Hero & Enterprise Showcase (Desktop) */}
           <div className="hidden lg:flex lg:col-span-6 flex-col justify-center space-y-6 pr-4">
-            
+
             {/* Shoolin Innovations Full Brand Banner */}
             <div className="space-y-3">
               <div className="flex items-center gap-3">
@@ -264,7 +264,7 @@ export function LoginView() {
           {/* Right Authentication Card */}
           <div className="lg:col-span-6 w-full max-w-md mx-auto">
             <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl backdrop-blur-xl p-6 sm:p-8 space-y-6 relative overflow-hidden transition-colors duration-200">
-              
+
               {/* Card Embedded Branding Header */}
               <div className="text-center space-y-2">
                 <div className="flex items-center justify-center gap-2 mb-1">
@@ -302,11 +302,10 @@ export function LoginView() {
                     setAuthMode('password');
                     setFeedbackMsg(null);
                   }}
-                  className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                    authMode === 'password'
-                      ? 'bg-brand text-white shadow-xs font-bold'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
+                  className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${authMode === 'password'
+                    ? 'bg-brand text-white shadow-xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    }`}
                 >
                   <Lock className="w-3.5 h-3.5" />
                   <span>Password</span>
@@ -317,11 +316,10 @@ export function LoginView() {
                     setAuthMode(authMode === 'otp-verify' ? 'otp-verify' : 'otp-request');
                     setFeedbackMsg(null);
                   }}
-                  className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                    authMode.startsWith('otp')
-                      ? 'bg-brand text-white shadow-xs font-bold'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
+                  className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${authMode.startsWith('otp')
+                    ? 'bg-brand text-white shadow-xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    }`}
                 >
                   <KeyRound className="w-3.5 h-3.5" />
                   <span>Email OTP</span>
@@ -365,9 +363,8 @@ export function LoginView() {
                       <input
                         type="email"
                         required
-                        value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="alex.rivera@shoolin.com"
+                        placeholder="email@shoolin.com"
                         className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand font-medium transition-all"
                       />
                     </div>
@@ -392,7 +389,6 @@ export function LoginView() {
                       <input
                         type={showPassword ? 'text' : 'password'}
                         required
-                        value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Enter your security password"
                         className="w-full pl-10 pr-10 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand font-medium transition-all"
@@ -454,7 +450,6 @@ export function LoginView() {
                       <input
                         type="email"
                         required
-                        value={otpEmail}
                         onChange={(e) => setOtpEmail(e.target.value)}
                         placeholder="alex.rivera@shoolin.com"
                         className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand font-medium transition-all"
@@ -518,11 +513,10 @@ export function LoginView() {
                       type="button"
                       disabled={!canResend}
                       onClick={handleResendOtp}
-                      className={`flex items-center gap-1 font-semibold ${
-                        canResend
-                          ? 'text-brand hover:underline cursor-pointer'
-                          : 'text-slate-400 dark:text-slate-500 cursor-not-allowed'
-                      }`}
+                      className={`flex items-center gap-1 font-semibold ${canResend
+                        ? 'text-brand hover:underline cursor-pointer'
+                        : 'text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                        }`}
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>Resend Email OTP {countdown > 0 && `(${countdown}s)`}</span>

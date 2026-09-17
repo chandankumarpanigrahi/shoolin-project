@@ -29,10 +29,10 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.netlify.app') || origin.endsWith('.onrender.com')) {
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.netlify.app')) {
       callback(null, true);
     } else {
-      callback(null, true); // Allow all in production to avoid CORS blockage with dynamic preview URLs
+      callback(null, true);
     }
   },
   credentials: true,

@@ -92,6 +92,7 @@ export function AppProvider({ children }) {
   // Active User & Session
   const [currentUser, setCurrentUser] = useState(INITIAL_USERS[0]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoaded, setAuthLoaded] = useState(false);
 
   // Theme State (Dark / Light)
   const [theme, setTheme] = useState('light');
@@ -178,6 +179,7 @@ export function AppProvider({ children }) {
       };
 
       loadLiveMongoDBData();
+      const syncInterval = setInterval(loadLiveMongoDBData, 5000);
 
       // Multi-device Instant Real-Time WebSocket Synchronization Engine
       const unsubProjectCreated = subscribeToRealtimeEvent('project_created', (newProj) => {
@@ -267,8 +269,10 @@ export function AppProvider({ children }) {
       } else {
         setIsAuthenticated(false);
       }
+      setAuthLoaded(true);
 
       return () => {
+        clearInterval(syncInterval);
         unsubProjectCreated();
         unsubProjectUpdated();
         unsubProjectDeleted();
@@ -1251,6 +1255,7 @@ export function AppProvider({ children }) {
     setCurrentUser,
     isAuthenticated,
     setIsAuthenticated,
+    authLoaded,
     logout,
     dpTargetUser,
     openChangeDpModal,

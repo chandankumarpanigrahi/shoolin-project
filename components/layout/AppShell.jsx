@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useCallback } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
@@ -77,9 +77,20 @@ export function AppShell({ children }) {
     editingTemplate,
     setEditingTemplate,
     isAuthenticated,
+    authLoaded,
   } = useAppContext();
 
   const pathname = usePathname();
+  const router = useRouter();
+
+  const isPublicRoute = pathname === '/login' || pathname === '/offline';
+
+  // ─── Strict Authentication Guard ─────────────────────────────────────────────
+  useEffect(() => {
+    if (authLoaded && !isAuthenticated && !isPublicRoute && pathname !== '/') {
+      router.replace('/login');
+    }
+  }, [authLoaded, isAuthenticated, isPublicRoute, pathname, router]);
 
   // ─── Modal Open / Close URL Sync Helpers ─────────────────────────────────────
   const openModal = useCallback((modalName, openFn) => {
@@ -163,8 +174,26 @@ export function AppShell({ children }) {
     };
   }, [tasks, setSelectedTask, setIsTaskDrawerOpen, setIsSearchOpen, setIsAuthOpen, setIsChangeDpOpen, setIsPersonalTodoOpen, setIsCreateProjectOpen, setIsCreateTaskOpen, setIsScheduleMeetingOpen, setIsAddDependencyOpen, setIsAddLinkOpen, setIsTemplateWorkflowOpen, setIsCreateTemplateOpen]);
 
-  // Skip app chrome for login page, root redirect page, or any unauthenticated state
-  if (pathname === '/login' || pathname === '/' || !isAuthenticated) {
+  // While checking authentication state from storage on cold load
+  if (!authLoaded && !isPublicRoute && pathname !== '/') {
+    return (
+      <ToastProvider>
+        <div className="min-h-screen w-full bg-[#f8fafc] dark:bg-slate-950 flex flex-col items-center justify-center space-y-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/loader.gif" alt="Verifying session..." className="w-12 h-12 object-contain drop-shadow-sm" />
+          <p className="text-xs font-bold text-slate-600 dark:text-slate-400">Verifying session security...</p>
+        </div>
+      </ToastProvider>
+    );
+  }
+
+  // Block rendering protected pages if user is not authenticated (redirecting to /login)
+  if (authLoaded && !isAuthenticated && !isPublicRoute && pathname !== '/') {
+    return null;
+  }
+
+  // Public routes (/login, /offline, /) render without application shell chrome
+  if (isPublicRoute || pathname === '/') {
     return <ToastProvider>{children}</ToastProvider>;
   }
 
