@@ -18,6 +18,7 @@ import {
 import { StatusBadge, PriorityBadge } from '@/components/common/Badges';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { useUrlParam } from '@/hooks/useUrlState';
 
 export function MyFocusView({
   currentUser,
@@ -30,7 +31,7 @@ export function MyFocusView({
   onOpenPersonalTodo
 }) {
   const { isCompletedStatus, toggleTaskComplete } = useAppContext();
-  const [filterPriority, setFilterPriority] = useState('ALL');
+  const [filterPriority, setFilterPriority] = useUrlParam('priority', 'ALL');
 
   // Filter tasks belonging to currentUser
   const myTasks = useMemo(() => {
@@ -57,11 +58,12 @@ export function MyFocusView({
 
     filtered.forEach(task => {
       const isComp = isCompletedStatus ? isCompletedStatus(task.status) : task.status === 'Completed';
+      const effectiveDate = task.targetDate || task.dueDate;
       if (isComp) {
         completed.push(task);
-      } else if (task.dueDate && task.dueDate < todayStr) {
+      } else if (effectiveDate && effectiveDate < todayStr) {
         overdue.push(task);
-      } else if (task.dueDate && task.dueDate === todayStr) {
+      } else if (effectiveDate && effectiveDate === todayStr) {
         today.push(task);
       } else {
         upcoming.push(task);
@@ -74,7 +76,7 @@ export function MyFocusView({
   const totalAssigned = myTasks.length;
   const totalCompleted = myTasks.filter(t => isCompletedStatus ? isCompletedStatus(t.status) : t.status === 'Completed').length;
   const inProgress = myTasks.filter(t => t.status === 'In Progress').length;
-  const blockedCount = myTasks.filter(t => t.status === 'Blocked' || (t.dueDate && t.dueDate < todayStr && !(isCompletedStatus ? isCompletedStatus(t.status) : t.status === 'Completed'))).length;
+  const blockedCount = myTasks.filter(t => t.status === 'Blocked' || ((t.targetDate || t.dueDate) && (t.targetDate || t.dueDate) < todayStr && !(isCompletedStatus ? isCompletedStatus(t.status) : t.status === 'Completed'))).length;
   const completionRate = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 0;
 
   const getProjectName = (projectId) => {

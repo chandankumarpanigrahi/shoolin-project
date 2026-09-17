@@ -21,6 +21,7 @@ import {
 import { StatusBadge, PriorityBadge, ProjectTypeBadge } from '@/components/common/Badges';
 import { UserAvatar, AvatarGroup } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { useUrlParam } from '@/hooks/useUrlState';
 
 export function ProjectsView({
   projects,
@@ -32,7 +33,7 @@ export function ProjectsView({
   onDeleteProject
 }) {
   const { can } = useAppContext();
-  const [viewMode, setViewMode] = useState('table'); // 'table' | 'grid'
+  const [viewMode, setViewMode] = useUrlParam('view', 'table'); // 'table' | 'grid'
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
   const [selectedType, setSelectedType] = useState('ALL');

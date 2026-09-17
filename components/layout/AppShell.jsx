@@ -1,10 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
+import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
+import { InstallPromptBanner } from '@/components/pwa/InstallPromptBanner';
+import { ToastProvider } from '@/components/common/Toast';
+import { getUrlParam, setUrlParam, removeUrlParam } from '@/hooks/useUrlState';
 
 // Modals
 import { GlobalSearchModal } from '@/components/modals/GlobalSearchModal';
@@ -69,16 +73,103 @@ export function AppShell({ children }) {
     handleDeleteLink,
     handleCreateProjectFromTemplate,
     handleAddTemplate,
+    handleUpdateTemplate,
+    editingTemplate,
+    setEditingTemplate,
     isAuthenticated,
   } = useAppContext();
 
   const pathname = usePathname();
 
-  if (pathname === '/login' || (pathname === '/' && !isAuthenticated)) {
-    return <>{children}</>;
+  // ─── Modal Open / Close URL Sync Helpers ─────────────────────────────────────
+  const openModal = useCallback((modalName, openFn) => {
+    setUrlParam('modal', modalName);
+    if (openFn) openFn();
+  }, []);
+
+  const closeModal = useCallback((closeFn) => {
+    removeUrlParam('modal');
+    if (closeFn) closeFn();
+  }, []);
+
+  const openTaskWithUrl = useCallback((task) => {
+    if (task) {
+      setUrlParam('task', task.id || task.code);
+      handleSelectTask(task);
+    }
+  }, [handleSelectTask]);
+
+  const closeTaskDrawerWithUrl = useCallback(() => {
+    removeUrlParam('task');
+    setIsTaskDrawerOpen(false);
+  }, [setIsTaskDrawerOpen]);
+
+  // ─── URL Query Parameter Listener for Deep Linking & Browser Back/Forward ─────
+  useEffect(() => {
+    const syncFromUrl = () => {
+      const modalParam = getUrlParam('modal');
+      const taskParam = getUrlParam('task');
+
+      // 1. Sync Modal from ?modal=...
+      if (modalParam) {
+        setIsSearchOpen(modalParam === 'search');
+        setIsAuthOpen(modalParam === 'auth' || modalParam === 'switch-user');
+        setIsChangeDpOpen(modalParam === 'change-dp');
+        setIsPersonalTodoOpen(modalParam === 'todo');
+        setIsCreateProjectOpen(modalParam === 'create-project');
+        setIsCreateTaskOpen(modalParam === 'create-task');
+        setIsScheduleMeetingOpen(modalParam === 'schedule-meeting');
+        setIsAddDependencyOpen(modalParam === 'add-dependency');
+        setIsAddLinkOpen(modalParam === 'add-link');
+        setIsTemplateWorkflowOpen(modalParam === 'template-workflow');
+        setIsCreateTemplateOpen(modalParam === 'create-template');
+      } else {
+        // If modal param is removed (e.g. browser back button), close modals
+        setIsSearchOpen(false);
+        setIsAuthOpen(false);
+        setIsChangeDpOpen(false);
+        setIsPersonalTodoOpen(false);
+        setIsCreateProjectOpen(false);
+        setIsCreateTaskOpen(false);
+        setIsScheduleMeetingOpen(false);
+        setIsAddDependencyOpen(false);
+        setIsAddLinkOpen(false);
+        setIsTemplateWorkflowOpen(false);
+        setIsCreateTemplateOpen(false);
+      }
+
+      // 2. Sync Task Detail Drawer from ?task=...
+      if (taskParam) {
+        const found = tasks.find((t) => t.id === taskParam || t.code === taskParam);
+        if (found) {
+          setSelectedTask(found);
+          setIsTaskDrawerOpen(true);
+        }
+      } else {
+        setIsTaskDrawerOpen(false);
+      }
+    };
+
+    // Run on mount (handles page refresh with URL params)
+    syncFromUrl();
+
+    // Listen to browser Back/Forward (popstate) and internal URL changes
+    window.addEventListener('popstate', syncFromUrl);
+    window.addEventListener('shoolin_url_change', syncFromUrl);
+
+    return () => {
+      window.removeEventListener('popstate', syncFromUrl);
+      window.removeEventListener('shoolin_url_change', syncFromUrl);
+    };
+  }, [tasks, setSelectedTask, setIsTaskDrawerOpen, setIsSearchOpen, setIsAuthOpen, setIsChangeDpOpen, setIsPersonalTodoOpen, setIsCreateProjectOpen, setIsCreateTaskOpen, setIsScheduleMeetingOpen, setIsAddDependencyOpen, setIsAddLinkOpen, setIsTemplateWorkflowOpen, setIsCreateTemplateOpen]);
+
+  // Skip app chrome for login page, root redirect page, or any unauthenticated state
+  if (pathname === '/login' || pathname === '/' || !isAuthenticated) {
+    return <ToastProvider>{children}</ToastProvider>;
   }
 
   return (
+    <ToastProvider>
     <div className="min-h-screen bg-[#f8fafc] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex transition-colors duration-150">
       <Sidebar
         currentUser={currentUser}
@@ -88,9 +179,9 @@ export function AppShell({ children }) {
         setIsSidebarOpen={setIsSidebarOpen}
         isMobileOpen={isMobileOpen}
         setIsMobileOpen={setIsMobileOpen}
-        onOpenCreateProject={() => setIsCreateProjectOpen(true)}
-        onOpenCreateTask={() => handleOpenCreateTask(null)}
-        onOpenAuthModal={() => setIsAuthOpen(true)}
+        onOpenCreateProject={() => openModal('create-project', () => setIsCreateProjectOpen(true))}
+        onOpenCreateTask={() => openModal('create-task', () => handleOpenCreateTask(null))}
+        onOpenAuthModal={() => openModal('auth', () => setIsAuthOpen(true))}
         selectedProject={selectedProject}
       />
 
@@ -100,75 +191,90 @@ export function AppShell({ children }) {
           selectedTask={selectedTask}
           onToggleSidebar={toggleSidebar}
           onOpenMobileMenu={toggleSidebar}
-          onOpenSearch={() => setIsSearchOpen(true)}
-          onOpenCreateProject={() => setIsCreateProjectOpen(true)}
-          onOpenCreateTask={() => handleOpenCreateTask(null)}
-          onOpenCreateMeeting={() => setIsScheduleMeetingOpen(true)}
-          onOpenCreateLink={() => setIsAddLinkOpen(true)}
+          onOpenSearch={() => openModal('search', () => setIsSearchOpen(true))}
+          onOpenCreateProject={() => openModal('create-project', () => setIsCreateProjectOpen(true))}
+          onOpenCreateTask={() => openModal('create-task', () => handleOpenCreateTask(null))}
+          onOpenCreateMeeting={() => openModal('schedule-meeting', () => setIsScheduleMeetingOpen(true))}
+          onOpenCreateLink={() => openModal('add-link', () => setIsAddLinkOpen(true))}
           currentUser={currentUser}
-          onOpenAuthModal={() => setIsAuthOpen(true)}
+          onOpenAuthModal={() => openModal('auth', () => setIsAuthOpen(true))}
         />
 
-        <main className="flex-1 p-4 sm:p-6 max-w-full overflow-x-hidden bg-[#f8fafc] dark:bg-slate-950 transition-colors duration-150">
+        <main className="flex-1 p-4 sm:p-6 pb-20 lg:pb-6 max-w-full overflow-x-hidden bg-[#f8fafc] dark:bg-slate-950 transition-colors duration-150">
           {children}
         </main>
       </div>
 
-      {/* GLOBAL MODALS */}
+      {/* GLOBAL MODALS WITH URL SYNCHRONIZATION */}
       <GlobalSearchModal
         isOpen={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
+        onClose={() => closeModal(() => setIsSearchOpen(false))}
         projects={projects}
         tasks={tasks}
         users={users}
         meetings={meetings}
         dependencies={dependencies}
         links={links}
-        onSelectProject={(p) => handleSelectProject(p)}
-        onSelectTask={(t) => handleSelectTask(t)}
+        onSelectProject={(p) => {
+          closeModal(() => setIsSearchOpen(false));
+          handleSelectProject(p);
+        }}
+        onSelectTask={(t) => {
+          closeModal(() => setIsSearchOpen(false));
+          openTaskWithUrl(t);
+        }}
         onNavigate={(view) => {
-          setIsSearchOpen(false);
+          closeModal(() => setIsSearchOpen(false));
         }}
       />
 
       <AuthModal
         isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
-        onLoginAsUser={(u) => setCurrentUser(u)}
+        onClose={() => closeModal(() => setIsAuthOpen(false))}
+        onLoginAsUser={(u) => {
+          setCurrentUser(u);
+          closeModal(() => setIsAuthOpen(false));
+        }}
       />
 
       <ChangeDpModal
         isOpen={isChangeDpOpen}
-        onClose={() => setIsChangeDpOpen(false)}
+        onClose={() => closeModal(() => setIsChangeDpOpen(false))}
         currentUser={dpTargetUser || currentUser}
         onUpdateAvatar={updateCurrentUserAvatar}
       />
 
       <PersonalTodoModal
         isOpen={isPersonalTodoOpen}
-        onClose={() => setIsPersonalTodoOpen(false)}
+        onClose={() => closeModal(() => setIsPersonalTodoOpen(false))}
       />
 
       <CreateProjectModal
         isOpen={isCreateProjectOpen}
-        onClose={() => setIsCreateProjectOpen(false)}
+        onClose={() => closeModal(() => setIsCreateProjectOpen(false))}
         users={users}
-        onCreateProject={handleCreateProject}
+        onCreateProject={(p) => {
+          handleCreateProject(p);
+          closeModal(() => setIsCreateProjectOpen(false));
+        }}
       />
 
       <CreateTaskModal
         isOpen={isCreateTaskOpen}
-        onClose={() => setIsCreateTaskOpen(false)}
+        onClose={() => closeModal(() => setIsCreateTaskOpen(false))}
         projects={projects}
         users={users}
         parentTask={parentTaskForCreation}
         defaultProjectId={defaultProjectIdForTask}
-        onCreateTask={handleCreateTask}
+        onCreateTask={(t) => {
+          handleCreateTask(t);
+          closeModal(() => setIsCreateTaskOpen(false));
+        }}
       />
 
       <TaskDetailDrawer
         isOpen={isTaskDrawerOpen}
-        onClose={() => setIsTaskDrawerOpen(false)}
+        onClose={closeTaskDrawerWithUrl}
         task={selectedTask}
         allTasks={tasks}
         projects={projects}
@@ -176,54 +282,97 @@ export function AppShell({ children }) {
         dependencies={dependencies}
         onUpdateTaskStatus={handleUpdateTaskStatus}
         onAddChildTask={(pTask) => {
-          setIsTaskDrawerOpen(false);
-          handleOpenCreateTask(pTask, pTask.projectId);
+          closeTaskDrawerWithUrl();
+          openModal('create-task', () => handleOpenCreateTask(pTask, pTask.projectId));
         }}
-        onSelectTask={(t) => setSelectedTask(t)}
+        onSelectTask={(t) => openTaskWithUrl(t)}
       />
 
       <ScheduleMeetingModal
         isOpen={isScheduleMeetingOpen}
-        onClose={() => setIsScheduleMeetingOpen(false)}
+        onClose={() => closeModal(() => setIsScheduleMeetingOpen(false))}
         projects={projects}
         tasks={tasks}
         users={users}
         currentUser={currentUser}
-        onScheduleMeeting={handleScheduleMeeting}
+        onScheduleMeeting={(m) => {
+          handleScheduleMeeting(m);
+          closeModal(() => setIsScheduleMeetingOpen(false));
+        }}
       />
 
       <AddDependencyModal
         isOpen={isAddDependencyOpen}
-        onClose={() => setIsAddDependencyOpen(false)}
+        onClose={() => closeModal(() => setIsAddDependencyOpen(false))}
         projects={projects}
         tasks={tasks}
         users={users}
-        onAddDependency={handleAddDependency}
+        onAddDependency={(d) => {
+          handleAddDependency(d);
+          closeModal(() => setIsAddDependencyOpen(false));
+        }}
       />
 
       <AddLinkModal
         isOpen={isAddLinkOpen}
-        onClose={() => setIsAddLinkOpen(false)}
+        onClose={() => closeModal(() => setIsAddLinkOpen(false))}
         currentUser={currentUser}
-        onAddLink={handleAddLink}
+        onAddLink={(l) => {
+          handleAddLink(l);
+          closeModal(() => setIsAddLinkOpen(false));
+        }}
       />
 
       <TemplateWorkflowModal
         isOpen={isTemplateWorkflowOpen}
         onClose={() => {
-          setIsTemplateWorkflowOpen(false);
-          setSelectedTemplateForWorkflow(null);
+          closeModal(() => {
+            setIsTemplateWorkflowOpen(false);
+            setSelectedTemplateForWorkflow(null);
+          });
         }}
         users={users}
         preselectedTemplate={selectedTemplateForWorkflow}
-        onCreateProjectFromTemplate={handleCreateProjectFromTemplate}
+        onCreateProjectFromTemplate={(p) => {
+          handleCreateProjectFromTemplate(p);
+          closeModal(() => {
+            setIsTemplateWorkflowOpen(false);
+            setSelectedTemplateForWorkflow(null);
+          });
+        }}
       />
 
       <CreateTemplateModal
         isOpen={isCreateTemplateOpen}
-        onClose={() => setIsCreateTemplateOpen(false)}
-        onAddTemplate={handleAddTemplate}
+        templateToEdit={editingTemplate}
+        onClose={() => {
+          closeModal(() => {
+            setIsCreateTemplateOpen(false);
+            if (setEditingTemplate) setEditingTemplate(null);
+          });
+        }}
+        onAddTemplate={(tpl) => {
+          handleAddTemplate(tpl);
+          closeModal(() => {
+            setIsCreateTemplateOpen(false);
+            if (setEditingTemplate) setEditingTemplate(null);
+          });
+        }}
+        onUpdateTemplate={(tpl) => {
+          if (handleUpdateTemplate) handleUpdateTemplate(tpl);
+          closeModal(() => {
+            setIsCreateTemplateOpen(false);
+            if (setEditingTemplate) setEditingTemplate(null);
+          });
+        }}
       />
+
+      {/* Mobile Bottom Navigation */}
+      <MobileBottomNav />
+
+      {/* PWA Install Prompt */}
+      <InstallPromptBanner />
     </div>
+    </ToastProvider>
   );
 }

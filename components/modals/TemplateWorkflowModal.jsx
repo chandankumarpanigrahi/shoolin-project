@@ -75,7 +75,7 @@ export function TemplateWorkflowModal({
       priority: "High",
       startDate,
       targetDate,
-      description: currentTemplate.description || 'Sprint instantiated from blueprint template.',
+      description: currentTemplate.description || 'Sprint instantiated from template.',
       budget: currentTemplate.type === 'recurring' ? "$6,500/mo" : "$45,000",
       tasksCount: currentTemplate.tasksCount || 15,
       completedTasksCount: 0,
@@ -96,7 +96,7 @@ export function TemplateWorkflowModal({
   };
 
   const stepsList = [
-    "Select Blueprint",
+    "Select Template",
     "Project Info",
     "Assign Team",
     "Dates & Cadence",
@@ -121,7 +121,7 @@ export function TemplateWorkflowModal({
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                  Instantiate Project from Blueprint
+                  Instantiate Project from Template
                 </h3>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Step {step} of 6 · {stepsList[step - 1]}
@@ -167,7 +167,7 @@ export function TemplateWorkflowModal({
           {step === 1 && (
             <div className="space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Step 1: Choose an Architecture Blueprint
+                Step 1: Choose an Architecture Template
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {activeTemplates.map(t => (
@@ -202,7 +202,7 @@ export function TemplateWorkflowModal({
               </h4>
               <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] text-indigo-600 dark:text-indigo-400 uppercase font-bold">Selected Blueprint</span>
+                  <span className="text-[10px] text-indigo-600 dark:text-indigo-400 uppercase font-bold">Selected Template</span>
                   <p className="font-bold text-indigo-950 dark:text-indigo-200 text-xs">{currentTemplate.name}</p>
                 </div>
                 <ProjectTypeBadge type={currentTemplate.type} size="xs" />
@@ -365,7 +365,7 @@ export function TemplateWorkflowModal({
           {step === 5 && (
             <div className="space-y-4">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Step 5: Review Blueprint Configuration
+                Step 5: Review Template Configuration
               </h4>
 
               <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3">
@@ -378,7 +378,7 @@ export function TemplateWorkflowModal({
                   <div><span className="text-slate-500 dark:text-slate-400">Client:</span> <strong className="text-slate-800 dark:text-slate-200">{client}</strong></div>
                   <div><span className="text-slate-500 dark:text-slate-400">Brand Tag:</span> <strong className="text-slate-800 dark:text-slate-200">{brand}</strong></div>
                   <div><span className="text-slate-500 dark:text-slate-400">Target Date:</span> <strong className="text-slate-800 dark:text-slate-200">{targetDate}</strong></div>
-                  <div><span className="text-slate-500 dark:text-slate-400">Initial Tasks:</span> <strong className="text-slate-800 dark:text-slate-200">{currentTemplate.tasksCount} Tasks from blueprint</strong></div>
+                  <div><span className="text-slate-500 dark:text-slate-400">Initial Tasks:</span> <strong className="text-slate-800 dark:text-slate-200">{currentTemplate.tasksCount} Tasks from template</strong></div>
                 </div>
 
                 <div className="pt-2.5 border-t border-slate-200 dark:border-slate-800">

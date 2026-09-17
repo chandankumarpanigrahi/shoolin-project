@@ -91,17 +91,8 @@ export function DashboardView({
             <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
               Good morning, {currentUser.name.split(' ')[0]}
             </h1>
-            <span className="text-[11px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60 font-semibold rounded-full flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              System Online
-            </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2">
-            <Calendar className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
-            <span>Thursday, September 10, 2026</span>
-            <span className="text-slate-300 dark:text-slate-700">·</span>
-            <span>You have <strong className="text-brand font-semibold">{myTasks.length}</strong> active tasks assigned</span>
-          </p>
+          <p className="text-xs flex flex-col md:flex-row text-slate-500 dark:text-slate-400 mt-1 items-start gap-2">Thursday, September 10, 2026</p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -123,16 +114,6 @@ export function DashboardView({
             >
               <Briefcase className="w-4 h-4 text-brand" />
               New Project
-            </button>
-          )}
-          {can('meetings.schedule') && (
-            <button
-              type="button"
-              onClick={onOpenScheduleMeeting}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors shadow-2xs"
-            >
-              <Video className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
-              Sync Meet
             </button>
           )}
         </div>
@@ -251,7 +232,7 @@ export function DashboardView({
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
             <div className="flex items-center gap-2">
               <Briefcase className="w-4 h-4 text-brand" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Project Progress Overview</h2>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Project Progress</h2>
             </div>
             <button
               type="button"
@@ -294,13 +275,12 @@ export function DashboardView({
                     </div>
                     <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-xs overflow-hidden">
                       <div
-                        className={`h-full rounded-xs transition-all ${
-                          p.progress === 100
-                            ? 'bg-emerald-500'
-                            : p.progress > 60
+                        className={`h-full rounded-xs transition-all ${p.progress === 100
+                          ? 'bg-emerald-500'
+                          : p.progress > 60
                             ? 'bg-brand'
                             : 'bg-amber-500'
-                        }`}
+                          }`}
                         style={{ width: `${p.progress}%` }}
                       />
                     </div>
@@ -318,7 +298,7 @@ export function DashboardView({
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
             <div className="flex items-center gap-2">
               <CheckSquare className="w-4 h-4 text-brand" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">My Tasks Priority Queue</h2>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">My Tasks</h2>
             </div>
             <button
               type="button"
@@ -367,7 +347,7 @@ export function DashboardView({
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-amber-500" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Upcoming Milestone Deadlines</h2>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Upcoming Deadlines</h2>
             </div>
             <span className="text-[11px] text-slate-400 dark:text-slate-500">Next 14 Days</span>
           </div>
@@ -400,7 +380,7 @@ export function DashboardView({
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Team Activity Stream</h2>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Team Activity</h2>
             </div>
             <span className="text-[11px] text-slate-400 dark:text-slate-500">Audit Log</span>
           </div>

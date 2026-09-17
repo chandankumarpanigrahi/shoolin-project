@@ -297,7 +297,7 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
               <div>
                 <div className="flex items-center gap-2">
                   <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-                    Tit-to-Bit Access Control &amp; RBAC Governance
+                    Full Access Control
                   </h1>
                   <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                     SuperAdmin Master Authority
@@ -308,57 +308,6 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
                 </p>
               </div>
             </div>
-          </div>
-
-          {/* Quick Metrics & System Actions */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-3 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/60 rounded-lg text-xs font-mono">
-              <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider">Roles</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200">{rolesList.length}</span>
-              </div>
-              <div className="w-px h-6 bg-slate-200 dark:bg-slate-700" />
-              <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider">Capabilities</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200">{GRANULAR_PERMISSIONS.length}</span>
-              </div>
-              <div className="w-px h-6 bg-slate-200 dark:bg-slate-700" />
-              <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider">Custom Overrides</span>
-                <span className="font-bold text-amber-600 dark:text-amber-400">
-                  {Object.keys(userOverrides).length} users
-                </span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleExportJSON}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 rounded-lg transition-colors shadow-2xs"
-              title="Export RBAC Schema & Overrides JSON"
-            >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
-              <span>Export</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmModal({
-                  title: 'Reset All Access to Factory Defaults?',
-                  message: 'This will reset all role baseline permissions and remove all individual user overrides. This cannot be undone.',
-                  onConfirm: () => {
-                    resetAllPermissionsToDefault();
-                    setConfirmModal(null);
-                  }
-                });
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-100 rounded-lg transition-colors shadow-2xs"
-              title="Reset everything to factory defaults"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset Defaults</span>
-            </button>
           </div>
         </div>
 
@@ -392,14 +341,13 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
           <button
             type="button"
             onClick={() => setActiveTab('users')}
-            className={`pb-2 px-3.5 font-bold text-xs border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
-              activeTab === 'users'
-                ? 'border-brand text-brand'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
+            className={`pb-2 px-3.5 font-bold text-xs border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'users'
+              ? 'border-brand text-brand'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>To Whom What Access (User-Specific Customizer)</span>
+            <span>User-Specific Access</span>
             {Object.keys(userOverrides).length > 0 && (
               <span className="text-[10px] px-1.5 py-0.2 bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 rounded-full font-mono">
                 {Object.keys(userOverrides).length}
@@ -410,14 +358,13 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
           <button
             type="button"
             onClick={() => setActiveTab('matrix')}
-            className={`pb-2 px-3.5 font-bold text-xs border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
-              activeTab === 'matrix'
-                ? 'border-brand text-brand'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
+            className={`pb-2 px-3.5 font-bold text-xs border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'matrix'
+              ? 'border-brand text-brand'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
           >
             <Sliders className="w-3.5 h-3.5" />
-            <span>Role Baseline Matrix (Master RBAC)</span>
+            <span>Role Based Access</span>
             <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full font-mono">
               {rolesList.length} Roles
             </span>
@@ -426,14 +373,13 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
           <button
             type="button"
             onClick={() => setActiveTab('audit')}
-            className={`pb-2 px-3.5 font-bold text-xs border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
-              activeTab === 'audit'
-                ? 'border-brand text-brand'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
+            className={`pb-2 px-3.5 font-bold text-xs border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'audit'
+              ? 'border-brand text-brand'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
           >
             <Key className="w-3.5 h-3.5" />
-            <span>Governance Audit Log</span>
+            <span>Audit Log</span>
             <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full font-mono">
               {accessAuditLog.length}
             </span>
@@ -517,11 +463,10 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
                     key={u.id}
                     type="button"
                     onClick={() => setSelectedUserId(u.id)}
-                    className={`w-full text-left p-2.5 rounded-lg border transition-all flex items-center justify-between ${
-                      isSelected
-                        ? 'bg-brand/5 dark:bg-brand/10 border-brand shadow-xs'
-                        : 'bg-white dark:bg-slate-800/40 border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                    }`}
+                    className={`w-full text-left p-2.5 rounded-lg border transition-all flex items-center justify-between ${isSelected
+                      ? 'bg-brand/5 dark:bg-brand/10 border-brand shadow-xs'
+                      : 'bg-white dark:bg-slate-800/40 border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                      }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <UserAvatar user={u} size="sm" />
@@ -679,11 +624,10 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
                     <button
                       type="button"
                       onClick={() => setActiveModuleFilter('ALL')}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors shrink-0 ${
-                        activeModuleFilter === 'ALL'
-                          ? 'bg-brand text-white shadow-2xs'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-                      }`}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors shrink-0 ${activeModuleFilter === 'ALL'
+                        ? 'bg-brand text-white shadow-2xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                        }`}
                     >
                       All Modules ({GRANULAR_PERMISSIONS.length})
                     </button>
@@ -695,11 +639,10 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
                           key={m.id}
                           type="button"
                           onClick={() => setActiveModuleFilter(m.id)}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors shrink-0 flex items-center gap-1.5 ${
-                            isSelected
-                              ? 'bg-brand text-white shadow-2xs'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-                          }`}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors shrink-0 flex items-center gap-1.5 ${isSelected
+                            ? 'bg-brand text-white shadow-2xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                            }`}
                         >
                           <span>{m.name.split(' ')[0]}</span>
                           <span className={`text-[10px] px-1 rounded ${isSelected ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-700'}`}>
@@ -780,13 +723,12 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
                             return (
                               <div
                                 key={p.id}
-                                className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
-                                  status.isOverridden
-                                    ? status.allowed
-                                      ? 'bg-emerald-50/25 dark:bg-emerald-950/15'
-                                      : 'bg-rose-50/25 dark:bg-rose-950/15'
-                                    : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/30'
-                                }`}
+                                className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${status.isOverridden
+                                  ? status.allowed
+                                    ? 'bg-emerald-50/25 dark:bg-emerald-950/15'
+                                    : 'bg-rose-50/25 dark:bg-rose-950/15'
+                                  : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/30'
+                                  }`}
                               >
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
@@ -796,13 +738,12 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
 
                                     {/* Risk Badge */}
                                     <span
-                                      className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold uppercase tracking-wider ${
-                                        p.risk === 'High'
-                                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-                                          : p.risk === 'Standard'
+                                      className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold uppercase tracking-wider ${p.risk === 'High'
+                                        ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                                        : p.risk === 'Standard'
                                           ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
                                           : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                                      }`}
+                                        }`}
                                     >
                                       {p.risk}
                                     </span>
@@ -819,11 +760,10 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
                                   {/* Status indicator badge */}
                                   {status.isOverridden ? (
                                     <span
-                                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                        status.allowed
-                                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700'
-                                          : 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-700'
-                                      }`}
+                                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${status.allowed
+                                        ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700'
+                                        : 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-700'
+                                        }`}
                                     >
                                       <Sparkles className="w-2.5 h-2.5" />
                                       {status.allowed ? 'Custom: Granted' : 'Custom: Revoked'}
@@ -857,15 +797,13 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
                                       const nextVal = !status.allowed;
                                       setUserPermissionOverride(selectedUser.id, p.id, nextVal);
                                     }}
-                                    className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                      status.allowed ? 'bg-brand' : 'bg-slate-300 dark:bg-slate-700'
-                                    }`}
+                                    className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${status.allowed ? 'bg-brand' : 'bg-slate-300 dark:bg-slate-700'
+                                      }`}
                                     title={`Click to ${status.allowed ? 'Revoke' : 'Grant'} ${p.name}`}
                                   >
                                     <span
-                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                        status.allowed ? 'translate-x-5' : 'translate-x-0'
-                                      }`}
+                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${status.allowed ? 'translate-x-5' : 'translate-x-0'
+                                        }`}
                                     />
                                   </button>
                                 </div>
@@ -1013,13 +951,12 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
 
                             <td className="py-2.5 px-3 text-center whitespace-nowrap">
                               <span
-                                className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold uppercase ${
-                                  perm.risk === 'High'
-                                    ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
-                                    : perm.risk === 'Standard'
+                                className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold uppercase ${perm.risk === 'High'
+                                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
+                                  : perm.risk === 'Standard'
                                     ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
                                     : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                                }`}
+                                  }`}
                               >
                                 {perm.risk}
                               </span>
@@ -1044,11 +981,10 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
                                     <button
                                       type="button"
                                       onClick={() => setRolePermission(role.name, perm.id, !isAllowed)}
-                                      className={`inline-flex items-center justify-center w-6 h-6 rounded transition-all cursor-pointer ${
-                                        isAllowed
-                                          ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-xs'
-                                          : 'bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:border-brand text-slate-400'
-                                      }`}
+                                      className={`inline-flex items-center justify-center w-6 h-6 rounded transition-all cursor-pointer ${isAllowed
+                                        ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-xs'
+                                        : 'bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:border-brand text-slate-400'
+                                        }`}
                                       title={`Click to ${isAllowed ? 'Disable' : 'Enable'} for ${role.name}`}
                                     >
                                       {isAllowed ? (

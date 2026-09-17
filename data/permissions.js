@@ -42,7 +42,7 @@ export const PERMISSION_MODULES = [
   { id: "dependencies", name: "Blockers & Dependencies", icon: "GitBranch", desc: "Cross-team blocker logging, hand-offs, and resolutions" },
   { id: "links", name: "Brand & Resource Links", icon: "Link2", desc: "Drive assets, Figma designs, credentials, and documentation" },
   { id: "kpi", name: "KPI Analytics & Telemetry", icon: "BarChart3", desc: "Throughput metrics, team velocity, and financial exports" },
-  { id: "templates", name: "Project Templates", icon: "Layers", desc: "Reusable one-time & recurring workflow blueprints" },
+  { id: "templates", name: "Project Templates", icon: "Layers", desc: "Reusable one-time & recurring project templates" },
   { id: "masters", name: "Master Setup Configuration", icon: "Database", desc: "Directory users, roles, statuses, brands, and departments" },
   { id: "access_control", name: "Access Control & RBAC Governance", icon: "ShieldCheck", desc: "Tit-to-bit user permission overrides and role matrix" }
 ];
@@ -293,7 +293,7 @@ export const GRANULAR_PERMISSIONS = [
     id: "templates.view",
     moduleId: "templates",
     name: "View Project Templates",
-    description: "Browse recurring & one-time project blueprint library",
+    description: "Browse recurring & one-time project template library",
     risk: "Low",
     defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": true }
   },
@@ -309,7 +309,7 @@ export const GRANULAR_PERMISSIONS = [
     id: "templates.launch",
     moduleId: "templates",
     name: "Launch Mandate from Template",
-    description: "Instantiate full live projects from blueprint templates",
+    description: "Instantiate full live projects from project templates",
     risk: "Standard",
     defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": false }
   },

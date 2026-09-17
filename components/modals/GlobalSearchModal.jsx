@@ -88,10 +88,14 @@ export function GlobalSearchModal({
 
   return (
     <div
+      role="presentation"
       onClick={onClose}
       className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150"
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Global search"
         className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-sm shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
@@ -110,6 +114,7 @@ export function GlobalSearchModal({
             <button
               type="button"
               onClick={() => setQuery('')}
+              aria-label="Clear search query"
               className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 mr-1"
             >
               <X className="w-4 h-4" />

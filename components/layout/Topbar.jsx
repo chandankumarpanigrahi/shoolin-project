@@ -152,20 +152,22 @@ export function Topbar({
         <button
           type="button"
           onClick={toggleSidebar || onToggleSidebar || onOpenMobileMenu}
+          aria-label={isSidebarOpen ? 'Collapse navigation sidebar' : 'Expand navigation sidebar'}
+          aria-expanded={isSidebarOpen}
           className="p-1.5 rounded-md text-slate-600 dark:text-slate-300 hover:text-brand dark:hover:text-brand hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
           title={isSidebarOpen ? "Collapse Navigation Sidebar" : "Expand Navigation Sidebar"}
         >
           <Menu className="w-5 h-5" />
         </button>
 
-        <nav className="flex items-center text-xs font-medium text-slate-500 dark:text-slate-400 space-x-1 min-w-0">
+        <nav className="hidden md:flex items-center text-xs font-medium text-slate-500 dark:text-slate-400 space-x-1 min-w-0">
           {breadcrumbs.map((crumb, idx) => (
             <React.Fragment key={idx}>
               {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600 shrink-0" />}
               <span
                 className={`truncate ${idx === breadcrumbs.length - 1
-                    ? 'text-slate-900 dark:text-slate-100 font-semibold max-w-[180px] sm:max-w-md'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hidden sm:inline'
+                  ? 'text-slate-900 dark:text-slate-100 font-semibold max-w-[180px] sm:max-w-md'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hidden sm:inline'
                   }`}
               >
                 {crumb.label}
@@ -176,11 +178,11 @@ export function Topbar({
       </div>
 
       {/* Right: Search, Quick create, 1-Click Dark Mode Toggle, Notifications, Role, Profile DP */}
-      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+      <div className="ms-auto flex items-center gap-2 sm:gap-2.5 shrink-0">
         <button
           type="button"
           onClick={onOpenSearch}
-          className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-100/90 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors shadow-2xs"
+          className="hidden md:flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-100/90 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors shadow-2xs"
         >
           <Search className="w-3.5 h-3.5 text-slate-400" />
           <span className="hidden md:inline">Quick search...</span>
@@ -197,7 +199,7 @@ export function Topbar({
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100/90 dark:bg-slate-800 hover:bg-brand-subtle hover:text-brand border border-slate-200 dark:border-slate-700 rounded-lg transition-all shadow-2xs"
         >
           <CheckSquare className="w-3.5 h-3.5 text-brand" />
-          <span className="hidden sm:inline">My To-Do</span>
+          <span className="hidden sm:inline">To-Do</span>
           {pendingTodosCount > 0 && (
             <span className="px-1.5 py-0.2 text-[10px] font-bold bg-brand text-white rounded-full">
               {pendingTodosCount}
@@ -209,8 +211,9 @@ export function Topbar({
         <button
           type="button"
           onClick={toggleTheme}
+          aria-label={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
           title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode (1-Click)`}
-          className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-brand hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all shadow-2xs"
+          className="hidden md:flex p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-brand hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all shadow-2xs"
         >
           {theme === 'dark' ? (
             <Sun className="w-4 h-4 text-amber-400 hover:rotate-45 transition-transform duration-200" />
@@ -224,7 +227,10 @@ export function Topbar({
           <button
             type="button"
             onClick={() => setIsCreateOpen(!isCreateOpen)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-brand hover:bg-brand-hover rounded-md transition-colors shadow-sm"
+            aria-label="Quick create menu"
+            aria-expanded={isCreateOpen}
+            aria-haspopup="menu"
+            className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-brand hover:bg-brand-hover rounded-md transition-colors shadow-sm"
           >
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Create</span>
@@ -280,7 +286,7 @@ export function Topbar({
                   className="w-full text-left px-3 py-2 hover:bg-brand-subtle text-brand flex items-center gap-2 border-t border-slate-100 dark:border-slate-700/60 font-medium"
                 >
                   <Layers className="w-3.5 h-3.5 text-brand" />
-                  <span>New Blueprint Template</span>
+                  <span>New Template</span>
                 </button>
               )}
             </div>
@@ -324,10 +330,6 @@ export function Topbar({
           )}
         </div>
 
-        {/* Active Role Indicator */}
-        <div className="hidden sm:block">
-          <RoleBadge role={currentUser.role} />
-        </div>
 
         {/* User DP (Display Picture) & Profile Menu */}
         <div className="relative" ref={userMenuRef}>

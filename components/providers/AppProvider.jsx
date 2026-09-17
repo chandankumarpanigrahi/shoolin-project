@@ -8,7 +8,7 @@ import { USERS as INITIAL_USERS } from '@/data/users';
 import { INITIAL_MEETINGS } from '@/data/meetings';
 import { INITIAL_DEPENDENCIES } from '@/data/dependencies';
 import { INITIAL_LINKS } from '@/data/links';
-import { TEMPLATES as INITIAL_TEMPLATES, flattenTreeToTasks } from '@/data/templates';
+import { TEMPLATES as INITIAL_TEMPLATES, flattenTreeToTasks, DEFAULT_BLUEPRINT_CATEGORIES } from '@/data/templates';
 import { DEFAULT_MASTER_STATUSES, isCompletedStatus as isCompletedStatusHelper } from '@/data/statuses';
 import {
   INITIAL_ROLES,
@@ -16,6 +16,7 @@ import {
   DEFAULT_ROLE_PERMISSIONS,
   PERMISSION_MODULES
 } from '@/data/permissions';
+import { getUrlParam, setUrlParam, removeUrlParam } from '@/hooks/useUrlState';
 
 const AppContext = createContext(null);
 
@@ -75,6 +76,8 @@ export function AppProvider({ children }) {
   const [dependencies, setDependencies] = useState(INITIAL_DEPENDENCIES);
   const [links, setLinks] = useState(INITIAL_LINKS);
   const [templates, setTemplates] = useState(INITIAL_TEMPLATES);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [blueprintCategories, setBlueprintCategories] = useState(DEFAULT_BLUEPRINT_CATEGORIES);
   const [masterStatuses, setMasterStatuses] = useState(DEFAULT_MASTER_STATUSES);
 
   // Tit-to-Bit Access Control & Roles State
@@ -117,12 +120,66 @@ export function AppProvider({ children }) {
         applyBrandColorToDOM('indigo');
       }
 
+      // Load custom projects from localStorage
+      const savedProjects = localStorage.getItem('pulsepm_projects_v1');
+      if (savedProjects) {
+        try {
+          const parsed = JSON.parse(savedProjects);
+          if (Array.isArray(parsed) && parsed.length > 0) setProjects(parsed);
+        } catch {}
+      }
+
+      // Load custom tasks from localStorage
+      const savedTasks = localStorage.getItem('pulsepm_tasks_v1');
+      if (savedTasks) {
+        try {
+          const parsed = JSON.parse(savedTasks);
+          if (Array.isArray(parsed) && parsed.length > 0) setTasks(parsed);
+        } catch {}
+      }
+
+      // Load custom meetings from localStorage
+      const savedMeetings = localStorage.getItem('pulsepm_meetings_v1');
+      if (savedMeetings) {
+        try {
+          const parsed = JSON.parse(savedMeetings);
+          if (Array.isArray(parsed) && parsed.length > 0) setMeetings(parsed);
+        } catch {}
+      }
+
+      // Load custom dependencies from localStorage
+      const savedDeps = localStorage.getItem('pulsepm_dependencies_v1');
+      if (savedDeps) {
+        try {
+          const parsed = JSON.parse(savedDeps);
+          if (Array.isArray(parsed) && parsed.length > 0) setDependencies(parsed);
+        } catch {}
+      }
+
+      // Load custom links from localStorage
+      const savedLinks = localStorage.getItem('pulsepm_links_v1');
+      if (savedLinks) {
+        try {
+          const parsed = JSON.parse(savedLinks);
+          if (Array.isArray(parsed) && parsed.length > 0) setLinks(parsed);
+        } catch {}
+      }
+
       // Load custom templates from localStorage
       const savedTemplates = localStorage.getItem('pulsepm_custom_templates');
       if (savedTemplates) {
         const parsed = JSON.parse(savedTemplates);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setTemplates(parsed);
+        }
+      }
+
+      // Load master blueprint categories from localStorage
+      const savedBlueprintCats = localStorage.getItem('pulsepm_master_blueprint_cats_v1');
+      if (savedBlueprintCats) {
+        const parsed = JSON.parse(savedBlueprintCats);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setBlueprintCategories(parsed);
         }
       }
 
@@ -240,6 +297,7 @@ export function AppProvider({ children }) {
 
   const openChangeDpModal = (user = null) => {
     setDpTargetUser(user || currentUser);
+    setUrlParam('modal', 'change-dp');
     setIsChangeDpOpen(true);
   };
 
@@ -276,7 +334,7 @@ export function AppProvider({ children }) {
   ];
 
   const [personalTodos, setPersonalTodos] = useState(DEFAULT_TODOS);
-  const [isPersonalTodoOpen, setIsPersonalTodoOpen] = useState(false);
+  const [isPersonalTodoOpen, setIsPersonalTodoOpenState] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && currentUser?.id) {
@@ -323,18 +381,124 @@ export function AppProvider({ children }) {
     saveTodos(updated);
   };
 
-  // Modals Visibility
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [isChangeDpOpen, setIsChangeDpOpen] = useState(false);
-  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
-  const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
-  const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false);
-  const [isScheduleMeetingOpen, setIsScheduleMeetingOpen] = useState(false);
-  const [isAddDependencyOpen, setIsAddDependencyOpen] = useState(false);
-  const [isAddLinkOpen, setIsAddLinkOpen] = useState(false);
-  const [isTemplateWorkflowOpen, setIsTemplateWorkflowOpen] = useState(false);
-  const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false);
+  // Modals Visibility with URL State Synchronization
+  const [isSearchOpen, setIsSearchOpenState] = useState(false);
+  const [isAuthOpen, setIsAuthOpenState] = useState(false);
+  const [isChangeDpOpen, setIsChangeDpOpenState] = useState(false);
+  const [isCreateProjectOpen, setIsCreateProjectOpenState] = useState(false);
+  const [isCreateTaskOpen, setIsCreateTaskOpenState] = useState(false);
+  const [isTaskDrawerOpen, setIsTaskDrawerOpenState] = useState(false);
+  const [isScheduleMeetingOpen, setIsScheduleMeetingOpenState] = useState(false);
+  const [isAddDependencyOpen, setIsAddDependencyOpenState] = useState(false);
+  const [isAddLinkOpen, setIsAddLinkOpenState] = useState(false);
+  const [isTemplateWorkflowOpen, setIsTemplateWorkflowOpenState] = useState(false);
+  const [isCreateTemplateOpen, setIsCreateTemplateOpenState] = useState(false);
+
+  const setIsSearchOpen = (open) => {
+    setIsSearchOpenState(open);
+    if (open) {
+      if (getUrlParam('modal') !== 'search') setUrlParam('modal', 'search');
+    } else {
+      if (getUrlParam('modal') === 'search') removeUrlParam('modal');
+    }
+  };
+
+  const setIsAuthOpen = (open) => {
+    setIsAuthOpenState(open);
+    if (open) {
+      if (getUrlParam('modal') !== 'auth') setUrlParam('modal', 'auth');
+    } else {
+      if (getUrlParam('modal') === 'auth' || getUrlParam('modal') === 'switch-user') removeUrlParam('modal');
+    }
+  };
+
+  const setIsChangeDpOpen = (open) => {
+    setIsChangeDpOpenState(open);
+    if (open) {
+      if (getUrlParam('modal') !== 'change-dp') setUrlParam('modal', 'change-dp');
+    } else {
+      if (getUrlParam('modal') === 'change-dp') removeUrlParam('modal');
+    }
+  };
+
+  const setIsCreateProjectOpen = (open) => {
+    setIsCreateProjectOpenState(open);
+    if (open) {
+      if (getUrlParam('modal') !== 'create-project') setUrlParam('modal', 'create-project');
+    } else {
+      if (getUrlParam('modal') === 'create-project') removeUrlParam('modal');
+    }
+  };
+
+  const setIsCreateTaskOpen = (open) => {
+    setIsCreateTaskOpenState(open);
+    if (open) {
+      if (getUrlParam('modal') !== 'create-task') setUrlParam('modal', 'create-task');
+    } else {
+      if (getUrlParam('modal') === 'create-task') removeUrlParam('modal');
+    }
+  };
+
+  const setIsTaskDrawerOpen = (open) => {
+    setIsTaskDrawerOpenState(open);
+    if (!open && getUrlParam('task')) {
+      removeUrlParam('task');
+    }
+  };
+
+  const setIsScheduleMeetingOpen = (open) => {
+    setIsScheduleMeetingOpenState(open);
+    if (open) {
+      if (getUrlParam('modal') !== 'schedule-meeting') setUrlParam('modal', 'schedule-meeting');
+    } else {
+      if (getUrlParam('modal') === 'schedule-meeting') removeUrlParam('modal');
+    }
+  };
+
+  const setIsAddDependencyOpen = (open) => {
+    setIsAddDependencyOpenState(open);
+    if (open) {
+      if (getUrlParam('modal') !== 'add-dependency') setUrlParam('modal', 'add-dependency');
+    } else {
+      if (getUrlParam('modal') === 'add-dependency') removeUrlParam('modal');
+    }
+  };
+
+  const setIsAddLinkOpen = (open) => {
+    setIsAddLinkOpenState(open);
+    if (open) {
+      if (getUrlParam('modal') !== 'add-link') setUrlParam('modal', 'add-link');
+    } else {
+      if (getUrlParam('modal') === 'add-link') removeUrlParam('modal');
+    }
+  };
+
+  const setIsTemplateWorkflowOpen = (open) => {
+    setIsTemplateWorkflowOpenState(open);
+    if (open) {
+      if (getUrlParam('modal') !== 'template-workflow') setUrlParam('modal', 'template-workflow');
+    } else {
+      if (getUrlParam('modal') === 'template-workflow') removeUrlParam('modal');
+    }
+  };
+
+  const setIsCreateTemplateOpen = (open) => {
+    setIsCreateTemplateOpenState(open);
+    if (open) {
+      if (getUrlParam('modal') !== 'create-template') setUrlParam('modal', 'create-template');
+    } else {
+      if (getUrlParam('modal') === 'create-template') removeUrlParam('modal');
+    }
+  };
+
+  const setIsPersonalTodoOpen = (open) => {
+    setIsPersonalTodoOpenState(open);
+    if (open) {
+      if (getUrlParam('modal') !== 'todo') setUrlParam('modal', 'todo');
+    } else {
+      if (getUrlParam('modal') === 'todo') removeUrlParam('modal');
+    }
+  };
 
   // Modal Context State
   const [parentTaskForCreation, setParentTaskForCreation] = useState(null);
@@ -348,52 +512,163 @@ export function AppProvider({ children }) {
   };
 
   const handleCreateProject = (newProj) => {
-    setProjects([newProj, ...projects]);
+    setProjects((prev) => {
+      const updated = [newProj, ...prev];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updated));
+      }
+      return updated;
+    });
+  };
+
+  const handleUpdateProject = (projectId, updates) => {
+    setProjects((prev) => {
+      const updated = prev.map((p) => (p.id === projectId ? { ...p, ...updates } : p));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updated));
+      }
+      return updated;
+    });
+    if (selectedProject?.id === projectId) {
+      setSelectedProject((prev) => (prev ? { ...prev, ...updates } : null));
+    }
   };
 
   const handleDeleteProject = (projectId) => {
-    if (confirm('Are you sure you want to remove this project mandate?')) {
-      setProjects(projects.filter((p) => p.id !== projectId));
-      if (selectedProject?.id === projectId) {
-        setSelectedProject(null);
-        router.push('/projects');
+    setProjects((prev) => {
+      const updated = prev.filter((p) => p.id !== projectId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updated));
       }
+      return updated;
+    });
+    setTasks((prev) => {
+      const updatedTasks = prev.filter((t) => t.projectId !== projectId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pulsepm_tasks_v1', JSON.stringify(updatedTasks));
+      }
+      return updatedTasks;
+    });
+    if (selectedProject?.id === projectId) {
+      setSelectedProject(null);
+      router.push('/projects');
     }
   };
 
   // Task Handlers
   const handleSelectTask = (task) => {
     setSelectedTask(task);
+    if (task) {
+      setUrlParam('task', task.id || task.code);
+    }
     setIsTaskDrawerOpen(true);
   };
 
   const handleOpenCreateTask = (parent = null, projectId = null) => {
     setParentTaskForCreation(parent);
     setDefaultProjectIdForTask(projectId || selectedProject?.id || null);
+    setUrlParam('modal', 'create-task');
     setIsCreateTaskOpen(true);
   };
 
   const handleCreateTask = (newTask) => {
-    setTasks([newTask, ...tasks]);
-    setProjects(
-      projects.map((p) => {
-        if (p.id === newTask.projectId) {
-          return { ...p, tasksCount: (p.tasksCount || 0) + 1 };
+    let updatedTasksList = [];
+    setTasks((prev) => {
+      updatedTasksList = [newTask, ...prev];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pulsepm_tasks_v1', JSON.stringify(updatedTasksList));
+      }
+      return updatedTasksList;
+    });
+    if (newTask.projectId) {
+      setProjects((prev) => {
+        const updated = prev.map((p) => {
+          if (p.id === newTask.projectId) {
+            const projTasks = [newTask, ...tasks.filter((t) => t.projectId === p.id)];
+            const completedCount = projTasks.filter((t) => isCompletedStatus(t.status)).length;
+            const progress = projTasks.length > 0 ? Math.round((completedCount / projTasks.length) * 100) : 0;
+            return { ...p, tasksCount: projTasks.length, progress };
+          }
+          return p;
+        });
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updated));
         }
-        return p;
-      })
-    );
+        return updated;
+      });
+    }
+  };
+
+  const handleDeleteTask = (taskId) => {
+    const taskToDelete = tasks.find((t) => t.id === taskId);
+    const updatedTasks = tasks.filter((t) => t.id !== taskId);
+    setTasks(updatedTasks);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pulsepm_tasks_v1', JSON.stringify(updatedTasks));
+    }
+
+    if (taskToDelete?.projectId) {
+      setProjects((prev) => {
+        const updated = prev.map((p) => {
+          if (p.id === taskToDelete.projectId) {
+            const projTasks = updatedTasks.filter((t) => t.projectId === p.id);
+            const completedCount = projTasks.filter((t) => isCompletedStatus(t.status)).length;
+            const progress = projTasks.length > 0 ? Math.round((completedCount / projTasks.length) * 100) : 0;
+            return { ...p, tasksCount: projTasks.length, progress };
+          }
+          return p;
+        });
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updated));
+        }
+        return updated;
+      });
+    }
+
+    if (selectedTask?.id === taskId) {
+      setSelectedTask(null);
+      setIsTaskDrawerOpen(false);
+    }
   };
 
   const handleUpdateTaskStatus = (taskId, newStatus) => {
-    setTasks(
-      tasks.map((t) => {
-        if (t.id === taskId) return { ...t, status: newStatus };
-        return t;
-      })
-    );
+    let targetProjectId = null;
+    const updatedTasks = tasks.map((t) => {
+      if (t.id === taskId) {
+        targetProjectId = t.projectId;
+        return { ...t, status: newStatus };
+      }
+      return t;
+    });
+    setTasks(updatedTasks);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pulsepm_tasks_v1', JSON.stringify(updatedTasks));
+    }
     if (selectedTask?.id === taskId) {
       setSelectedTask((prev) => (prev ? { ...prev, status: newStatus } : null));
+    }
+
+    // Auto-recalculate project progress dynamically
+    if (targetProjectId) {
+      const projectTasks = updatedTasks.filter((t) => t.projectId === targetProjectId);
+      if (projectTasks.length > 0) {
+        const completedCount = projectTasks.filter((t) => isCompletedStatus(t.status)).length;
+        const calculatedProgress = Math.round((completedCount / projectTasks.length) * 100);
+        setProjects((prev) => {
+          const updatedProjects = prev.map((p) =>
+            p.id === targetProjectId ? { ...p, progress: calculatedProgress, tasksCount: projectTasks.length } : p
+          );
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('pulsepm_projects_v1', JSON.stringify(updatedProjects));
+          }
+          return updatedProjects;
+        });
+        if (selectedProject?.id === targetProjectId) {
+          setSelectedProject((prev) =>
+            prev ? { ...prev, progress: calculatedProgress, tasksCount: projectTasks.length } : null
+          );
+        }
+      }
     }
   };
 
@@ -439,34 +714,65 @@ export function AppProvider({ children }) {
 
   // Meeting Handlers
   const handleScheduleMeeting = (newMeeting) => {
-    setMeetings([newMeeting, ...meetings]);
+    setMeetings((prev) => {
+      const updated = [newMeeting, ...prev];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pulsepm_meetings_v1', JSON.stringify(updated));
+      }
+      return updated;
+    });
   };
 
   // Dependency Handlers
   const handleAddDependency = (newDep) => {
-    setDependencies([newDep, ...dependencies]);
+    setDependencies((prev) => {
+      const updated = [newDep, ...prev];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pulsepm_dependencies_v1', JSON.stringify(updated));
+      }
+      return updated;
+    });
   };
 
   const handleUpdateDependencyStatus = (depId, newStatus) => {
-    setDependencies(
-      dependencies.map((d) => {
-        if (d.id === depId) return { ...d, status: newStatus };
-        return d;
-      })
-    );
+    setDependencies((prev) => {
+      const updated = prev.map((d) => (d.id === depId ? { ...d, status: newStatus } : d));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pulsepm_dependencies_v1', JSON.stringify(updated));
+      }
+      return updated;
+    });
   };
 
   // Link Handlers
   const handleAddLink = (newLink) => {
-    setLinks([newLink, ...links]);
+    setLinks((prev) => {
+      const updated = [newLink, ...prev];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pulsepm_links_v1', JSON.stringify(updated));
+      }
+      return updated;
+    });
   };
 
   const handleUpdateLink = (updatedLink) => {
-    setLinks((prev) => prev.map((l) => (l.id === updatedLink.id ? updatedLink : l)));
+    setLinks((prev) => {
+      const updated = prev.map((l) => (l.id === updatedLink.id ? updatedLink : l));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pulsepm_links_v1', JSON.stringify(updated));
+      }
+      return updated;
+    });
   };
 
   const handleDeleteLink = (linkId) => {
-    setLinks(links.filter((l) => l.id !== linkId));
+    setLinks((prev) => {
+      const updated = prev.filter((l) => l.id !== linkId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('pulsepm_links_v1', JSON.stringify(updated));
+      }
+      return updated;
+    });
   };
 
   // Template Handlers
@@ -507,6 +813,48 @@ export function AppProvider({ children }) {
       }
       return updated;
     });
+  };
+
+  const handleUpdateTemplate = (updatedTmpl) => {
+    setTemplates((prev) => {
+      const updated = prev.map((t) => (t.id === updatedTmpl.id ? updatedTmpl : t));
+      try {
+        localStorage.setItem('pulsepm_custom_templates', JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to update template', e);
+      }
+      return updated;
+    });
+  };
+
+  const handleOpenEditTemplate = (tmpl) => {
+    setEditingTemplate(tmpl);
+    setIsCreateTemplateOpen(true);
+  };
+
+  // Blueprint Category Master Handlers
+  const saveBlueprintCategories = (updated) => {
+    setBlueprintCategories(updated);
+    try {
+      localStorage.setItem('pulsepm_master_blueprint_cats_v1', JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to save blueprint categories', e);
+    }
+  };
+
+  const handleAddBlueprintCategory = (newCat) => {
+    const updated = [...blueprintCategories, newCat];
+    saveBlueprintCategories(updated);
+  };
+
+  const handleUpdateBlueprintCategory = (updatedCat) => {
+    const updated = blueprintCategories.map((c) => (c.id === updatedCat.id ? updatedCat : c));
+    saveBlueprintCategories(updated);
+  };
+
+  const handleDeleteBlueprintCategory = (catId) => {
+    const updated = blueprintCategories.filter((c) => c.id !== catId);
+    saveBlueprintCategories(updated);
   };
 
   // User CRUD Handlers
@@ -918,11 +1266,13 @@ export function AppProvider({ children }) {
     // Handlers
     handleSelectProject,
     handleCreateProject,
+    handleUpdateProject,
     handleDeleteProject,
     handleSelectTask,
     handleOpenCreateTask,
     handleCreateTask,
     handleUpdateTaskStatus,
+    handleDeleteTask,
     handleScheduleMeeting,
     handleAddDependency,
     handleUpdateDependencyStatus,
@@ -932,7 +1282,25 @@ export function AppProvider({ children }) {
     handleOpenCreateFromTemplate,
     handleCreateProjectFromTemplate,
     handleAddTemplate,
+    handleUpdateTemplate,
     handleDeleteTemplate,
+    editingTemplate,
+    setEditingTemplate,
+    handleOpenEditTemplate,
+
+    // Blueprint / Template Category Master
+    blueprintCategories,
+    templateCategories: blueprintCategories,
+    setBlueprintCategories,
+    setTemplateCategories: setBlueprintCategories,
+    saveBlueprintCategories,
+    saveTemplateCategories: saveBlueprintCategories,
+    handleAddBlueprintCategory,
+    handleAddTemplateCategory: handleAddBlueprintCategory,
+    handleUpdateBlueprintCategory,
+    handleUpdateTemplateCategory: handleUpdateBlueprintCategory,
+    handleDeleteBlueprintCategory,
+    handleDeleteTemplateCategory: handleDeleteBlueprintCategory,
 
     // Master Statuses & Completion Automation
     masterStatuses,

@@ -27,6 +27,7 @@ import {
 import { StatusBadge, PriorityBadge, ProjectTypeBadge } from '@/components/common/Badges';
 import { UserAvatar, AvatarGroup } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { useUrlTab } from '@/hooks/useUrlState';
 
 export function ProjectDetailView({
   project,
@@ -44,7 +45,14 @@ export function ProjectDetailView({
   onUpdateTaskStatus
 }) {
   const { isCompletedStatus, getTaskStatuses, toggleTaskComplete } = useAppContext();
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'tasks' | 'meetings' | 'dependencies' | 'links' | 'activity'
+  const [activeTab, setActiveTab] = useUrlTab('tab', 'overview', [
+    'overview',
+    'tasks',
+    'meetings',
+    'dependencies',
+    'links',
+    'activity'
+  ]);
   
   const taskStatusesList = React.useMemo(() => {
     const list = getTaskStatuses ? getTaskStatuses() : [];

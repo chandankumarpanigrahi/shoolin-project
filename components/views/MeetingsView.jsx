@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '@/components/common/Badges';
 import { UserAvatar, AvatarGroup } from '@/components/common/UserAvatar';
+import { useUrlParam } from '@/hooks/useUrlState';
 
 export function MeetingsView({
   meetings,
@@ -26,7 +27,7 @@ export function MeetingsView({
   onOpenScheduleMeeting,
   onUpdateMeetingStatus
 }) {
-  const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [selectedStatus, setSelectedStatus] = useUrlParam('status', 'ALL', false);
   const [selectedProject, setSelectedProject] = useState('ALL');
   const [selectedPriority, setSelectedPriority] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');

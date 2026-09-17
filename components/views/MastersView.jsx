@@ -39,6 +39,7 @@ import { useAppContext } from '@/components/providers/AppProvider';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { RoleBadge } from '@/components/common/Badges';
 import { AccessControlView } from '@/components/views/AccessControlView';
+import { useUrlTab } from '@/hooks/useUrlState';
 import { INITIAL_PERMISSIONS } from '@/data/permissions';
 import {
   BEHAVIOR_PRESETS,
@@ -112,11 +113,25 @@ export function MastersView() {
     handleDeleteUser,
     handleToggleUserStatus,
     masterStatuses,
-    saveMasterStatuses
+    saveMasterStatuses,
+    blueprintCategories,
+    handleAddBlueprintCategory,
+    handleUpdateBlueprintCategory,
+    handleDeleteBlueprintCategory,
+    templates
   } = useAppContext();
 
   // Active Master Tab
-  const [activeTab, setActiveTab] = useState('users'); // 'users' | 'roles' | 'statuses' | 'brands' | 'categories' | 'departments'
+  const [activeTab, setActiveTab] = useUrlTab('tab', 'users', [
+    'users',
+    'roles',
+    'statuses',
+    'brands',
+    'categories',
+    'template-categories',
+    'blueprint-categories',
+    'departments'
+  ]);
 
   // =========================================================================
   // 1. USERS MASTER STATE
@@ -144,7 +159,7 @@ export function MastersView() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('pulsepm_master_roles_v2');
       if (saved) {
-        try { return JSON.parse(saved); } catch (e) {}
+        try { return JSON.parse(saved); } catch (e) { }
       }
     }
     return [
@@ -159,7 +174,7 @@ export function MastersView() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('pulsepm_master_perms_v2');
       if (saved) {
-        try { return JSON.parse(saved); } catch (e) {}
+        try { return JSON.parse(saved); } catch (e) { }
       }
     }
     return INITIAL_PERMISSIONS;
@@ -188,7 +203,7 @@ export function MastersView() {
               icon: st.icon || (['completed', 'done', 'resolved', 'closed'].includes(st.name?.toLowerCase()) ? 'CheckCircle2' : 'CircleDot'),
             }));
           }
-        } catch (e) {}
+        } catch (e) { }
       }
     }
     return DEFAULT_MASTER_STATUSES;
@@ -222,7 +237,7 @@ export function MastersView() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('pulsepm_master_brands_v2');
       if (saved) {
-        try { return JSON.parse(saved); } catch (e) {}
+        try { return JSON.parse(saved); } catch (e) { }
       }
     }
     return [
@@ -245,7 +260,7 @@ export function MastersView() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('pulsepm_master_cats_v2');
       if (saved) {
-        try { return JSON.parse(saved); } catch (e) {}
+        try { return JSON.parse(saved); } catch (e) { }
       }
     }
     return [
@@ -261,6 +276,35 @@ export function MastersView() {
   const [catForm, setCatForm] = useState({ name: '', count: 0, status: 'Active', desc: '' });
 
   // =========================================================================
+  // 5.5. BLUEPRINT / TEMPLATE CATEGORIES MASTER STATE
+  // =========================================================================
+  const [blueprintCatSearch, setBlueprintCatSearch] = useState('');
+  const [blueprintCatStatusFilter, setBlueprintCatStatusFilter] = useState('ALL');
+  const [isBlueprintCatModalOpen, setIsBlueprintCatModalOpen] = useState(false);
+  const [editingBlueprintCat, setEditingBlueprintCat] = useState(null);
+  const [blueprintCatForm, setBlueprintCatForm] = useState({
+    name: '',
+    code: '',
+    color: '#2563EB',
+    status: 'Active',
+    description: ''
+  });
+
+  const filteredBlueprintCats = useMemo(() => {
+    return (blueprintCategories || []).filter((c) => {
+      if (blueprintCatStatusFilter !== 'ALL' && c.status !== blueprintCatStatusFilter) return false;
+      if (blueprintCatSearch.trim()) {
+        const q = blueprintCatSearch.toLowerCase();
+        const matchName = (c.name || '').toLowerCase().includes(q);
+        const matchCode = (c.code || '').toLowerCase().includes(q);
+        const matchDesc = (c.description || '').toLowerCase().includes(q);
+        if (!matchName && !matchCode && !matchDesc) return false;
+      }
+      return true;
+    });
+  }, [blueprintCategories, blueprintCatSearch, blueprintCatStatusFilter]);
+
+  // =========================================================================
   // 6. DEPARTMENTS MASTER STATE
   // =========================================================================
   const [depSearch, setDepSearch] = useState('');
@@ -268,7 +312,7 @@ export function MastersView() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('pulsepm_master_deps_v2');
       if (saved) {
-        try { return JSON.parse(saved); } catch (e) {}
+        try { return JSON.parse(saved); } catch (e) { }
       }
     }
     return [
@@ -522,16 +566,16 @@ export function MastersView() {
       const updated = statusesList.map((s) =>
         s.id === editingStatus.id
           ? {
-              ...s,
-              ...statusForm,
-              name: statusForm.name.trim(),
-              scope: statusForm.scope || 'Task',
-              behavior: statusForm.behavior || 'normal',
-              marksAsCompleted: Boolean(statusForm.marksAsCompleted),
-              color: statusForm.color || 'emerald',
-              icon: statusForm.icon || (statusForm.marksAsCompleted ? 'CheckCircle2' : 'CircleDot'),
-              desc: statusForm.desc.trim() || 'Custom lifecycle stage'
-            }
+            ...s,
+            ...statusForm,
+            name: statusForm.name.trim(),
+            scope: statusForm.scope || 'Task',
+            behavior: statusForm.behavior || 'normal',
+            marksAsCompleted: Boolean(statusForm.marksAsCompleted),
+            color: statusForm.color || 'emerald',
+            icon: statusForm.icon || (statusForm.marksAsCompleted ? 'CheckCircle2' : 'CircleDot'),
+            desc: statusForm.desc.trim() || 'Custom lifecycle stage'
+          }
           : s
       );
       saveStatuses(updated);
@@ -652,6 +696,56 @@ export function MastersView() {
   };
 
   // =========================================================================
+  // ACTIONS: BLUEPRINT / TEMPLATE CATEGORIES
+  // =========================================================================
+  const handleBlueprintCatSubmit = (e) => {
+    e.preventDefault();
+    if (!blueprintCatForm.name.trim()) return;
+
+    if (editingBlueprintCat) {
+      const updated = {
+        ...editingBlueprintCat,
+        ...blueprintCatForm,
+        name: blueprintCatForm.name.trim(),
+        code: (blueprintCatForm.code.trim() || blueprintCatForm.name.trim().slice(0, 4)).toUpperCase(),
+        description: blueprintCatForm.description.trim()
+      };
+      if (handleUpdateBlueprintCategory) handleUpdateBlueprintCategory(updated);
+    } else {
+      const newCat = {
+        id: 'bcat-' + Date.now(),
+        name: blueprintCatForm.name.trim(),
+        code: (blueprintCatForm.code.trim() || blueprintCatForm.name.trim().slice(0, 4)).toUpperCase(),
+        color: blueprintCatForm.color || '#2563EB',
+        status: blueprintCatForm.status || 'Active',
+        description: blueprintCatForm.description.trim() || 'Sprint architecture template category',
+        isSystem: false
+      };
+      if (handleAddBlueprintCategory) handleAddBlueprintCategory(newCat);
+    }
+    setIsBlueprintCatModalOpen(false);
+    setEditingBlueprintCat(null);
+  };
+
+  const handleToggleBlueprintCatArchive = (c) => {
+    const nextStatus = c.status === 'Active' ? 'Archived' : 'Active';
+    if (handleUpdateBlueprintCategory) {
+      handleUpdateBlueprintCategory({ ...c, status: nextStatus });
+    }
+  };
+
+  const handleDeleteBlueprintCat = (c) => {
+    const usageCount = (templates || []).filter((t) => t.category === c.name).length;
+    const confirmMsg =
+      usageCount > 0
+        ? `Category "${c.name}" is currently associated with ${usageCount} template(s). Are you sure you want to remove it?`
+        : `Permanently remove template category "${c.name}"?`;
+    if (confirm(confirmMsg)) {
+      if (handleDeleteBlueprintCategory) handleDeleteBlueprintCategory(c.id);
+    }
+  };
+
+  // =========================================================================
   // ACTIONS: DEPARTMENTS
   // =========================================================================
   const handleDepSubmit = (e) => {
@@ -724,6 +818,142 @@ export function MastersView() {
       </span>
     );
   };
+
+  const renderStatusPill = (st) => {
+    const colorKey = (st.color || '').toLowerCase();
+    const nameLower = (st.name || '').toLowerCase();
+
+    const colorStyles = {
+      emerald: {
+        pill: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800',
+        dot: 'bg-emerald-500'
+      },
+      green: {
+        pill: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800',
+        dot: 'bg-emerald-500'
+      },
+      blue: {
+        pill: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800',
+        dot: 'bg-blue-500'
+      },
+      violet: {
+        pill: 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/70 dark:text-purple-300 dark:border-purple-800',
+        dot: 'bg-purple-500'
+      },
+      purple: {
+        pill: 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/70 dark:text-purple-300 dark:border-purple-800',
+        dot: 'bg-purple-500'
+      },
+      amber: {
+        pill: 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800',
+        dot: 'bg-amber-500'
+      },
+      orange: {
+        pill: 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800',
+        dot: 'bg-amber-500'
+      },
+      rose: {
+        pill: 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-800',
+        dot: 'bg-rose-500'
+      },
+      red: {
+        pill: 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-800',
+        dot: 'bg-rose-500'
+      },
+      teal: {
+        pill: 'bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/70 dark:text-teal-300 dark:border-teal-800',
+        dot: 'bg-teal-500'
+      },
+      slate: {
+        pill: 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+        dot: 'bg-slate-400'
+      }
+    };
+
+    let styleObj = colorStyles[colorKey];
+    if (!styleObj) {
+      if (nameLower.includes('complete') || nameLower.includes('done') || nameLower.includes('resolve') || st.marksAsCompleted) {
+        styleObj = colorStyles.emerald;
+      } else if (nameLower.includes('progress') || nameLower.includes('active') || nameLower.includes('dev')) {
+        styleObj = colorStyles.blue;
+      } else if (nameLower.includes('review') || nameLower.includes('qa') || nameLower.includes('audit')) {
+        styleObj = colorStyles.violet;
+      } else if (nameLower.includes('block') || nameLower.includes('cancel') || nameLower.includes('delay')) {
+        styleObj = colorStyles.rose;
+      } else if (nameLower.includes('pause') || nameLower.includes('wait') || nameLower.includes('hold')) {
+        styleObj = colorStyles.amber;
+      } else {
+        styleObj = colorStyles.slate;
+      }
+    }
+
+    const isHex = st.color && st.color.startsWith('#');
+    const customStyle = isHex ? {
+      backgroundColor: `${st.color}18`,
+      color: st.color,
+      borderColor: `${st.color}50`
+    } : undefined;
+
+    const customDotStyle = isHex ? {
+      backgroundColor: st.color
+    } : undefined;
+
+    return (
+      <span
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border whitespace-nowrap shadow-2xs ${isHex ? '' : styleObj.pill}`}
+        style={customStyle}
+      >
+        <span
+          className={`w-1.5 h-1.5 rounded-full shrink-0 ${isHex ? '' : styleObj.dot}`}
+          style={customDotStyle}
+        />
+        <span>{st.name}</span>
+      </span>
+    );
+  };
+
+  const renderTemplateCategoryPill = (c) => {
+    let hex = c.color || '#2563EB';
+    const colorMap = {
+      blue: '#2563EB',
+      emerald: '#059669',
+      green: '#059669',
+      amber: '#D97706',
+      orange: '#D97706',
+      purple: '#9333EA',
+      violet: '#9333EA',
+      rose: '#E11D48',
+      red: '#E11D48',
+      cyan: '#0891B2',
+      teal: '#0D9488',
+      indigo: '#4F46E5',
+      slate: '#64748B'
+    };
+
+    if (colorMap[hex.toLowerCase()]) {
+      hex = colorMap[hex.toLowerCase()];
+    }
+
+    const isHex = hex.startsWith('#');
+
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border whitespace-nowrap shadow-2xs"
+        style={{
+          backgroundColor: isHex ? `${hex}18` : undefined,
+          color: isHex ? hex : undefined,
+          borderColor: isHex ? `${hex}45` : undefined,
+        }}
+      >
+        <span
+          className="w-1.5 h-1.5 rounded-full shrink-0"
+          style={{ backgroundColor: hex }}
+        />
+        <span>{c.name}</span>
+      </span>
+    );
+  };
+  const renderBlueprintCategoryPill = renderTemplateCategoryPill;
 
   const renderScopeBadge = (scope) => {
     if (scope === 'Project') {
@@ -837,11 +1067,8 @@ export function MastersView() {
               <Database className="w-4 h-4" />
             </div>
             <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-              Master Data &amp; Platform Administration (Tabular Setup)
+              Master Data
             </h1>
-            <span className="text-xs px-2.5 py-0.5 bg-brand-light/30 text-brand font-mono font-bold rounded-full border border-brand/30">
-              Full CRUD Grid
-            </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Enterprise tabular management center. Complete Add, Edit, Delete, and Deactivate/Archive capabilities across all master entities.
@@ -854,63 +1081,58 @@ export function MastersView() {
         <button
           type="button"
           onClick={() => setActiveTab('users')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${
-            activeTab === 'users'
-              ? 'bg-brand text-white shadow-xs'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${activeTab === 'users'
+            ? 'bg-brand text-white shadow-xs'
+            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
         >
           <Users2 className="w-4 h-4" />
-          <span>Users Master ({users?.length || 0})</span>
+          <span>Users ({users?.length || 0})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('roles')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${
-            activeTab === 'roles'
-              ? 'bg-brand text-white shadow-xs'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${activeTab === 'roles'
+            ? 'bg-brand text-white shadow-xs'
+            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
         >
           <ShieldCheck className="w-4 h-4" />
-          <span>Access Control &amp; Roles ({rolesList.length})</span>
+          <span>Access Control ({rolesList.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('statuses')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${
-            activeTab === 'statuses'
-              ? 'bg-brand text-white shadow-xs'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${activeTab === 'statuses'
+            ? 'bg-brand text-white shadow-xs'
+            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
         >
           <Tag className="w-4 h-4" />
-          <span>Statuses Master ({statusesList.length})</span>
+          <span>Statuses ({statusesList.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('brands')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${
-            activeTab === 'brands'
-              ? 'bg-brand text-white shadow-xs'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${activeTab === 'brands'
+            ? 'bg-brand text-white shadow-xs'
+            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
         >
           <FolderGit2 className="w-4 h-4" />
-          <span>Project Names &amp; Brands ({brandsList.length})</span>
+          <span>Projects ({brandsList.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('categories')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${
-            activeTab === 'categories'
-              ? 'bg-brand text-white shadow-xs'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${activeTab === 'categories'
+            ? 'bg-brand text-white shadow-xs'
+            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
         >
           <Link2 className="w-4 h-4" />
           <span>Link Categories ({catsList.length})</span>
@@ -918,12 +1140,23 @@ export function MastersView() {
 
         <button
           type="button"
+          onClick={() => setActiveTab('template-categories')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${activeTab === 'template-categories' || activeTab === 'blueprint-categories'
+            ? 'bg-brand text-white shadow-xs'
+            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>Template Categories ({(blueprintCategories || []).length})</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('departments')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${
-            activeTab === 'departments'
-              ? 'bg-brand text-white shadow-xs'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${activeTab === 'departments'
+            ? 'bg-brand text-white shadow-xs'
+            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
         >
           <Building2 className="w-4 h-4" />
           <span>Departments ({depsList.length})</span>
@@ -1201,16 +1434,14 @@ export function MastersView() {
               <button
                 type="button"
                 onClick={() => setStatusScopeFilter('ALL')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
-                  statusScopeFilter === 'ALL'
-                    ? 'bg-brand text-white shadow-xs'
-                    : 'bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
-                }`}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${statusScopeFilter === 'ALL'
+                  ? 'bg-brand text-white shadow-xs'
+                  : 'bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                  }`}
               >
                 <span>All Scope Categories</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                  statusScopeFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                }`}>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${statusScopeFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                  }`}>
                   {statusesList.length}
                 </span>
               </button>
@@ -1225,17 +1456,15 @@ export function MastersView() {
                     key={cat.id}
                     type="button"
                     onClick={() => setStatusScopeFilter(cat.id)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
-                      isSelected
-                        ? 'bg-brand text-white shadow-xs'
-                        : 'bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
-                    }`}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${isSelected
+                      ? 'bg-brand text-white shadow-xs'
+                      : 'bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                      }`}
                   >
                     <CatIcon className="w-3.5 h-3.5" />
                     <span>{cat.name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                      isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                    }`}>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}>
                       {count}
                     </span>
                   </button>
@@ -1326,11 +1555,7 @@ export function MastersView() {
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                          <th className="py-2.5 px-4 min-w-[200px]">Status &amp; Recognition</th>
-                          <th className="py-2.5 px-4">Scope Category</th>
-                          <th className="py-2.5 px-4">Key Behavioral Action</th>
-                          <th className="py-2.5 px-4">Live Preview</th>
-                          <th className="py-2.5 px-4">Color</th>
+                          <th className="py-2.5 px-4 min-w-[200px]">Status</th>
                           <th className="py-2.5 px-4">Description</th>
                           <th className="py-2.5 px-4">State</th>
                           <th className="py-2.5 px-4 text-right">Actions</th>
@@ -1339,7 +1564,7 @@ export function MastersView() {
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         {catStatuses.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="py-6 text-center text-slate-400 font-medium">
+                            <td colSpan={4} className="py-6 text-center text-slate-400 font-medium">
                               No statuses in {cat.name} matching your search.
                             </td>
                           </tr>
@@ -1347,91 +1572,11 @@ export function MastersView() {
                           catStatuses.map((st) => (
                             <tr key={st.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
                               <td className="py-3 px-4 whitespace-nowrap">
-                                <div className="flex items-center gap-2.5">
-                                  <span className={`w-7 h-7 rounded-lg flex items-center justify-center shadow-2xs border ${
-                                    st.marksAsCompleted || st.behavior === 'completed'
-                                      ? 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800'
-                                      : st.behavior === 'inprogress'
-                                      ? 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800'
-                                      : st.behavior === 'review'
-                                      ? 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-950/80 dark:text-purple-300 dark:border-purple-800'
-                                      : st.behavior === 'blocked'
-                                      ? 'bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-950/80 dark:text-rose-300 dark:border-rose-800'
-                                      : st.behavior === 'paused'
-                                      ? 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800'
-                                      : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                                  }`}>
-                                    {renderStatusIcon(st.icon || (st.marksAsCompleted ? 'CheckCircle2' : 'CircleDot'), 'w-3.5 h-3.5')}
-                                  </span>
-                                  <div>
-                                    <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                                      <span>{st.name}</span>
-                                      {st.marksAsCompleted && (
-                                        <span className="text-[10px] px-1.5 py-0.2 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 rounded font-bold border border-emerald-300 dark:border-emerald-800">
-                                          RESOLVES
-                                        </span>
-                                      )}
-                                    </div>
-                                    <span className="font-mono text-[10px] text-slate-400">ID: {st.id}</span>
-                                  </div>
-                                </div>
+                                {renderStatusPill(st)}
                               </td>
 
-                              <td className="py-3 px-4 whitespace-nowrap">
-                                {renderScopeBadge(st.scope)}
-                              </td>
-
-                              <td className="py-3 px-4 whitespace-nowrap">
-                                {renderBehaviorBadge(st)}
-                              </td>
-
-                              <td className="py-3 px-4 whitespace-nowrap">
-                                <div className="inline-flex items-center gap-2 py-1 px-2.5 bg-slate-50 dark:bg-slate-800/80 rounded-lg border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
-                                  {st.marksAsCompleted ? (
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                  ) : (
-                                    <CircleDot className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                  )}
-                                  <span className={`text-[11px] font-medium max-w-[120px] truncate ${
-                                    st.marksAsCompleted
-                                      ? 'line-through text-slate-400 dark:text-slate-500'
-                                      : 'text-slate-800 dark:text-slate-200'
-                                  }`}>
-                                    Sample {st.scope === 'Project' ? 'project mandate' : 'sprint task'}
-                                  </span>
-                                  <span className={`ml-auto text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
-                                    st.marksAsCompleted
-                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800'
-                                      : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                                  }`}>
-                                    {st.name}
-                                  </span>
-                                </div>
-                              </td>
-
-                              <td className="py-3 px-4 whitespace-nowrap">
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className="w-3.5 h-3.5 rounded-full border border-slate-300 dark:border-slate-600 shadow-2xs shrink-0"
-                                    style={{
-                                      backgroundColor:
-                                        st.color === 'emerald' ? '#059669' :
-                                        st.color === 'blue' ? '#2563EB' :
-                                        st.color === 'rose' ? '#E11D48' :
-                                        st.color === 'amber' ? '#D97706' :
-                                        st.color === 'violet' ? '#9333EA' :
-                                        st.color === 'teal' ? '#0D9488' :
-                                        st.color && st.color.startsWith('#') ? st.color : '#64748B'
-                                    }}
-                                  />
-                                  <span className="font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-300 capitalize">
-                                    {st.color}
-                                  </span>
-                                </div>
-                              </td>
-
-                              <td className="py-3 px-4 text-slate-600 dark:text-slate-400 max-w-[180px] truncate" title={st.desc}>
-                                {st.desc}
+                              <td className="py-3 px-4 text-slate-600 dark:text-slate-400 max-w-[280px] truncate" title={st.desc}>
+                                {st.desc || '-'}
                               </td>
 
                               <td className="py-3 px-4 whitespace-nowrap">
@@ -1444,11 +1589,10 @@ export function MastersView() {
                                   <button
                                     type="button"
                                     onClick={() => handleToggleStatusStrikethrough(st)}
-                                    className={`p-1.5 rounded-md transition-colors border ${
-                                      st.marksAsCompleted
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
-                                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-transparent'
-                                    }`}
+                                    className={`p-1.5 rounded-md transition-colors border ${st.marksAsCompleted
+                                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
+                                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border-transparent'
+                                      }`}
                                     title={st.marksAsCompleted ? 'Strikethrough is Active (Click to disable)' : 'Enable Strikethrough for this status'}
                                   >
                                     <CheckSquare className="w-3.5 h-3.5" />
@@ -1753,6 +1897,155 @@ export function MastersView() {
                         </td>
                       </tr>
                     ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5.5. TEMPLATE CATEGORIES MASTER TABLE */}
+      {/* ========================================================================= */}
+      {(activeTab === 'template-categories' || activeTab === 'blueprint-categories') && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-slate-900 p-3.5 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="Search template categories master by name, code, or description..."
+                value={blueprintCatSearch}
+                onChange={(e) => setBlueprintCatSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs focus:outline-none focus:border-brand text-slate-900 dark:text-slate-100"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={blueprintCatStatusFilter}
+                onChange={(e) => setBlueprintCatStatusFilter(e.target.value)}
+                className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 font-medium"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="Active">Active</option>
+                <option value="Archived">Archived</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingBlueprintCat(null);
+                  setBlueprintCatForm({
+                    name: '',
+                    code: '',
+                    color: '#2563EB',
+                    status: 'Active',
+                    description: ''
+                  });
+                  setIsBlueprintCatModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-brand hover:bg-brand-hover rounded-lg shadow-xs transition-colors shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Template Category</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="py-3 px-4 min-w-[180px]">Category</th>
+                    <th className="py-3 px-4">Associated Templates</th>
+                    <th className="py-3 px-4">Description</th>
+                    <th className="py-3 px-4">State</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredBlueprintCats.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-slate-400 font-medium">
+                        No template categories found
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredBlueprintCats.map((c) => {
+                      const count = (templates || []).filter((t) => t.category === c.name).length;
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            {renderTemplateCategoryPill(c)}
+                          </td>
+
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <span className={`font-mono text-[11px] px-2 py-0.5 rounded font-semibold border ${
+                              count > 0
+                                ? 'bg-brand-light/30 text-brand border-brand/30'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                            }`}>
+                              {count} {count === 1 ? 'template' : 'templates'} using this
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400 max-w-xs truncate" title={c.description}>
+                            {c.description || '-'}
+                          </td>
+
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            {renderStatusBadge(c.status || 'Active')}
+                          </td>
+
+                          <td className="py-3 px-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Edit Action */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingBlueprintCat(c);
+                                  setBlueprintCatForm({
+                                    name: c.name,
+                                    code: c.code || '',
+                                    color: c.color || '#2563EB',
+                                    status: c.status || 'Active',
+                                    description: c.description || ''
+                                  });
+                                  setIsBlueprintCatModalOpen(true);
+                                }}
+                                className="p-1.5 text-slate-500 hover:text-brand hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                                title="Edit Template Category"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Toggle Active / Archived */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleBlueprintCatArchive(c)}
+                                className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/60 rounded transition-colors"
+                                title={c.status === 'Active' ? 'Archive Category' : 'Activate Category'}
+                              >
+                                <Ban className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Delete Action */}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteBlueprintCat(c)}
+                                className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded transition-colors"
+                                title="Delete Template Category"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -2286,11 +2579,10 @@ export function MastersView() {
                         type="button"
                         onClick={() => setStatusForm({ ...statusForm, icon: ic.id })}
                         title={ic.label}
-                        className={`flex flex-col items-center justify-center p-2 rounded-md border transition-all cursor-pointer ${
-                          isSel
-                            ? 'bg-brand text-white border-brand shadow-xs'
-                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-brand/60'
-                        }`}
+                        className={`flex flex-col items-center justify-center p-2 rounded-md border transition-all cursor-pointer ${isSel
+                          ? 'bg-brand text-white border-brand shadow-xs'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-brand/60'
+                          }`}
                       >
                         {renderStatusIcon(ic.id, 'w-4 h-4')}
                         <span className="text-[9px] mt-1 font-mono truncate max-w-full">{ic.id}</span>
@@ -2313,11 +2605,10 @@ export function MastersView() {
                         key={c.id}
                         type="button"
                         onClick={() => setStatusForm({ ...statusForm, color: c.id })}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer ${
-                          isSel
-                            ? 'ring-2 ring-brand ring-offset-1 border-slate-900 dark:border-slate-100 font-bold bg-white dark:bg-slate-800'
-                            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-slate-400'
-                        }`}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer ${isSel
+                          ? 'ring-2 ring-brand ring-offset-1 border-slate-900 dark:border-slate-100 font-bold bg-white dark:bg-slate-800'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-slate-400'
+                          }`}
                       >
                         <span className="w-3 h-3 rounded-full shrink-0 shadow-2xs" style={{ backgroundColor: c.hex }} />
                         <span className="capitalize text-[11px]">{c.name.split(' ')[0]}</span>
@@ -2472,11 +2763,10 @@ export function MastersView() {
                         type="button"
                         onClick={() => setBrandForm({ ...brandForm, color: preset.hex })}
                         style={{ backgroundColor: preset.hex }}
-                        className={`w-4.5 h-4.5 rounded-full transition-transform ${
-                          brandForm.color?.toLowerCase() === preset.hex.toLowerCase()
-                            ? 'scale-125 ring-2 ring-brand ring-offset-1'
-                            : 'hover:scale-110'
-                        }`}
+                        className={`w-4.5 h-4.5 rounded-full transition-transform ${brandForm.color?.toLowerCase() === preset.hex.toLowerCase()
+                          ? 'scale-125 ring-2 ring-brand ring-offset-1'
+                          : 'hover:scale-110'
+                          }`}
                         title={preset.name}
                       />
                     ))}
@@ -2731,6 +3021,146 @@ export function MastersView() {
                   className="px-4 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-hover rounded-lg shadow-xs"
                 >
                   {editingDep ? 'Update Department' : 'Save Department'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: ADD / EDIT TEMPLATE CATEGORY */}
+      {/* ========================================================================= */}
+      {isBlueprintCatModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-md p-5 space-y-4 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-brand" />
+                <span>{editingBlueprintCat ? 'Edit Template Category' : 'Add Template Category'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsBlueprintCatModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleBlueprintCatSubmit} className="space-y-3.5">
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="col-span-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Code <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="WEB"
+                    value={blueprintCatForm.code}
+                    onChange={(e) => setBlueprintCatForm({ ...blueprintCatForm, code: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono uppercase bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Category Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g., Artificial Intelligence & ML"
+                    value={blueprintCatForm.name}
+                    onChange={(e) => setBlueprintCatForm({ ...blueprintCatForm, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  Description
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Outline sprint templates covered by this category..."
+                  value={blueprintCatForm.description}
+                  onChange={(e) => setBlueprintCatForm({ ...blueprintCatForm, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  Accent Color
+                </label>
+                <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="color"
+                      value={blueprintCatForm.color?.startsWith('#') ? blueprintCatForm.color : '#2563EB'}
+                      onChange={(e) => setBlueprintCatForm({ ...blueprintCatForm, color: e.target.value })}
+                      className="w-9 h-9 rounded-lg border border-slate-300 dark:border-slate-600 cursor-pointer p-0.5 bg-transparent shrink-0"
+                    />
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        placeholder="#2563EB"
+                        value={blueprintCatForm.color}
+                        onChange={(e) => setBlueprintCatForm({ ...blueprintCatForm, color: e.target.value })}
+                        className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono font-semibold bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Preset Swatches */}
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <span className="text-[10px] font-semibold text-slate-400">Presets:</span>
+                    {BRAND_COLOR_PRESETS.map((preset) => (
+                      <button
+                        key={preset.hex}
+                        type="button"
+                        onClick={() => setBlueprintCatForm({ ...blueprintCatForm, color: preset.hex })}
+                        style={{ backgroundColor: preset.hex }}
+                        className={`w-4.5 h-4.5 rounded-full transition-transform ${blueprintCatForm.color?.toLowerCase() === preset.hex.toLowerCase()
+                          ? 'scale-125 ring-2 ring-brand ring-offset-1'
+                          : 'hover:scale-110'
+                          }`}
+                        title={preset.name}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  Status State
+                </label>
+                <select
+                  value={blueprintCatForm.status}
+                  onChange={(e) => setBlueprintCatForm({ ...blueprintCatForm, status: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Archived">Archived</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsBlueprintCatModalOpen(false)}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-hover rounded-lg shadow-xs"
+                >
+                  {editingBlueprintCat ? 'Update Category' : 'Save Category'}
                 </button>
               </div>
             </form>

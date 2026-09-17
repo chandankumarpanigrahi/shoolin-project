@@ -55,7 +55,7 @@ export function flattenTreeToTasks(tree, projectId, projectCode) {
         startDate: '2026-09-15',
         dueDate: '2026-10-30',
         weight: 1,
-        description: node.description || `Task generated from blueprint template: ${node.title}`,
+        description: node.description || `Task generated from template: ${node.title}`,
         dependencies: [],
         subtasks: []
       };
@@ -80,7 +80,7 @@ export const TEMPLATES = [
     defaultDuration: "90 Days",
     createdBy: "usr-1",
     lastUpdated: "2026-08-15",
-    description: "Standard end-to-end web deployment blueprint including wireframes, design tokens, frontend engineering, backend integrations, and SEO audits.",
+    description: "Standard end-to-end web deployment template including wireframes, design tokens, frontend engineering, backend integrations, and SEO audits.",
     tasksTree: [
       {
         id: "n-1-1",
@@ -553,3 +553,80 @@ export const TEMPLATES = [
     ]
   }
 ];
+
+export const DEFAULT_BLUEPRINT_CATEGORIES = [
+  {
+    id: 'bcat-1',
+    name: 'Website Development',
+    code: 'WEB',
+    color: '#2563EB',
+    description: 'Standard end-to-end web deployment templates, client portals, and CMS integrations',
+    status: 'Active',
+    isSystem: true
+  },
+  {
+    id: 'bcat-2',
+    name: 'Mobile App Development',
+    code: 'APP',
+    color: '#059669',
+    description: 'iOS, Android, React Native & Flutter architecture templates and mobile sprint deliverables',
+    status: 'Active',
+    isSystem: true
+  },
+  {
+    id: 'bcat-3',
+    name: 'Branding & Identity',
+    code: 'BRAND',
+    color: '#D97706',
+    description: 'Corporate visual identity, logo design suites, brand books & guideline deliverables',
+    status: 'Active',
+    isSystem: true
+  },
+  {
+    id: 'bcat-4',
+    name: 'UI/UX Project',
+    code: 'UIUX',
+    color: '#9333EA',
+    description: 'User experience research, wireframing, Figma design tokens & interaction prototyping',
+    status: 'Active',
+    isSystem: true
+  },
+  {
+    id: 'bcat-5',
+    name: 'Social Media Management',
+    code: 'SMM',
+    color: '#E11D48',
+    description: 'Monthly cyclic content calendars, reel production, engagement & community management',
+    status: 'Active',
+    isSystem: true
+  },
+  {
+    id: 'bcat-6',
+    name: 'SEO & Growth',
+    code: 'SEO',
+    color: '#0891B2',
+    description: 'Technical SEO audits, keyword ranking architectures, content expansion & link outreach',
+    status: 'Active',
+    isSystem: true
+  },
+  {
+    id: 'bcat-7',
+    name: 'DevOps & Cloud',
+    code: 'DEVOPS',
+    color: '#4F46E5',
+    description: 'Cloud infrastructure setup, CI/CD automated deployment pipelines & Docker containerization',
+    status: 'Active',
+    isSystem: false
+  },
+  {
+    id: 'bcat-8',
+    name: 'Marketing & Campaigns',
+    code: 'MKT',
+    color: '#D946EF',
+    description: 'Performance marketing funnels, email sequences, paid ads & multi-channel launch campaigns',
+    status: 'Active',
+    isSystem: false
+  }
+];
+
+export const DEFAULT_TEMPLATE_CATEGORIES = DEFAULT_BLUEPRINT_CATEGORIES;

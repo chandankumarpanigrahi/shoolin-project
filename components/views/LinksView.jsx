@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { useUrlParam } from '@/hooks/useUrlState';
 import {
   Link2,
   Plus,
@@ -311,7 +312,7 @@ export function LinksView({
   onDeleteLink
 }) {
   // Navigation State: 'FOLDERS' | specific brand code (e.g. 'PMV')
-  const [activeFolderBrand, setActiveFolderBrand] = useState('FOLDERS');
+  const [activeFolderBrand, setActiveFolderBrand] = useUrlParam('brand', 'FOLDERS');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedSubCategory, setSelectedSubCategory] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');

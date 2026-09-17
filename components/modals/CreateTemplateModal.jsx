@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   Layers,
@@ -11,20 +11,13 @@ import {
   CornerDownRight,
   FolderTree,
   Sparkles,
-  Info
+  Info,
+  Pencil,
+  Check,
+  Tag
 } from 'lucide-react';
+import { useAppContext } from '@/components/providers/AppProvider';
 import { countTreeNodes, getMaxTreeDepth } from '@/data/templates';
-
-const CATEGORY_PRESETS = [
-  'Website Development',
-  'Mobile App',
-  'Social Media',
-  'Branding',
-  'UI/UX Project',
-  'Marketing',
-  'DevOps & Cloud',
-  'Custom'
-];
 
 // Helper: generate a unique node ID
 const generateNodeId = () => `node-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -181,7 +174,24 @@ function TreeNodeItem({
   );
 }
 
-export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
+export function CreateTemplateModal({
+  isOpen,
+  onClose,
+  onAddTemplate,
+  onUpdateTemplate,
+  templateToEdit
+}) {
+  const {
+    blueprintCategories,
+    handleAddBlueprintCategory,
+    editingTemplate,
+    handleUpdateTemplate: ctxUpdateTemplate,
+    handleAddTemplate: ctxAddTemplate
+  } = useAppContext();
+
+  const currentTemplate = templateToEdit || editingTemplate;
+  const isEditMode = Boolean(currentTemplate);
+
   const [name, setName] = useState('');
   const [type, setType] = useState('one-time');
   const [category, setCategory] = useState('Website Development');
@@ -190,55 +200,103 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
   const [description, setDescription] = useState('');
 
   // Recursive Tree State: array of Level 1 root tasks
-  const [tasksTree, setTasksTree] = useState([
-    {
-      id: generateNodeId(),
-      title: 'Discovery & System Architecture',
-      children: [
+  const [tasksTree, setTasksTree] = useState([]);
+  const [newRootTitle, setNewRootTitle] = useState('');
+  const [error, setError] = useState('');
+
+  // Inline Quick Add Category state for Master
+  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryCode, setNewCategoryCode] = useState('');
+
+  // Populate or reset state on open/mode switch
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (currentTemplate) {
+      setName(currentTemplate.name || '');
+      setType(currentTemplate.type || 'one-time');
+      setCategory(currentTemplate.category || 'Website Development');
+      setDefaultDuration(currentTemplate.defaultDuration || '60 Days');
+      setDescription(currentTemplate.description || '');
+
+      // Load tasks tree or build from preview fallback
+      if (currentTemplate.tasksTree && currentTemplate.tasksTree.length > 0) {
+        setTasksTree(JSON.parse(JSON.stringify(currentTemplate.tasksTree)));
+      } else if (currentTemplate.tasksPreview && currentTemplate.tasksPreview.length > 0) {
+        setTasksTree(
+          currentTemplate.tasksPreview.map((item) => ({
+            id: generateNodeId(),
+            title: item,
+            children: []
+          }))
+        );
+      } else {
+        setTasksTree([]);
+      }
+    } else {
+      // Defaults for brand new template
+      setName('');
+      setType('one-time');
+      const firstCat = blueprintCategories?.[0]?.name || 'Website Development';
+      setCategory(firstCat);
+      setDefaultDuration('60 Days');
+      setDescription('');
+      setTasksTree([
         {
           id: generateNodeId(),
-          title: 'Technical Stakeholder Alignment',
+          title: 'Discovery & System Architecture',
           children: [
             {
               id: generateNodeId(),
-              title: 'Security & SSO Mapping Specs',
+              title: 'Technical Stakeholder Alignment',
               children: [
                 {
                   id: generateNodeId(),
-                  title: 'OAuth2 / SAML Token Rotation Strategy',
-                  children: []
+                  title: 'Security & SSO Mapping Specs',
+                  children: [
+                    {
+                      id: generateNodeId(),
+                      title: 'OAuth2 / SAML Token Rotation Strategy',
+                      children: []
+                    }
+                  ]
                 }
               ]
+            },
+            {
+              id: generateNodeId(),
+              title: 'Database ERD & Indexing Plan',
+              children: []
             }
           ]
         },
         {
           id: generateNodeId(),
-          title: 'Database ERD & Indexing Plan',
-          children: []
-        }
-      ]
-    },
-    {
-      id: generateNodeId(),
-      title: 'Frontend Component Engineering',
-      children: [
+          title: 'Frontend Component Engineering',
+          children: [
+            {
+              id: generateNodeId(),
+              title: 'Design Tokens & Theme Switcher Setup',
+              children: []
+            }
+          ]
+        },
         {
           id: generateNodeId(),
-          title: 'Design Tokens & Theme Switcher Setup',
+          title: 'Production Cutover & QA Audit',
           children: []
         }
-      ]
-    },
-    {
-      id: generateNodeId(),
-      title: 'Production Cutover & QA Audit',
-      children: []
+      ]);
     }
-  ]);
 
-  const [newRootTitle, setNewRootTitle] = useState('');
-  const [error, setError] = useState('');
+    setCustomCategory('');
+    setError('');
+    setNewRootTitle('');
+    setIsAddingNewCategory(false);
+    setNewCategoryName('');
+    setNewCategoryCode('');
+  }, [isOpen, currentTemplate, blueprintCategories]);
 
   // Close on Escape
   useEffect(() => {
@@ -248,6 +306,19 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  // Derived category list from Blueprint Master
+  const categoryOptions = useMemo(() => {
+    const active = (blueprintCategories || [])
+      .filter((c) => c.status === 'Active')
+      .map((c) => c.name);
+
+    // If existing template has a category not in active master, include it
+    if (category && !active.includes(category) && category !== 'Custom') {
+      active.push(category);
+    }
+    return active;
+  }, [blueprintCategories, category]);
 
   if (!isOpen) return null;
 
@@ -334,10 +405,37 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
   const totalNodesCount = countTreeNodes(tasksTree);
   const maxTreeDepth = getMaxTreeDepth(tasksTree);
 
+  // Quick Register Category to Master
+  const handleQuickAddCategory = (e) => {
+    if (e) e.preventDefault();
+    if (!newCategoryName.trim()) return;
+
+    const trimmedName = newCategoryName.trim();
+    const generatedCode = (newCategoryCode.trim() || trimmedName.slice(0, 4)).toUpperCase();
+
+    const newCategoryObj = {
+      id: `bcat-${Date.now()}`,
+      name: trimmedName,
+      code: generatedCode,
+      color: '#2563EB',
+      description: 'Custom added category from template editor',
+      status: 'Active',
+      isSystem: false
+    };
+
+    if (handleAddBlueprintCategory) {
+      handleAddBlueprintCategory(newCategoryObj);
+    }
+    setCategory(trimmedName);
+    setNewCategoryName('');
+    setNewCategoryCode('');
+    setIsAddingNewCategory(false);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Please enter a blueprint template name.');
+      setError('Please enter a template name.');
       return;
     }
     if (tasksTree.length === 0) {
@@ -350,11 +448,11 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
     // Generate preview summary strings for card displays
     const generatePreviewLines = (nodes, prefix = '') => {
       const lines = [];
-      nodes.forEach((n) => {
-        const fullLine = prefix ? `${prefix} > ${n.title}` : n.title;
-        lines.push(fullLine);
-        if (n.children && n.children.length > 0) {
-          lines.push(...generatePreviewLines(n.children, fullLine));
+      nodes.forEach((node) => {
+        const titleWithPrefix = prefix ? `${prefix} > ${node.title}` : node.title;
+        lines.push(titleWithPrefix);
+        if (node.children && node.children.length > 0) {
+          lines.push(...generatePreviewLines(node.children, titleWithPrefix));
         }
       });
       return lines;
@@ -362,30 +460,51 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
 
     const previewList = generatePreviewLines(tasksTree).slice(0, 8);
 
-    const newTemplate = {
-      id: `tmpl-custom-${Date.now()}`,
-      name: name.trim(),
-      type,
-      category: finalCategory,
-      tasksCount: totalNodesCount,
-      maxDepth: maxTreeDepth,
-      defaultDuration: type === 'recurring' ? (defaultDuration.includes('Monthly') ? defaultDuration : 'Monthly (30 Days)') : defaultDuration,
-      createdBy: 'Current User',
-      lastUpdated: new Date().toISOString().split('T')[0],
-      isCustom: true,
-      description: description.trim() || `Configured ${finalCategory} blueprint with ${totalNodesCount} hierarchical tasks up to ${maxTreeDepth} levels deep.`,
-      tasksTree: tasksTree,
-      tasksPreview: previewList
-    };
+    if (isEditMode && currentTemplate) {
+      const updatedTemplate = {
+        ...currentTemplate,
+        name: name.trim(),
+        type,
+        category: finalCategory,
+        tasksCount: totalNodesCount,
+        maxDepth: maxTreeDepth,
+        defaultDuration: type === 'recurring' ? (defaultDuration.includes('Monthly') ? defaultDuration : 'Monthly (30 Days)') : defaultDuration,
+        lastUpdated: new Date().toISOString().split('T')[0],
+        description: description.trim() || `Configured ${finalCategory} template with ${totalNodesCount} hierarchical tasks up to ${maxTreeDepth} levels deep.`,
+        tasksTree: tasksTree,
+        tasksPreview: previewList
+      };
 
-    onAddTemplate(newTemplate);
+      if (onUpdateTemplate) {
+        onUpdateTemplate(updatedTemplate);
+      } else if (ctxUpdateTemplate) {
+        ctxUpdateTemplate(updatedTemplate);
+      }
+    } else {
+      const newTemplate = {
+        id: `tmpl-custom-${Date.now()}`,
+        name: name.trim(),
+        type,
+        category: finalCategory,
+        tasksCount: totalNodesCount,
+        maxDepth: maxTreeDepth,
+        defaultDuration: type === 'recurring' ? (defaultDuration.includes('Monthly') ? defaultDuration : 'Monthly (30 Days)') : defaultDuration,
+        createdBy: 'Current User',
+        lastUpdated: new Date().toISOString().split('T')[0],
+        isCustom: true,
+        description: description.trim() || `Configured ${finalCategory} template with ${totalNodesCount} hierarchical tasks up to ${maxTreeDepth} levels deep.`,
+        tasksTree: tasksTree,
+        tasksPreview: previewList
+      };
+
+      if (onAddTemplate) {
+        onAddTemplate(newTemplate);
+      } else if (ctxAddTemplate) {
+        ctxAddTemplate(newTemplate);
+      }
+    }
+
     onClose();
-
-    // Reset fields
-    setName('');
-    setDescription('');
-    setCustomCategory('');
-    setError('');
   };
 
   return (
@@ -399,20 +518,22 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
         {/* Header - Clean, No gradient, No top border */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-md bg-indigo-600 text-white flex items-center justify-center shadow-sm">
-              <FolderTree className="w-4 h-4" />
+            <div className={`w-8 h-8 rounded-md ${isEditMode ? 'bg-amber-600' : 'bg-brand'} text-white flex items-center justify-center shadow-sm shrink-0`}>
+              {isEditMode ? <Pencil className="w-4 h-4" /> : <FolderTree className="w-4 h-4" />}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100">
-                  Create Project Template Blueprint
+                  {isEditMode ? 'Edit Project Template' : 'Create Project Template'}
                 </h2>
-                <span className="px-2 py-0.5 text-[10px] font-bold rounded-sm bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                  N-Level Task Tree
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-sm bg-brand-light/30 text-brand border border-brand/30">
+                  {isEditMode ? `Editing: ${currentTemplate.name}` : 'N-Level Task Tree'}
                 </span>
               </div>
               <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
-                Build nested task &gt; sub-task &gt; sub-task structures to any required depth
+                {isEditMode
+                  ? 'Update template details, timeline, deliverables, category master association, and hierarchical tasks'
+                  : 'Build nested task > sub-task > sub-task structures to any required depth'}
               </p>
             </div>
           </div>
@@ -438,14 +559,14 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
           <div className="space-y-3">
             <div>
               <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
-                Template Blueprint Name <span className="text-rose-500">*</span>
+                Template Name <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., Enterprise E-Commerce SaaS Sprint, AI Agent Integration..."
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md focus:border-indigo-600 text-slate-900 dark:text-slate-100 placeholder-slate-400 font-medium"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md focus:border-brand text-slate-900 dark:text-slate-100 placeholder-slate-400 font-medium"
                 required
               />
             </div>
@@ -464,16 +585,16 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
                   }}
                   className={`p-3 rounded-md border text-left flex items-start gap-2.5 transition-colors ${
                     type === 'one-time'
-                      ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200'
+                      ? 'border-brand bg-brand-light/20 dark:bg-brand-light/10 text-brand font-semibold'
                       : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
                   }`}
                 >
-                  <div className={`w-3.5 h-3.5 rounded-full mt-0.5 border flex items-center justify-center ${type === 'one-time' ? 'border-indigo-600 bg-indigo-600' : 'border-slate-400'}`}>
+                  <div className={`w-3.5 h-3.5 rounded-full mt-0.5 border flex items-center justify-center shrink-0 ${type === 'one-time' ? 'border-brand bg-brand' : 'border-slate-400'}`}>
                     {type === 'one-time' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                   </div>
                   <div>
-                    <span className="font-bold block text-xs">One-Time Project Blueprint</span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-bold block text-xs">One-Time Project Template</span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
                       Standard sprint with start and target cutover dates
                     </span>
                   </div>
@@ -487,16 +608,16 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
                   }}
                   className={`p-3 rounded-md border text-left flex items-start gap-2.5 transition-colors ${
                     type === 'recurring'
-                      ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200'
+                      ? 'border-brand bg-brand-light/20 dark:bg-brand-light/10 text-brand font-semibold'
                       : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
                   }`}
                 >
-                  <div className={`w-3.5 h-3.5 rounded-full mt-0.5 border flex items-center justify-center ${type === 'recurring' ? 'border-indigo-600 bg-indigo-600' : 'border-slate-400'}`}>
+                  <div className={`w-3.5 h-3.5 rounded-full mt-0.5 border flex items-center justify-center shrink-0 ${type === 'recurring' ? 'border-brand bg-brand' : 'border-slate-400'}`}>
                     {type === 'recurring' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                   </div>
                   <div>
                     <span className="font-bold block text-xs">Recurring Monthly Retainer</span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
                       Cyclic tasks regenerated each month on scheduled billing day
                     </span>
                   </div>
@@ -505,21 +626,87 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
             </div>
           </div>
 
-          {/* Category & Duration */}
+          {/* Category (Connected to Master) & Duration */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
-                Category
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-slate-700 dark:text-slate-300 font-bold flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-brand" />
+                  <span>Category (Master) <span className="text-rose-500">*</span></span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingNewCategory(!isAddingNewCategory)}
+                  className="text-[11px] font-semibold text-brand hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>{isAddingNewCategory ? 'Cancel' : '+ New Category'}</span>
+                </button>
+              </div>
+
+              {/* Quick Add New Category Inline to Master */}
+              {isAddingNewCategory && (
+                <div className="mb-2 p-2.5 bg-brand-light/20 dark:bg-brand-light/10 border border-brand/30 rounded-md space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-brand">Register In Category Master</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingNewCategory(false)}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="Category Name (e.g., AI Systems)"
+                      className="flex-1 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100"
+                    />
+                    <input
+                      type="text"
+                      value={newCategoryCode}
+                      onChange={(e) => setNewCategoryCode(e.target.value)}
+                      placeholder="Code (AI)"
+                      className="w-16 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-sm text-xs uppercase text-slate-900 dark:text-slate-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleQuickAddCategory}
+                      disabled={!newCategoryName.trim()}
+                      className="px-2.5 py-1 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white font-semibold rounded-sm text-xs shrink-0"
+                    >
+                      Save &amp; Select
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-slate-900 dark:text-slate-100 font-medium focus:border-brand"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-slate-900 dark:text-slate-100 font-medium focus:border-brand focus:outline-none"
               >
-                {CATEGORY_PRESETS.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                {categoryOptions.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
                 ))}
+                <option value="Custom">+ Custom Entry...</option>
               </select>
+
+              {category === 'Custom' && (
+                <input
+                  type="text"
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                  placeholder="Enter custom category name..."
+                  className="mt-1.5 w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-slate-100"
+                />
+              )}
             </div>
 
             <div>
@@ -531,7 +718,7 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
                 value={defaultDuration}
                 onChange={(e) => setDefaultDuration(e.target.value)}
                 placeholder="e.g., 45 Days, 90 Days"
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-slate-900 dark:text-slate-100 font-medium focus:border-brand"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-slate-900 dark:text-slate-100 font-medium focus:border-brand focus:outline-none"
               />
             </div>
           </div>
@@ -546,11 +733,11 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
               placeholder="Outline the operational scope and intended outcomes..."
-              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-brand"
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-brand focus:outline-none"
             />
           </div>
 
-          {/* HIERARCHICAL TASK & SUB-TASK TREE BUILDER */}
+          {/* HIERARCHICAL TASK & SUB-TASK TREE BUILDER (EDIT AREA) */}
           <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-md space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-2.5">
               <div>
@@ -561,7 +748,7 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Click <strong className="text-brand">+ Sub-task</strong> on any item to nest children (task &gt; sub-task &gt; sub-task &gt; sub-task...)
+                  Click <strong className="text-brand">+ Sub-task</strong> on any item to nest children (task &gt; sub-task &gt; sub-task...)
                 </p>
               </div>
 
@@ -636,9 +823,19 @@ export function CreateTemplateModal({ isOpen, onClose, onAddTemplate }) {
           <button
             type="button"
             onClick={handleSubmit}
-            className="px-4 py-1.5 text-xs font-semibold text-white bg-brand hover:bg-brand-hover active:bg-brand-active rounded-md shadow-sm flex items-center gap-1.5 transition-colors"
+            className="px-4 py-1.5 text-xs font-semibold text-white bg-brand hover:bg-brand-hover active:bg-brand-hover rounded-md shadow-sm flex items-center gap-1.5 transition-colors"
           >
-            <span>Save Template Blueprint</span>
+            {isEditMode ? (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                <span>Save Changes</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-3.5 h-3.5" />
+                <span>Save Template</span>
+              </>
+            )}
           </button>
         </div>
       </div>

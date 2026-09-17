@@ -5,16 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --turbopack -p 3001",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start -p 3000",
     "lint": "next lint"
   },
   "dependencies": {
+    "@serwist/next": "^9.4.1",
     "@thesvg/react": "^3.3.6",
     "lucide-react": "^1.16.0",
     "next": "^16.3.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "serwist": "^9.5.12",
     "thesvg": "^3.3.6"
   },
   "devDependencies": {

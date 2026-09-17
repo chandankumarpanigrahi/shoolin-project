@@ -19,6 +19,7 @@ import { StatusBadge, PriorityBadge } from '@/components/common/Badges';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { KanbanBoardView } from '@/components/views/KanbanBoardView';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { useUrlParam } from '@/hooks/useUrlState';
 
 export function TasksView({
   tasks,
@@ -30,7 +31,7 @@ export function TasksView({
   onCreateQuickTask
 }) {
   const { isCompletedStatus, getTaskStatuses, toggleTaskComplete } = useAppContext();
-  const [activeView, setActiveView] = useState('tree'); // 'tree' | 'kanban'
+  const [activeView, setActiveView] = useUrlParam('view', 'tree'); // 'tree' | 'kanban'
   const [quickTitle, setQuickTitle] = useState('');
   const [quickProjectId, setQuickProjectId] = useState(projects[0]?.id || '');
   const [quickPriority, setQuickPriority] = useState('Medium');

@@ -44,7 +44,7 @@ export function Sidebar({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { can, logout } = useAppContext();
+  const { can, logout, projects = [], tasks = [], meetings = [], dependencies = [] } = useAppContext();
   const [workspace, setWorkspace] = useState('Shoolin Innovations Limited');
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
   const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
@@ -63,11 +63,11 @@ export function Sidebar({
     { id: 'dashboard', href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'my-focus', href: '/my-focus', label: 'My Focus', icon: Target, badge: 'Focus' },
     { id: 'my-projects', href: '/my-projects', label: 'My Projects', icon: FolderGit2, badge: 'Personal' },
-    { id: 'projects', href: '/projects', label: 'Projects', icon: Briefcase, count: 7 },
+    { id: 'projects', href: '/projects', label: 'Projects', icon: Briefcase, count: projects.length },
     { id: 'roadmap', href: '/roadmap', label: 'Roadmap', icon: CalendarRange, badge: 'Q3-Q4' },
-    { id: 'tasks', href: '/tasks', label: 'Tasks', icon: CheckSquare, count: 18 },
-    { id: 'meetings', href: '/meetings', label: 'Meetings', icon: Video, badge: '3 Today' },
-    { id: 'dependencies', href: '/dependencies', label: 'Dependencies', icon: GitBranch, badge: '5 Active' },
+    { id: 'tasks', href: '/tasks', label: 'Tasks', icon: CheckSquare, count: tasks.length },
+    { id: 'meetings', href: '/meetings', label: 'Meetings', icon: Video, badge: meetings.length ? `${meetings.length}` : undefined },
+    { id: 'dependencies', href: '/dependencies', label: 'Dependencies', icon: GitBranch, badge: dependencies.length ? `${dependencies.length}` : undefined },
     { id: 'links', href: '/links', label: 'Links', icon: Link2 },
     { id: 'kpi', href: '/kpi', label: 'KPI Dashboard', icon: BarChart3, perm: 'kpi.view' },
     { id: 'templates', href: '/templates', label: 'Project Templates', icon: Layers, perm: 'templates.view' },
@@ -89,8 +89,9 @@ export function Sidebar({
   };
 
   const isActive = (href) => {
-    if (href === '/') return pathname === '/';
-    return pathname.startsWith(href);
+    const cleanHref = href.split('?')[0];
+    if (cleanHref === '/') return pathname === '/';
+    return pathname.startsWith(cleanHref);
   };
 
   return (
@@ -105,9 +106,9 @@ export function Sidebar({
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 w-64 bg-[#0f172a] text-slate-300 flex flex-col border-r border-slate-800 transition-transform duration-200 ease-in-out ${
-          activeIsOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        aria-label="Application sidebar"
+        className={`fixed top-0 bottom-0 left-0 z-50 w-64 bg-[#0f172a] text-slate-300 flex flex-col border-r border-slate-800 transition-transform duration-200 ease-in-out ${activeIsOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
       >
         {/* Top Header: Logo & Close */}
         <div className="h-14 px-4 flex items-center justify-between border-b border-slate-800/80 shrink-0">
@@ -132,6 +133,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={() => setOpen && setOpen(false)}
+            aria-label="Close sidebar"
             className="p-1 text-slate-400 hover:text-white rounded-sm hover:bg-slate-800 transition-colors"
             title="Close / Collapse Sidebar"
           >
@@ -139,47 +141,12 @@ export function Sidebar({
           </button>
         </div>
 
-        {/* Workspace Switcher */}
-        <div className="px-3 py-2.5 border-b border-slate-800/60 relative">
-          <button
-            type="button"
-            onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-sm bg-slate-800/50 hover:bg-slate-800 text-slate-200 border border-slate-700/60 text-xs transition-colors"
-          >
-            <div className="flex items-center gap-2 truncate">
-              <Building2 className="w-3.5 h-3.5 text-brand shrink-0" />
-              <span className="truncate font-medium">{workspace}</span>
-            </div>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          </button>
-
-          {isWorkspaceMenuOpen && (
-            <div className="absolute top-12 left-3 right-3 z-30 bg-slate-900 border border-slate-700 rounded-sm shadow-xl py-1 text-xs">
-              <div className="px-2 py-1 text-[10px] uppercase font-semibold text-slate-400 tracking-wider">
-                Workspaces
-              </div>
-              {workspaces.map((ws) => (
-                <button
-                  key={ws}
-                  type="button"
-                  onClick={() => {
-                    setWorkspace(ws);
-                    setIsWorkspaceMenuOpen(false);
-                  }}
-                  className={`w-full text-left px-2.5 py-1.5 hover:bg-slate-800 flex items-center justify-between ${
-                    workspace === ws ? 'text-brand font-semibold bg-slate-800/40' : 'text-slate-300'
-                  }`}
-                >
-                  <span className="truncate">{ws}</span>
-                  {workspace === ws && <span className="w-1.5 h-1.5 rounded-full bg-brand"></span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Navigation List */}
-        <div className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
+        <div
+          role="navigation"
+          aria-label="Main navigation"
+          className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5"
+        >
           <div className="px-2.5 pb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
             Workspace
           </div>
@@ -194,13 +161,12 @@ export function Sidebar({
                 key={item.id}
                 type="button"
                 onClick={() => handleNavClick(item.href)}
-                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-sm text-xs font-medium transition-colors ${
-                  active
-                    ? 'bg-brand text-white shadow-sm font-semibold'
-                    : hasAccess
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-sm text-xs font-medium transition-colors ${active
+                  ? 'bg-brand text-white shadow-sm font-semibold'
+                  : hasAccess
                     ? 'text-slate-300 hover:text-white hover:bg-slate-800/70'
                     : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/40 opacity-75'
-                }`}
+                  }`}
                 title={!hasAccess ? `Access restricted by role/overrides: click to view governance` : undefined}
               >
                 <div className="flex items-center gap-2.5 truncate">
@@ -214,23 +180,21 @@ export function Sidebar({
                   )}
 
                   {item.count && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-sm font-mono ${
-                      active ? 'bg-black/20 text-white' : 'bg-slate-800 text-slate-400'
-                    }`}>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-sm font-mono ${active ? 'bg-black/20 text-white' : 'bg-slate-800 text-slate-400'
+                      }`}>
                       {item.count}
                     </span>
                   )}
 
                   {item.badge && (
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-sm font-semibold ${
-                      active
-                        ? 'bg-white/20 text-white'
-                        : item.badge === 'SuperAdmin'
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-sm font-semibold ${active
+                      ? 'bg-white/20 text-white'
+                      : item.badge === 'SuperAdmin'
                         ? 'bg-brand-light/30 text-brand-text border border-brand-border/40'
                         : item.badge === 'Personal'
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : 'bg-amber-500/20 text-amber-300'
-                    }`}>
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : 'bg-amber-500/20 text-amber-300'
+                      }`}>
                       {item.badge}
                     </span>
                   )}
@@ -238,47 +202,6 @@ export function Sidebar({
               </button>
             );
           })}
-
-          {/* Role simulation panel */}
-          <div className="pt-4 px-2">
-            <div className="p-2.5 rounded-sm bg-slate-800/60 border border-slate-700/60 text-xs">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-brand" />
-                  Active Role Mode
-                </span>
-                <span className="text-[10px] text-brand font-mono">Simulate</span>
-              </div>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsRoleMenuOpen(!isRoleMenuOpen)}
-                  className="w-full flex items-center justify-between px-2 py-1 bg-slate-900 border border-slate-700 rounded-sm text-slate-200 text-xs hover:border-slate-600"
-                >
-                  <span className="truncate font-medium">{currentUser.role}</span>
-                  <ChevronDown className="w-3 h-3 text-slate-400" />
-                </button>
-
-                {isRoleMenuOpen && (
-                  <div className="absolute bottom-full left-0 right-0 mb-1 z-40 bg-slate-900 border border-slate-700 rounded-sm shadow-xl py-1 text-xs">
-                    {ROLES.map((r) => (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => handleRoleChange(r)}
-                        className={`w-full text-left px-2.5 py-1.5 hover:bg-slate-800 flex items-center justify-between ${
-                          currentUser.role === r ? 'text-brand font-semibold bg-slate-800/50' : 'text-slate-300'
-                        }`}
-                      >
-                        <span>{r}</span>
-                        {currentUser.role === r && <span className="w-1.5 h-1.5 rounded-full bg-brand"></span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Bottom Section: Profile & Auth */}

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { StatusBadge } from '@/components/common/Badges';
 import { UserAvatar } from '@/components/common/UserAvatar';
+import { useUrlParam } from '@/hooks/useUrlState';
 
 export function DependenciesView({
   dependencies,
@@ -25,7 +26,7 @@ export function DependenciesView({
   onUpdateDependencyStatus,
   onSelectTask
 }) {
-  const [filterMode, setFilterMode] = useState('ALL'); // 'ALL' | 'BLOCKED' | 'MINE'
+  const [filterMode, setFilterMode] = useUrlParam('filter', 'ALL'); // 'ALL' | 'BLOCKED' | 'MINE'
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredDeps = dependencies.filter(d => {

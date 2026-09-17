@@ -33,7 +33,7 @@ export default function ProjectDetailPage() {
     }
   }, [params.id, projects, setSelectedProject]);
 
-  const project = selectedProject || projects.find((p) => p.id === params.id);
+  const project = projects.find((p) => p.id === params.id) || selectedProject;
 
   if (!project) {
     return (
