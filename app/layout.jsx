@@ -8,7 +8,11 @@ export const metadata = {
     'High-velocity enterprise project operations platform for managing projects, hierarchical tasks, meetings, dependencies, links, and KPI dashboards for Shoolin Innovations Limited.',
   manifest: '/manifest.webmanifest',
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/logo.png', type: 'image/png' },
+      { url: '/logo.svg', type: 'image/svg+xml' },
+    ],
     apple: [
       { url: '/icon-192x192.png', sizes: '192x192' },
       { url: '/icon-512x512.png', sizes: '512x512' },

@@ -68,17 +68,86 @@ export const applyBrandColorToDOM = (presetOrHex) => {
   root.style.setProperty('--brand-border', target.border);
 };
 
+const getInitialState = (cacheKey, fallback) => {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const saved = localStorage.getItem(`pulsepm_live_${cacheKey}`);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return fallback;
+};
+
 export function AppProvider({ children }) {
   const router = useRouter();
 
-  // Global Data State
-  const [projects, setProjects] = useState(INITIAL_PROJECTS);
-  const [tasks, setTasks] = useState(INITIAL_TASKS);
-  const [users, setUsers] = useState(INITIAL_USERS);
-  const [meetings, setMeetings] = useState(INITIAL_MEETINGS);
-  const [dependencies, setDependencies] = useState(INITIAL_DEPENDENCIES);
-  const [links, setLinks] = useState(INITIAL_LINKS);
-  const [templates, setTemplates] = useState(INITIAL_TEMPLATES);
+  // Global Data State (Hydrated from live MongoDB local cache to eliminate 1-2s flash on refresh)
+  const [projects, setProjectsState] = useState(() => getInitialState('projects', INITIAL_PROJECTS));
+  const [tasks, setTasksState] = useState(() => getInitialState('tasks', INITIAL_TASKS));
+  const [users, setUsersState] = useState(() => getInitialState('users', INITIAL_USERS));
+  const [meetings, setMeetingsState] = useState(() => getInitialState('meetings', INITIAL_MEETINGS));
+  const [dependencies, setDependenciesState] = useState(() => getInitialState('dependencies', INITIAL_DEPENDENCIES));
+  const [links, setLinksState] = useState(() => getInitialState('links', INITIAL_LINKS));
+  const [templates, setTemplatesState] = useState(() => getInitialState('templates', INITIAL_TEMPLATES));
+
+  const setProjects = (val) => {
+    setProjectsState((prev) => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      try { localStorage.setItem('pulsepm_live_projects', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
+  const setTasks = (val) => {
+    setTasksState((prev) => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      try { localStorage.setItem('pulsepm_live_tasks', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
+  const setUsers = (val) => {
+    setUsersState((prev) => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      try { localStorage.setItem('pulsepm_live_users', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
+  const setMeetings = (val) => {
+    setMeetingsState((prev) => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      try { localStorage.setItem('pulsepm_live_meetings', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
+  const setDependencies = (val) => {
+    setDependenciesState((prev) => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      try { localStorage.setItem('pulsepm_live_dependencies', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
+  const setLinks = (val) => {
+    setLinksState((prev) => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      try { localStorage.setItem('pulsepm_live_links', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
+  const setTemplates = (val) => {
+    setTemplatesState((prev) => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      try { localStorage.setItem('pulsepm_live_templates', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [blueprintCategories, setBlueprintCategories] = useState(DEFAULT_BLUEPRINT_CATEGORIES);
   const [masterStatuses, setMasterStatuses] = useState(DEFAULT_MASTER_STATUSES);
