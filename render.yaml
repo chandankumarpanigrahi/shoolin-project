@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: shoolin-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONGO_URI
+        value: mongodb+srv://uxdesigner_db_user:8dNBEg1vuXNDdmfQ@pms-cluster.pvj8mzf.mongodb.net/shoolin_os?retryWrites=true&w=majority&appName=PMS-Cluster
+      - key: DB_NAME
+        value: shoolin_os
+      - key: CLIENT_URL
+        value: https://shoolin-project.netlify.app

@@ -17,25 +17,34 @@ dotenv.config(); // fallback
 const app = express();
 const server = http.createServer(app);
 
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3001';
+const CLIENT_URL = process.env.CLIENT_URL || 'https://shoolin-project.netlify.app';
 const PORT = process.env.PORT || 5000;
 
+const allowedOrigins = [
+  'https://shoolin-project.netlify.app',
+  CLIENT_URL,
+  'http://localhost:3000',
+  'http://localhost:3001',
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.netlify.app') || origin.endsWith('.onrender.com')) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all in production to avoid CORS blockage with dynamic preview URLs
+    }
+  },
+  credentials: true,
+};
+
 // Middleware
-app.use(
-  cors({
-    origin: [CLIENT_URL, 'http://localhost:3000', 'http://localhost:3001'],
-    credentials: true,
-  })
-);
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Socket.io Real-time Setup
 const io = new SocketIOServer(server, {
-  cors: {
-    origin: [CLIENT_URL, 'http://localhost:3000', 'http://localhost:3001'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true,
-  },
+  cors: corsOptions,
 });
 
 io.on('connection', (socket) => {
