@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { randomInt } from 'crypto';
 import { connectDB } from '@/lib/db';
 import { Project } from '@/lib/models/Project';
 import { Task } from '@/lib/models/Task';
@@ -46,14 +47,114 @@ const parseDeviceInfo = (userAgent = '') => {
   };
 };
 
-// In-memory OTP storage for password resets (15 min expiry)
-const resetOtpStore = new Map();
+const OTP_MINUTES = Math.min(Math.max(Number.parseInt(process.env.OTP_EXPIRES_MINS || '10', 10) || 10, 5), 30);
+const OTP_REQUEST_COOLDOWN_MS = 60 * 1000;
+const otpRequestTimestamps = new Map();
+
+const normalizeId = (value) => String(value || '').trim();
+const sameIdentity = (first, second) => normalizeId(first) === normalizeId(second);
+const isObjectId = (value) => /^[a-f\d]{24}$/i.test(normalizeId(value));
+
+const getAuthenticatedUser = async (request) => {
+  const authorization = request.headers.get('authorization') || '';
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+  if (!token) {
+    const error = new Error('Please sign in before changing a meeting.');
+    error.status = 401;
+    throw error;
+  }
+
+  let claims;
+  try {
+    claims = jwt.verify(token, process.env.JWT_SECRET || 'shoolin_os_jwt_secret_key_2026');
+  } catch {
+    const error = new Error('Your sign-in session is invalid or has expired.');
+    error.status = 401;
+    throw error;
+  }
+
+  const user = isObjectId(claims.id) ? await User.findById(claims.id) : null;
+  if (!user || user.status === 'Inactive' || user.status === 'Disabled') {
+    const error = new Error('Your account is no longer active.');
+    error.status = 403;
+    throw error;
+  }
+
+  return user;
+};
+
+const findUserByIdentifier = async (identifier) => {
+  const value = normalizeId(identifier);
+  if (!value) return null;
+  const conditions = [{ email: { $regex: new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }];
+  if (isObjectId(value)) conditions.unshift({ _id: value });
+  return User.findOne({ $or: conditions });
+};
+
+const isMeetingActor = (meeting, user, field) => {
+  const userId = normalizeId(user?._id);
+  const userEmail = normalizeId(user?.email).toLowerCase();
+  const stored = normalizeId(meeting?.[field]);
+  return Boolean(stored) && (sameIdentity(stored, userId) || stored.toLowerCase() === userEmail);
+};
+
+const getMeetingEndAt = ({ date, time = '10:00', duration = '45 mins' }) => {
+  if (!date) return null;
+  const match = String(time).trim().match(/^(\d{1,2}):(\d{2})(?:\s*([ap]m))?$/i);
+  if (!match) return null;
+  let hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  const amPm = match[3]?.toLowerCase();
+  if (hours > 23 || minutes > 59) return null;
+  if (amPm) {
+    if (hours > 12 || hours === 0) return null;
+    if (amPm === 'pm' && hours < 12) hours += 12;
+    if (amPm === 'am' && hours === 12) hours = 0;
+  }
+  const start = new Date(`${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`);
+  if (Number.isNaN(start.getTime())) return null;
+  const durationMinutes = Number.parseInt(duration, 10);
+  return new Date(start.getTime() + (Number.isFinite(durationMinutes) ? durationMinutes : 45) * 60 * 1000);
+};
+
+const archiveFinishedMeetings = async () => {
+  const candidates = await Meeting.find({
+    status: { $in: ['Approved', 'Accepted', 'Completed'] },
+    isArchived: { $ne: true },
+  });
+  const concludedIds = candidates
+    .filter((meeting) => {
+      const end = getMeetingEndAt(meeting);
+      return end && end.getTime() <= Date.now();
+    })
+    .map((meeting) => meeting._id);
+
+  if (concludedIds.length) {
+    await Meeting.updateMany(
+      { _id: { $in: concludedIds } },
+      { $set: { isArchived: true, archivedAt: new Date() } }
+    );
+  }
+};
+
+const assertFutureMeetingTime = (meeting) => {
+  const end = getMeetingEndAt(meeting);
+  if (!end || end.getTime() <= Date.now()) {
+    const error = new Error('Choose a meeting date and end time in the future.');
+    error.status = 400;
+    throw error;
+  }
+};
 
 // Helper to normalize MongoDB _id to string id for React frontend
 const transform = (doc) => {
   if (!doc) return doc;
   const obj = doc.toObject ? doc.toObject() : { ...doc };
   obj.id = obj.id || (obj._id ? obj._id.toString() : undefined);
+  delete obj.passwordHash;
+  delete obj.otpCodeHash;
+  delete obj.otpPurpose;
+  delete obj.otpExpiresAt;
   return obj;
 };
 
@@ -215,66 +316,156 @@ async function handleRequest(request, context) {
     // 3. MEETINGS
     if (path === 'meetings') {
       if (method === 'GET') {
+        await archiveFinishedMeetings();
         const meetings = await Meeting.find().sort({ date: 1, time: 1 });
         return NextResponse.json(transformArr(meetings));
       }
       if (method === 'POST') {
+        const actor = await getAuthenticatedUser(request);
         const body = await request.json();
-        const pList = body.participants || body.participantIds || [];
-        const optList = body.optionalMembers || body.optionalMemberIds || [];
+        const title = String(body.title || '').trim();
+        if (!title) {
+          return NextResponse.json({ error: 'Meeting title is required.' }, { status: 400 });
+        }
+
+        assertFutureMeetingTime(body);
+        const approver = await findUserByIdentifier(body.approverId);
+        if (!approver || approver.status === 'Inactive' || approver.status === 'Disabled') {
+          return NextResponse.json({ error: 'Select an active designated approver.' }, { status: 400 });
+        }
+        if (sameIdentity(actor._id, approver._id)) {
+          return NextResponse.json({ error: 'The meeting creator cannot approve their own meeting.' }, { status: 400 });
+        }
+
+        const allParticipants = [...new Set([...(body.participants || body.participantIds || []), String(actor._id)])]
+          .map(normalizeId)
+          .filter(Boolean);
+        const optionalMembers = [...new Set(body.optionalMembers || body.optionalMemberIds || [])]
+          .map(normalizeId)
+          .filter(Boolean);
         const payload = {
-          ...body,
-          status: body.status || 'Pending Approval',
-          participants: pList,
-          participantIds: pList,
-          optionalMembers: optList,
-          optionalMemberIds: optList,
+          title,
+          requestedBy: String(actor._id),
+          requestedByName: actor.name,
+          requestedByEmail: actor.email,
+          approverId: String(approver._id),
+          approverName: approver.name,
+          participants: allParticipants,
+          participantIds: allParticipants,
+          optionalMembers,
+          optionalMemberIds: optionalMembers,
+          meetUrl: String(body.meetUrl || '').trim(),
+          date: body.date,
+          time: body.time || '10:00',
+          duration: body.duration || '45 mins',
+          priority: body.priority || 'Medium',
+          projectId: body.projectId || '',
+          relatedTaskId: body.relatedTaskId || '',
+          description: String(body.description || '').trim(),
+          status: 'Pending Approval',
           isArchived: false,
         };
         const created = await Meeting.create(payload);
+        await Notification.create({
+          userId: String(approver._id),
+          type: 'meeting_requested',
+          title: 'Meeting approval requested',
+          detail: `${actor.name} requested approval for “${title}”.`,
+          link: '/meetings?tab=pending',
+        });
         return NextResponse.json(transform(created), { status: 201 });
       }
     }
 
     if (path.startsWith('meetings/') && path.endsWith('/approve')) {
       const id = path.replace('meetings/', '').replace('/approve', '');
+      const actor = await getAuthenticatedUser(request);
       const body = await request.json().catch(() => ({}));
-      const updateDoc = { status: 'Approved' };
+      const meeting = await Meeting.findById(id);
+      if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+      if (!isMeetingActor(meeting, actor, 'approverId')) {
+        return NextResponse.json({ error: 'Only the designated approver can approve this meeting.' }, { status: 403 });
+      }
+      if (!['Pending Approval', 'Requested', 'Rescheduled'].includes(meeting.status)) {
+        return NextResponse.json({ error: 'Only a pending meeting can be approved.' }, { status: 409 });
+      }
+      const updateDoc = { status: 'Approved', approvedAt: new Date(), isArchived: false, archivedAt: null };
       if (body.comments) {
         updateDoc.$push = {
           comments: {
-            authorName: body.authorName || 'Approver',
+            authorName: actor.name,
+            authorId: String(actor._id),
             text: body.comments,
             createdAt: new Date(),
           },
         };
       }
       const updated = await Meeting.findByIdAndUpdate(id, updateDoc, { new: true });
-      if (!updated) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+      const notifiedIds = [...new Set([updated.requestedBy, ...(updated.participantIds || [])])]
+        .map(normalizeId)
+        .filter((userId) => userId && userId !== String(actor._id));
+      if (notifiedIds.length) {
+        await Notification.insertMany(
+          notifiedIds.map((userId) => ({
+            userId,
+            type: 'meeting_approved',
+            title: 'Meeting approved',
+            detail: `“${updated.title}” is approved and ready to join.`,
+            link: '/meetings',
+          }))
+        );
+      }
       return NextResponse.json(transform(updated));
     }
 
     if (path.startsWith('meetings/') && path.endsWith('/decline')) {
       const id = path.replace('meetings/', '').replace('/decline', '');
+      const actor = await getAuthenticatedUser(request);
       const body = await request.json().catch(() => ({}));
+      const meeting = await Meeting.findById(id);
+      if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+      if (!isMeetingActor(meeting, actor, 'approverId')) {
+        return NextResponse.json({ error: 'Only the designated approver can reject this meeting.' }, { status: 403 });
+      }
+      if (!['Pending Approval', 'Requested', 'Rescheduled'].includes(meeting.status)) {
+        return NextResponse.json({ error: 'Only a pending meeting can be rejected.' }, { status: 409 });
+      }
       const updateDoc = { status: 'Declined' };
       if (body.comments) {
         updateDoc.$push = {
           comments: {
-            authorName: body.authorName || 'Approver',
+            authorName: actor.name,
+            authorId: String(actor._id),
             text: body.comments,
             createdAt: new Date(),
           },
         };
       }
       const updated = await Meeting.findByIdAndUpdate(id, updateDoc, { new: true });
-      if (!updated) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+      await Notification.create({
+        userId: normalizeId(meeting.requestedBy),
+        type: 'meeting_rejected',
+        title: 'Meeting not approved',
+        detail: `“${meeting.title}” was rejected by ${actor.name}.`,
+        link: '/meetings?tab=pending',
+      });
       return NextResponse.json(transform(updated));
     }
 
     if (path.startsWith('meetings/') && path.endsWith('/reschedule')) {
       const id = path.replace('meetings/', '').replace('/reschedule', '');
-      const { date, time, duration, comments, authorName } = await request.json();
+      const actor = await getAuthenticatedUser(request);
+      const { date, time, duration, comments } = await request.json();
+      const meeting = await Meeting.findById(id);
+      if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+      if (!isMeetingActor(meeting, actor, 'requestedBy')) {
+        return NextResponse.json({ error: 'Only the meeting creator can reschedule this meeting.' }, { status: 403 });
+      }
+      assertFutureMeetingTime({
+        date: date || meeting.date,
+        time: time || meeting.time,
+        duration: duration || meeting.duration,
+      });
       const updateDoc = {
         ...(date ? { date } : {}),
         ...(time ? { time } : {}),
@@ -282,84 +473,201 @@ async function handleRequest(request, context) {
         status: 'Pending Approval',
         isArchived: false,
         archivedAt: null,
-      };
-      if (comments) {
-        updateDoc.$push = {
+        approvedAt: null,
+        $inc: { rescheduleCount: 1 },
+        $push: {
           comments: {
-            authorName: authorName || 'Creator',
-            text: `Rescheduled: ${comments}`,
+            authorName: actor.name,
+            authorId: String(actor._id),
+            text: `Rescheduled${comments ? `: ${comments}` : ''}`,
             createdAt: new Date(),
           },
-        };
-      }
+        },
+      };
       const updated = await Meeting.findByIdAndUpdate(id, updateDoc, { new: true });
-      if (!updated) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+      await Notification.create({
+        userId: normalizeId(meeting.approverId),
+        type: 'meeting_rescheduled',
+        title: 'Meeting re-approval requested',
+        detail: `${actor.name} rescheduled “${meeting.title}”.`,
+        link: '/meetings?tab=pending',
+      });
       return NextResponse.json(transform(updated));
     }
 
     if (path.startsWith('meetings/') && path.endsWith('/restore')) {
       const id = path.replace('meetings/', '').replace('/restore', '');
+      const actor = await getAuthenticatedUser(request);
       const body = await request.json().catch(() => ({}));
+      const meeting = await Meeting.findById(id);
+      if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+      if (!isMeetingActor(meeting, actor, 'requestedBy')) {
+        return NextResponse.json({ error: 'Only the meeting creator can restore this meeting.' }, { status: 403 });
+      }
+      const restoredSchedule = {
+        date: body.date || meeting.date,
+        time: body.time || meeting.time,
+        duration: body.duration || meeting.duration,
+      };
+      assertFutureMeetingTime(restoredSchedule);
       const updateDoc = {
         isArchived: false,
         archivedAt: null,
         ...(body.date ? { date: body.date } : {}),
         ...(body.time ? { time: body.time } : {}),
-        status: body.date ? 'Pending Approval' : 'Approved',
+        ...(body.duration ? { duration: body.duration } : {}),
+        status: 'Pending Approval',
+        approvedAt: null,
+        $push: {
+          comments: {
+            authorName: actor.name,
+            authorId: String(actor._id),
+            text: 'Restored from archive and sent for approval.',
+            createdAt: new Date(),
+          },
+        },
       };
       const updated = await Meeting.findByIdAndUpdate(id, updateDoc, { new: true });
-      if (!updated) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+      await Notification.create({
+        userId: normalizeId(meeting.approverId),
+        type: 'meeting_restored',
+        title: 'Restored meeting requires approval',
+        detail: `${actor.name} restored “${meeting.title}”.`,
+        link: '/meetings?tab=pending',
+      });
       return NextResponse.json(transform(updated));
     }
 
     if (path.startsWith('meetings/') && path.endsWith('/comments')) {
       const id = path.replace('meetings/', '').replace('/comments', '');
-      const { text, authorName, authorId } = await request.json();
+      const actor = await getAuthenticatedUser(request);
+      const { text } = await request.json();
+      const meeting = await Meeting.findById(id);
+      if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+      const isCreator = isMeetingActor(meeting, actor, 'requestedBy');
+      const isApprover = isMeetingActor(meeting, actor, 'approverId');
+      const isApproved = ['Approved', 'Accepted', 'Completed'].includes(meeting.status);
+      const isParticipant = isApproved && (meeting.participantIds || meeting.participants || []).some((memberId) =>
+        sameIdentity(memberId, actor._id) || normalizeId(memberId).toLowerCase() === normalizeId(actor.email).toLowerCase()
+      );
+      if (!isCreator && !isApprover && !isParticipant) {
+        return NextResponse.json({ error: 'You do not have access to this meeting discussion.' }, { status: 403 });
+      }
+      if (!String(text || '').trim()) {
+        return NextResponse.json({ error: 'A comment cannot be empty.' }, { status: 400 });
+      }
       const updated = await Meeting.findByIdAndUpdate(
         id,
         {
           $push: {
             comments: {
-              authorName: authorName || 'User',
-              authorId: authorId || '',
-              text,
+              authorName: actor.name,
+              authorId: String(actor._id),
+              text: String(text).trim(),
               createdAt: new Date(),
             },
           },
         },
         { new: true }
       );
-      if (!updated) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
       return NextResponse.json(transform(updated));
     }
 
     if (path.startsWith('meetings/') && !path.slice(9).includes('/')) {
       const id = path.replace('meetings/', '');
       if (method === 'GET') {
+        await archiveFinishedMeetings();
         const meeting = await Meeting.findById(id);
         if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
         return NextResponse.json(transform(meeting));
       }
       if (method === 'PUT') {
+        const actor = await getAuthenticatedUser(request);
         const body = await request.json();
-        const pList = body.participants || body.participantIds;
-        const optList = body.optionalMembers || body.optionalMemberIds;
-        const updateData = { ...body };
-        if (pList) {
-          updateData.participants = pList;
-          updateData.participantIds = pList;
+        const existing = await Meeting.findById(id);
+        if (!existing) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+        const isCreator = isMeetingActor(existing, actor, 'requestedBy');
+        const isApprover = isMeetingActor(existing, actor, 'approverId');
+        if (!isCreator && !isApprover) {
+          return NextResponse.json({ error: 'Only the creator or designated approver can edit this meeting.' }, { status: 403 });
         }
-        if (optList) {
-          updateData.optionalMembers = optList;
-          updateData.optionalMemberIds = optList;
+
+        const updateData = {};
+        const allowedFields = ['title', 'meetUrl', 'date', 'time', 'duration', 'priority', 'projectId', 'relatedTaskId', 'description'];
+        for (const field of allowedFields) {
+          if (Object.hasOwn(body, field)) updateData[field] = body[field];
+        }
+        if (Object.hasOwn(body, 'title') && !String(body.title || '').trim()) {
+          return NextResponse.json({ error: 'Meeting title is required.' }, { status: 400 });
+        }
+
+        if (Object.hasOwn(body, 'approverId')) {
+          const approver = await findUserByIdentifier(body.approverId);
+          if (!approver || approver.status === 'Inactive' || approver.status === 'Disabled') {
+            return NextResponse.json({ error: 'Select an active designated approver.' }, { status: 400 });
+          }
+          if (sameIdentity(existing.requestedBy, approver._id) || normalizeId(existing.requestedBy).toLowerCase() === normalizeId(approver.email).toLowerCase()) {
+            return NextResponse.json({ error: 'The meeting creator cannot approve their own meeting.' }, { status: 400 });
+          }
+          updateData.approverId = String(approver._id);
+          updateData.approverName = approver.name;
+        }
+
+        const participantValues = body.participants || body.participantIds;
+        if (participantValues) {
+          const participants = [...new Set([...participantValues, normalizeId(existing.requestedBy)])]
+            .map(normalizeId)
+            .filter(Boolean);
+          updateData.participants = participants;
+          updateData.participantIds = participants;
+        }
+        const optionalValues = body.optionalMembers || body.optionalMemberIds;
+        if (optionalValues) {
+          const optionalMembers = [...new Set(optionalValues)].map(normalizeId).filter(Boolean);
+          updateData.optionalMembers = optionalMembers;
+          updateData.optionalMemberIds = optionalMembers;
+        }
+
+        const hasScheduleChange = ['date', 'time', 'duration', 'approverId'].some((field) => Object.hasOwn(updateData, field) && normalizeId(updateData[field]) !== normalizeId(existing[field]));
+        if (hasScheduleChange) {
+          assertFutureMeetingTime({
+            date: updateData.date || existing.date,
+            time: updateData.time || existing.time,
+            duration: updateData.duration || existing.duration,
+          });
+          updateData.status = 'Pending Approval';
+          updateData.isArchived = false;
+          updateData.archivedAt = null;
+          updateData.approvedAt = null;
+          updateData.$push = {
+            comments: {
+              authorName: actor.name,
+              authorId: String(actor._id),
+              text: 'Meeting details changed and require approval again.',
+              createdAt: new Date(),
+            },
+          };
         }
         const updated = await Meeting.findByIdAndUpdate(id, updateData, { new: true });
-        if (!updated) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+        if (hasScheduleChange) {
+          await Notification.create({
+            userId: normalizeId(updated.approverId),
+            type: 'meeting_updated',
+            title: 'Meeting requires approval',
+            detail: `${actor.name} updated “${updated.title}”.`,
+            link: '/meetings?tab=pending',
+          });
+        }
         return NextResponse.json(transform(updated));
       }
       if (method === 'DELETE') {
-        const deleted = await Meeting.findByIdAndDelete(id);
-        if (!deleted) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+        const actor = await getAuthenticatedUser(request);
+        const meeting = await Meeting.findById(id);
+        if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+        if (!isMeetingActor(meeting, actor, 'requestedBy')) {
+          return NextResponse.json({ error: 'Only the meeting creator can delete this meeting.' }, { status: 403 });
+        }
+        await Meeting.findByIdAndDelete(id);
         return NextResponse.json({ success: true, id });
       }
     }
@@ -728,13 +1036,12 @@ async function handleRequest(request, context) {
       }
 
       const adminEmail = (process.env.ADMIN_EMAIL || 'admin@shoolin.co.uk').trim().toLowerCase();
-      const configuredAdminPassword = (process.env.ADMIN_PASSWORD || 'Admin@1234!').trim();
-      const acceptedAdminPasswords = [configuredAdminPassword, 'Admin@123', 'Admin@1234!', 'Admin@1234'];
+      const configuredAdminPassword = String(process.env.ADMIN_PASSWORD || '').trim();
 
       let user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } });
 
       const isAdminEmail = inputEmail === adminEmail;
-      const matchesAdminPassword = isAdminEmail && acceptedAdminPasswords.includes(inputPassword);
+      const matchesAdminPassword = Boolean(configuredAdminPassword) && isAdminEmail && inputPassword === configuredAdminPassword;
 
       if (!user) {
         if (isAdminEmail && matchesAdminPassword) {
@@ -757,6 +1064,10 @@ async function handleRequest(request, context) {
             { status: 404 }
           );
         }
+      }
+
+      if (user.status === 'Inactive' || user.status === 'Disabled') {
+        return NextResponse.json({ error: 'This account is inactive. Contact an administrator.' }, { status: 403 });
       }
 
       // Verify password
@@ -832,39 +1143,50 @@ async function handleRequest(request, context) {
       const { email: rawEmail } = await request.json();
       const inputEmail = String(rawEmail || '').trim().toLowerCase();
       const user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } });
-      const adminEmail = (process.env.ADMIN_EMAIL || 'admin@shoolin.co.uk').toLowerCase();
 
-      if (!user && inputEmail !== adminEmail) {
+      if (!user || user.status === 'Inactive' || user.status === 'Disabled') {
         return NextResponse.json({ error: 'No user account found for this email', message: 'No user account found for this email' }, { status: 404 });
       }
 
-      const generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
-      resetOtpStore.set(inputEmail, { otp: generatedOtp, expires: Date.now() + 15 * 60 * 1000 });
+      const lastRequest = otpRequestTimestamps.get(`login:${inputEmail}`) || 0;
+      if (Date.now() - lastRequest < OTP_REQUEST_COOLDOWN_MS) {
+        return NextResponse.json({ error: 'Please wait one minute before requesting another code.' }, { status: 429 });
+      }
 
-      // Dispatch live email via Nodemailer
-      let emailDispatched = false;
+      const generatedOtp = String(randomInt(100000, 1000000));
+
       try {
         await sendLoginOtpEmail({
           to: inputEmail,
-          name: user ? user.name : 'Shoolin Member',
+          name: user.name,
           otp: generatedOtp,
-          minutes: 15,
+          minutes: OTP_MINUTES,
         });
-        emailDispatched = true;
       } catch (mailErr) {
         console.error('Nodemailer OTP delivery error:', mailErr.message);
+        return NextResponse.json(
+          { error: 'Unable to send the email code right now. Please contact your administrator.' },
+          { status: 503 }
+        );
       }
+
+      await User.findByIdAndUpdate(user._id, {
+        otpCodeHash: await bcrypt.hash(generatedOtp, 10),
+        otpPurpose: 'login',
+        otpExpiresAt: new Date(Date.now() + OTP_MINUTES * 60 * 1000),
+      });
+      otpRequestTimestamps.set(`login:${inputEmail}`, Date.now());
 
       const userAgent = request.headers.get('user-agent') || '';
       const { device } = parseDeviceInfo(userAgent);
 
       await AuditLog.create({
         action: 'OTP_DISPATCHED',
-        details: `One-time passcode dispatched to ${inputEmail}${emailDispatched ? ' via Email (SMTP Sent)' : ' (Generated)'}`,
+        details: `One-time passcode dispatched to ${inputEmail} via Email (SMTP Sent)`,
         module: 'AUTH',
-        performedBy: user ? user.name : 'System',
+        performedBy: user.name,
         performedByEmail: inputEmail,
-        performedByRole: user ? user.role : 'Member',
+        performedByRole: user.role,
         target: inputEmail,
         device,
         timestamp: new Date(),
@@ -872,7 +1194,7 @@ async function handleRequest(request, context) {
 
       return NextResponse.json({
         success: true,
-        message: `Security code sent to ${inputEmail}${emailDispatched ? ' via Email' : ''}`,
+        message: `Security code sent to ${inputEmail} via email.`,
       });
     }
 
@@ -881,29 +1203,28 @@ async function handleRequest(request, context) {
       const inputEmail = String(rawEmail || '').trim().toLowerCase();
       const inputOtp = String(otp || '').trim();
 
-      const cached = resetOtpStore.get(inputEmail);
-      // Valid if matching cached OTP or standard default passcode 123456
-      const isValidOtp = (cached && cached.otp === inputOtp && cached.expires > Date.now()) || inputOtp === '123456';
+      const user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } }).select('+otpCodeHash');
 
-      let user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } });
-      const adminEmail = (process.env.ADMIN_EMAIL || 'admin@shoolin.co.uk').toLowerCase();
-
-      if (!user) {
-        if (inputEmail === adminEmail) {
-          user = await User.findOne({ role: 'Super Admin' });
-        }
-      }
-
-      if (!user) {
+      if (!user || user.status === 'Inactive' || user.status === 'Disabled') {
         return NextResponse.json({ error: 'Account not found', message: 'Account not found' }, { status: 404 });
       }
 
-      if (!isValidOtp && inputOtp.length !== 6) {
+      const isValidOtp = Boolean(
+        /^\d{6}$/.test(inputOtp) &&
+          user.otpPurpose === 'login' &&
+          user.otpExpiresAt &&
+          new Date(user.otpExpiresAt).getTime() > Date.now() &&
+          user.otpCodeHash &&
+          (await bcrypt.compare(inputOtp, user.otpCodeHash))
+      );
+      if (!isValidOtp) {
         return NextResponse.json({ error: 'Invalid or expired OTP code', message: 'Invalid or expired OTP code' }, { status: 400 });
       }
 
-      // Clean up used OTP
-      resetOtpStore.delete(inputEmail);
+      await User.findByIdAndUpdate(user._id, {
+        $unset: { otpCodeHash: 1 },
+        $set: { otpPurpose: '', otpExpiresAt: null },
+      });
 
       // Create 30-day session
       const userAgent = request.headers.get('user-agent') || '';
@@ -963,39 +1284,50 @@ async function handleRequest(request, context) {
       }
 
       const user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } });
-      const adminEmail = (process.env.ADMIN_EMAIL || 'admin@shoolin.co.uk').toLowerCase();
 
-      if (!user && inputEmail !== adminEmail) {
+      if (!user || user.status === 'Inactive' || user.status === 'Disabled') {
         return NextResponse.json({ error: 'No account found for this email', message: 'No account found for this email' }, { status: 404 });
       }
 
-      const generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
-      resetOtpStore.set(inputEmail, { otp: generatedOtp, expires: Date.now() + 15 * 60 * 1000 });
+      const lastRequest = otpRequestTimestamps.get(`password-reset:${inputEmail}`) || 0;
+      if (Date.now() - lastRequest < OTP_REQUEST_COOLDOWN_MS) {
+        return NextResponse.json({ error: 'Please wait one minute before requesting another code.' }, { status: 429 });
+      }
 
-      // Dispatch live email via Nodemailer
-      let emailDispatched = false;
+      const generatedOtp = String(randomInt(100000, 1000000));
+
       try {
         await sendPasswordResetEmail({
           to: inputEmail,
-          name: user ? user.name : 'Shoolin Member',
+          name: user.name,
           otp: generatedOtp,
-          minutes: 15,
+          minutes: OTP_MINUTES,
         });
-        emailDispatched = true;
       } catch (mailErr) {
         console.error('Nodemailer Password Reset delivery error:', mailErr.message);
+        return NextResponse.json(
+          { error: 'Unable to send the password reset email right now. Please contact your administrator.' },
+          { status: 503 }
+        );
       }
+
+      await User.findByIdAndUpdate(user._id, {
+        otpCodeHash: await bcrypt.hash(generatedOtp, 10),
+        otpPurpose: 'password-reset',
+        otpExpiresAt: new Date(Date.now() + OTP_MINUTES * 60 * 1000),
+      });
+      otpRequestTimestamps.set(`password-reset:${inputEmail}`, Date.now());
 
       const userAgent = request.headers.get('user-agent') || '';
       const { device } = parseDeviceInfo(userAgent);
 
       await AuditLog.create({
         action: 'PASSWORD_RESET_REQUESTED',
-        details: `Password recovery requested for ${inputEmail}${emailDispatched ? ' via Email (SMTP Sent)' : ' (Generated)'}`,
+        details: `Password recovery requested for ${inputEmail} via Email (SMTP Sent)`,
         module: 'SECURITY',
-        performedBy: user ? user.name : 'Guest',
+        performedBy: user.name,
         performedByEmail: inputEmail,
-        performedByRole: user ? user.role : 'Member',
+        performedByRole: user.role,
         target: inputEmail,
         device,
         timestamp: new Date(),
@@ -1003,7 +1335,7 @@ async function handleRequest(request, context) {
 
       return NextResponse.json({
         success: true,
-        message: `Password reset instructions and 6-digit code dispatched to ${inputEmail}${emailDispatched ? ' via Email' : ''}`,
+        message: `Password reset instructions and 6-digit code sent to ${inputEmail}.`,
       });
     }
 
@@ -1021,21 +1353,22 @@ async function handleRequest(request, context) {
         return NextResponse.json({ error: 'Password must be at least 6 characters', message: 'Password must be at least 6 characters' }, { status: 400 });
       }
 
-      let user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } });
-      const adminEmail = (process.env.ADMIN_EMAIL || 'admin@shoolin.co.uk').toLowerCase();
-
-      if (!user && inputEmail === adminEmail) {
-        user = await User.findOne({ role: 'Super Admin' });
-      }
+      const user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } }).select('+otpCodeHash');
 
       if (!user) {
         return NextResponse.json({ error: 'Account not found', message: 'Account not found' }, { status: 404 });
       }
 
-      const cached = resetOtpStore.get(inputEmail);
-      const isValidOtp = (cached && cached.otp === inputOtp && cached.expires > Date.now()) || inputOtp === '123456';
+      const isValidOtp = Boolean(
+        /^\d{6}$/.test(inputOtp) &&
+          user.otpPurpose === 'password-reset' &&
+          user.otpExpiresAt &&
+          new Date(user.otpExpiresAt).getTime() > Date.now() &&
+          user.otpCodeHash &&
+          (await bcrypt.compare(inputOtp, user.otpCodeHash))
+      );
 
-      if (!isValidOtp && inputOtp.length !== 6) {
+      if (!isValidOtp) {
         return NextResponse.json({ error: 'Invalid or expired OTP verification code', message: 'Invalid or expired OTP verification code' }, { status: 400 });
       }
 
@@ -1043,9 +1376,10 @@ async function handleRequest(request, context) {
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(cleanPassword, salt);
       user.passwordHash = hash;
+      user.otpCodeHash = undefined;
+      user.otpPurpose = '';
+      user.otpExpiresAt = null;
       await user.save();
-
-      resetOtpStore.delete(inputEmail);
 
       const userAgent = request.headers.get('user-agent') || '';
       const { device } = parseDeviceInfo(userAgent);
@@ -1080,7 +1414,10 @@ async function handleRequest(request, context) {
     return NextResponse.json({ error: `Route /api/${path} not found` }, { status: 404 });
   } catch (error) {
     console.error(`API Error [/api/${path}]:`, error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Internal Server Error' },
+      { status: Number.isInteger(error.status) ? error.status : 500 }
+    );
   }
 }
 
