@@ -313,26 +313,16 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
 
         {/* Governance Non-Admin Simulation Banner */}
         {!isSuperAdmin && (
-          <div className="mt-4 p-3 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-start gap-2.5">
-              <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-amber-900 dark:text-amber-200">
-                  Simulated Read-Only Governance Mode
-                </span>
-                <p className="text-amber-700 dark:text-amber-300 text-[11px] mt-0.5">
-                  You are currently browsing as <strong className="font-semibold">{currentUser.name} ({currentUser.role})</strong>. Full tit-to-bit modifications require Super Admin governance.
-                </p>
-              </div>
+          <div className="mt-4 p-3 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 rounded-lg flex items-start gap-2.5">
+            <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold text-amber-900 dark:text-amber-200">
+                Access Restricted: Read-Only Governance View
+              </span>
+              <p className="text-amber-700 dark:text-amber-300 text-[11px] mt-0.5">
+                You are currently signed in as <strong className="font-semibold">{currentUser.name} ({currentUser.role})</strong>. User activity monitoring, permission matrix governance, and audit log tracking require Super Admin role authority.
+              </p>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setCurrentUser(superAdminUser)}
-              className="px-3 py-1.5 bg-brand hover:bg-brand-hover text-white rounded-lg font-bold text-xs shadow-xs transition-colors shrink-0"
-            >
-              Switch Identity to Super Admin
-            </button>
           </div>
         )}
 

@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Briefcase,
   Plus,
+  Edit,
   Calendar,
   Clock,
   CheckSquare,
@@ -24,8 +25,8 @@ import {
   CheckCircle2,
   Circle
 } from 'lucide-react';
-import { StatusBadge, PriorityBadge, ProjectTypeBadge } from '@/components/common/Badges';
-import { UserAvatar, AvatarGroup } from '@/components/common/UserAvatar';
+import { StatusBadge, PriorityBadge, ProjectTypeBadge, StatusSelect } from '@/components/common/Badges';
+import { UserAvatar, AvatarGroup, resolveUserObject } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { useUrlTab } from '@/hooks/useUrlState';
 
@@ -38,14 +39,15 @@ export function ProjectDetailView({
   links,
   onBack,
   onSelectTask,
+  onEditProject,
   onOpenCreateTask,
   onOpenScheduleMeeting,
   onOpenAddDependency,
   onOpenAddLink,
   onUpdateTaskStatus
 }) {
-  const { isCompletedStatus, getTaskStatuses, toggleTaskComplete } = useAppContext();
-  const [activeTab, setActiveTab] = useUrlTab('tab', 'overview', [
+  const { isCompletedStatus, getTaskStatuses, toggleTaskComplete, handleOpenEditProject, handleOpenEditTask, can } = useAppContext();
+  const [activeTab, setActiveTab] = useUrlTab('tab', 'tasks', [
     'overview',
     'tasks',
     'meetings',
@@ -53,7 +55,7 @@ export function ProjectDetailView({
     'links',
     'activity'
   ]);
-  
+
   const taskStatusesList = React.useMemo(() => {
     const list = getTaskStatuses ? getTaskStatuses() : [];
     if (list.length > 0) return list;
@@ -88,19 +90,75 @@ export function ProjectDetailView({
 
   if (!project) return null;
 
-  const projectTasks = allTasks.filter(t => t.projectId === project.id);
-  const projectMeetings = meetings.filter(m => m.projectId === project.id);
-  const projectDeps = dependencies.filter(d => d.projectId === project.id);
+  const projectTasks = (allTasks || []).filter((t) => {
+    if (!t) return false;
+    if (t.projectId === project.id || t.projectId === project._id || t.projectId === project.code) return true;
+    if (t.parentId) {
+      const parent = (allTasks || []).find((pt) => pt && (pt.id === t.parentId || pt._id === t.parentId || pt.code === t.parentId));
+      if (parent && (parent.projectId === project.id || parent.projectId === project._id || parent.projectId === project.code)) return true;
+    }
+    return false;
+  });
+  const projectMeetings = meetings.filter(m => m.projectId === project.id || m.projectId === project._id);
+  const projectDeps = dependencies.filter(d => d.projectId === project.id || d.projectId === project._id);
   const projectLinks = links.filter(l => l.brand === project.brand || l.brand === 'PMV');
 
-  const ownerUser = users.find(u => u.id === project.owner) || users[0];
-  const managerUser = users.find(u => u.id === project.manager) || users[1];
-  const teamUsers = (project.team || []).map(id => users.find(u => u.id === id)).filter(Boolean);
+  const ownerTarget = project.ownerId || project.owner;
+  const ownerUser = resolveUserObject(ownerTarget, users) || (users && users[0]) || { name: 'Admin Shoolin', role: 'Super Admin' };
 
-  const completedCount = projectTasks.filter(t => t.status === 'Completed').length;
-  const inProgressCount = projectTasks.filter(t => t.status === 'In Progress').length;
+  const managerTarget = project.managerId || project.manager;
+  const managerUser = resolveUserObject(managerTarget, users) || (users && users[1]) || ownerUser;
+
+  const rawTeamList = (project.teamIds && project.teamIds.length > 0)
+    ? project.teamIds
+    : (project.team && project.team.length > 0)
+    ? project.team
+    : [ownerTarget, managerTarget].filter(Boolean);
+
+  const seenTeamKeys = new Set();
+  const teamUsers = [];
+  for (const item of rawTeamList) {
+    const userObj = resolveUserObject(item, users);
+    if (!userObj) continue;
+    const key = String(userObj.id || userObj._id || userObj.email || userObj.name).toLowerCase();
+    if (!seenTeamKeys.has(key)) {
+      seenTeamKeys.add(key);
+      teamUsers.push(userObj);
+    }
+  }
+
+  const completedCount = projectTasks.filter(t => isCompletedStatus ? isCompletedStatus(t.status) : (t.status === 'Completed')).length;
+  const inProgressCount = projectTasks.filter(t => t.status === 'In Progress' || t.status === 'Active').length;
   const blockedCount = projectTasks.filter(t => t.status === 'Blocked').length;
-  const reviewCount = projectTasks.filter(t => t.status === 'Review').length;
+  const reviewCount = projectTasks.filter(t => t.status === 'Review' || t.status === 'Not Started').length;
+
+  const liveProgress = projectTasks.length > 0
+    ? Math.round((completedCount / projectTasks.length) * 100)
+    : (project.progress || 0);
+
+  const hasBlockedOrRisk = projectTasks.some((t) => {
+    const norm = (t.status || '').toLowerCase();
+    return norm.includes('block') || norm.includes('risk') || norm.includes('delay');
+  });
+
+  const activeTasks = projectTasks.filter((t) => !(isCompletedStatus ? isCompletedStatus(t.status) : t.status === 'Completed'));
+  const allReview = activeTasks.length > 0 && activeTasks.every((t) => (t.status || '').toLowerCase().includes('review'));
+
+  const liveStatus = projectTasks.length > 0 && completedCount === projectTasks.length
+    ? 'Completed'
+    : hasBlockedOrRisk
+    ? 'At Risk'
+    : allReview
+    ? 'Review'
+    : (project.status || 'In Progress');
+
+  const livePriority = activeTasks.some(t => t.priority === 'Urgent')
+    ? 'Urgent'
+    : activeTasks.some(t => t.priority === 'High')
+    ? 'High'
+    : activeTasks.some(t => t.priority === 'Medium')
+    ? 'Medium'
+    : (project.priority || 'Medium');
 
   const toggleTaskExpand = (taskId) => {
     setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }));
@@ -114,7 +172,7 @@ export function ProjectDetailView({
     const children = projectTasks.filter(t => t.parentId === task.id);
     const hasChildren = children.length > 0;
     const isExpanded = !!expandedTasks[task.id];
-    const assignee = users.find(u => u.id === task.assignedTo) || users[0];
+    const assignee = resolveUserObject(task.assignedTo, users) || (users && users[0]) || { name: 'Unassigned', role: 'Member' };
 
     const isCompleted = isCompletedStatus ? isCompletedStatus(task.status) : (task.status === 'Completed');
 
@@ -130,47 +188,30 @@ export function ProjectDetailView({
                     e.stopPropagation();
                     toggleTaskExpand(task.id);
                   }}
-                  className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xs"
+                  className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                 >
                   {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </button>
               ) : (
-                <div className="w-4 flex items-center justify-center text-slate-300 dark:text-slate-600">
-                  {level > 0 && <CornerDownRight className="w-3 h-3 text-slate-300 dark:text-slate-600" />}
-                </div>
+                <span className="w-4" />
               )}
-
-              {/* Quick Completion Check Button */}
+              <span className="font-mono text-[11px] font-semibold text-brand shrink-0">{task.code}</span>
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (toggleTaskComplete) {
-                    toggleTaskComplete(task.id);
-                  } else {
-                    onUpdateTaskStatus(task.id, isCompleted ? 'In Progress' : 'Completed');
-                  }
-                }}
-                className="p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0"
-                title={isCompleted ? 'Mark as Incomplete' : 'Mark as Completed (Triggers Strikethrough)'}
+                onClick={() => toggleTaskComplete ? toggleTaskComplete(task.id) : onUpdateTaskStatus(task.id, isCompleted ? 'In Progress' : 'Completed')}
+                className="p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                title={isCompleted ? "Mark as Incomplete" : "Mark as Completed"}
               >
                 {isCompleted ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 hover:text-emerald-600 transition-transform active:scale-90" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 hover:text-emerald-600 transition-transform active:scale-95" />
                 ) : (
-                  <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600 hover:text-emerald-500 transition-colors active:scale-90" />
+                  <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600 hover:text-emerald-500 transition-colors active:scale-95" />
                 )}
               </button>
-
-              <span className="font-mono text-xs font-semibold text-brand bg-brand-light/30 border border-brand/30 px-1.5 py-0.2 rounded-xs shrink-0">
-                {task.code}
-              </span>
-
               <span
                 onClick={() => onSelectTask(task)}
-                className={`font-medium transition-colors truncate max-w-sm ml-1 ${
-                  isCompleted
-                    ? 'line-through text-slate-400 dark:text-slate-500 opacity-75'
-                    : 'text-slate-900 dark:text-slate-100 group-hover:text-brand'
+                className={`truncate font-medium hover:text-brand hover:underline cursor-pointer ${
+                  isCompleted ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200'
                 }`}
               >
                 {task.title}
@@ -181,7 +222,9 @@ export function ProjectDetailView({
           <td className="py-2.5 px-3 whitespace-nowrap">
             <div className="flex items-center gap-1.5">
               <UserAvatar user={assignee} size="xs" />
-              <span className="text-slate-700 dark:text-slate-300 font-medium">{assignee.name.split(' ')[0]}</span>
+              <span className="text-slate-700 dark:text-slate-300 font-medium" title={`${assignee.name} (${assignee.role || 'Member'})`}>
+                {assignee.name}
+              </span>
             </div>
           </td>
 
@@ -190,24 +233,12 @@ export function ProjectDetailView({
           </td>
 
           <td className="py-2.5 px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-            <select
+            <StatusSelect
               value={task.status}
-              onChange={(e) => onUpdateTaskStatus(task.id, e.target.value)}
-              className={`border rounded-xs px-1.5 py-0.5 text-xs font-medium focus:outline-none focus:border-brand bg-white dark:bg-slate-800 transition-colors ${
-                isCompleted
-                  ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/40'
-                  : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200'
-              }`}
-            >
-              {!taskStatusesList.some((s) => s.name === task.status) && (
-                <option value={task.status}>{task.status}</option>
-              )}
-              {taskStatusesList.map((st) => (
-                <option key={st.id || st.name} value={st.name}>
-                  {st.name} {st.marksAsCompleted ? '✓' : ''}
-                </option>
-              ))}
-            </select>
+              onChange={(newStatus) => onUpdateTaskStatus(task.id, newStatus)}
+              options={taskStatusesList}
+              size="xs"
+            />
           </td>
 
           <td className="py-2.5 px-3 whitespace-nowrap font-mono text-slate-500 dark:text-slate-400 text-[11px]">
@@ -227,8 +258,17 @@ export function ProjectDetailView({
               </button>
               <button
                 type="button"
+                onClick={() => handleOpenEditTask ? handleOpenEditTask(task) : onSelectTask(task)}
+                className="p-1 text-slate-400 hover:text-brand hover:bg-brand-light/30 rounded-xs"
+                title="Edit Task"
+              >
+                <Edit className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
                 onClick={() => onSelectTask(task)}
                 className="p-1 text-slate-400 hover:text-brand rounded-xs"
+                title="View Task Details"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
               </button>
@@ -262,20 +302,26 @@ export function ProjectDetailView({
                 </span>
                 <h1 className="text-base font-bold text-slate-900 dark:text-slate-100 tracking-tight">{project.name}</h1>
                 <ProjectTypeBadge type={project.type} size="xs" />
-                <StatusBadge status={project.status} size="xs" />
-                <PriorityBadge priority={project.priority} size="xs" />
+                <StatusBadge status={liveStatus} size="xs" />
+                <PriorityBadge priority={livePriority} size="xs" />
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2">
                 <span>{project.client}</span>
                 <span>·</span>
                 <span>Category: {project.category}</span>
-                <span>·</span>
-                <span>Budget: {project.budget}</span>
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => (onEditProject || handleOpenEditProject)(project)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-sm border border-slate-200 dark:border-slate-700 transition-colors"
+            >
+              <Edit className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+              Edit Project
+            </button>
             <button
               type="button"
               onClick={() => onOpenCreateTask(null)}
@@ -312,11 +358,10 @@ export function ProjectDetailView({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'bg-brand-light/40 text-brand border border-brand/40 font-bold'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm transition-colors whitespace-nowrap ${isActive
+                  ? 'bg-brand-light/40 text-brand border border-brand/40 font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
               >
                 <Icon className="w-3.5 h-3.5" />
                 <span>{tab.label}</span>
@@ -353,10 +398,10 @@ export function ProjectDetailView({
           <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-sm shadow-2xs space-y-2">
             <div className="flex items-center justify-between">
               <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">Project Completion Velocity</span>
-              <span className="font-mono font-bold text-brand">{project.progress}%</span>
+              <span className="font-mono font-bold text-brand">{liveProgress}%</span>
             </div>
             <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-xs overflow-hidden">
-              <div className="h-full bg-brand rounded-xs transition-all" style={{ width: `${project.progress}%` }} />
+              <div className="h-full bg-brand rounded-xs transition-all" style={{ width: `${liveProgress}%` }} />
             </div>
           </div>
 
@@ -431,7 +476,7 @@ export function ProjectDetailView({
           <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CheckSquare className="w-4 h-4 text-brand" />
-              <h3 className="font-bold text-slate-900 dark:text-slate-100 text-xs">Deliverables &amp; Hierarchical Subtasks</h3>
+              <h3 className="font-bold text-slate-900 dark:text-slate-100 text-xs">All Tasks</h3>
               <span className="text-[11px] text-slate-500 dark:text-slate-400">({projectTasks.length} total)</span>
             </div>
             <button
@@ -448,7 +493,7 @@ export function ProjectDetailView({
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/80 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  <th className="py-2.5 px-3">Task ID &amp; Deliverable Hierarchy</th>
+                  <th className="py-2.5 px-3">Task ID &amp; Tasks</th>
                   <th className="py-2.5 px-3">Assignee</th>
                   <th className="py-2.5 px-3">Priority</th>
                   <th className="py-2.5 px-3">Status</th>

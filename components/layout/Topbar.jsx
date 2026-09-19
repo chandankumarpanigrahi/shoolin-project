@@ -80,29 +80,16 @@ export function Topbar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const notifications = [
-    {
-      id: 'n-1',
-      title: 'Rahul completed task',
-      detail: 'PMV-001.1.1.1 Mobile Viewport Touch Tuning marked complete.',
-      time: '12m ago',
-      unread: true,
-    },
-    {
-      id: 'n-2',
-      title: 'Dependency updated',
-      detail: 'David Kim unblocked Redis AWS ElastiCache peering.',
-      time: '45m ago',
-      unread: true,
-    },
-    {
-      id: 'n-3',
-      title: 'Meeting invitation requested',
-      detail: 'Client Design Sign-Off requested by Priya Patel.',
-      time: '2h ago',
-      unread: false,
-    },
-  ];
+  const {
+    notifications: liveNotifications = [],
+    markNotificationRead,
+    clearAllNotifications,
+  } = useAppContext();
+
+  const userNotifications = liveNotifications.filter(
+    (n) => !n.userId || n.userId === currentUser?.id || n.userId === 'all'
+  );
+  const unreadCount = userNotifications.filter((n) => n.unread).length;
 
   const getBreadcrumbs = () => {
     const list = [{ label: 'Shoolin Innovations', href: '/dashboard' }];
@@ -111,8 +98,6 @@ export function Topbar({
       list.push({ label: 'Dashboard', href: '/dashboard' });
     } else if (pathname === '/my-focus') {
       list.push({ label: 'My Focus', href: '/my-focus' });
-    } else if (pathname === '/my-projects') {
-      list.push({ label: 'My Projects', href: '/my-projects' });
     } else if (pathname === '/projects') {
       list.push({ label: 'Projects', href: '/projects' });
     } else if (pathname.startsWith('/project/')) {
@@ -299,32 +284,58 @@ export function Topbar({
             type="button"
             onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
             className="relative p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-sm transition-colors"
+            title="Notifications"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900"></span>
+            {unreadCount > 0 && (
+              <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-1 flex items-center justify-center rounded-full bg-rose-500 text-white text-[9px] font-bold ring-2 ring-white dark:ring-slate-900">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
           </button>
 
           {isNotificationsOpen && (
             <div className="absolute right-0 mt-1.5 w-80 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm shadow-xl z-40 text-xs">
               <div className="px-3.5 py-2.5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-                <span className="font-semibold text-slate-900 dark:text-slate-100">Notifications</span>
-                <span className="text-[11px] text-brand font-medium cursor-pointer hover:underline">Mark all read</span>
+                <span className="font-semibold text-slate-900 dark:text-slate-100">Notifications ({unreadCount} new)</span>
+                {userNotifications.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => clearAllNotifications && clearAllNotifications()}
+                    className="text-[11px] text-brand font-medium hover:underline"
+                  >
+                    Clear All
+                  </button>
+                )}
               </div>
               <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60">
-                {notifications.map((n) => (
-                  <div key={n.id} className={`p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${n.unread ? 'bg-brand-light/20' : ''}`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <span className={`font-medium ${n.unread ? 'text-brand font-bold' : 'text-slate-800 dark:text-slate-200'}`}>
-                        {n.title}
-                      </span>
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">{n.time}</span>
+                {userNotifications.length === 0 ? (
+                  <div className="p-4 text-center text-slate-400">No notifications</div>
+                ) : (
+                  userNotifications.map((n) => (
+                    <div
+                      key={n.id || n._id}
+                      onClick={() => {
+                        if (n.unread && markNotificationRead) markNotificationRead(n.id || n._id);
+                        if (n.link) router.push(n.link);
+                      }}
+                      className={`p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer ${n.unread ? 'bg-brand-light/20' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className={`font-medium ${n.unread ? 'text-brand font-bold' : 'text-slate-800 dark:text-slate-200'}`}>
+                          {n.title}
+                        </span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
+                          {n.createdAt ? new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Now'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-snug">{n.detail}</p>
                     </div>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-snug">{n.detail}</p>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
               <div className="p-2 border-t border-slate-100 dark:border-slate-700 text-center bg-slate-50 dark:bg-slate-800/80">
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">Real-time team audit feed</span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">User specific real-time notifications</span>
               </div>
             </div>
           )}

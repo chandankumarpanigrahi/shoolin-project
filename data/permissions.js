@@ -1,6 +1,6 @@
 // Granular 34-permission taxonomy and RBAC matrix schema across 11 functional modules
 
-export const ROLES = ["Super Admin", "Admin", "Manager / TL", "User"];
+export const ROLES = ["Super Admin", "Admin", "Manager", "User"];
 
 export const INITIAL_ROLES = [
   {
@@ -19,7 +19,7 @@ export const INITIAL_ROLES = [
   },
   {
     id: "role-3",
-    name: "Manager / TL",
+    name: "Manager",
     status: "Active",
     isSystem: true,
     desc: "Team leadership, sprint execution & project mandate coordination"

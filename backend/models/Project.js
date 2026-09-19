@@ -15,12 +15,13 @@ const projectSchema = new mongoose.Schema(
     status: { type: String, default: 'In Progress', index: true },
     priority: { type: String, default: 'Medium' },
     startDate: { type: String },
-    targetDate: { type: String },
     budget: { type: String, default: '0' },
     description: { type: String, default: '' },
     tasksCount: { type: Number, default: 0 },
     completedTasksCount: { type: Number, default: 0 },
     recurringConfig: { type: mongoose.Schema.Types.Mixed },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

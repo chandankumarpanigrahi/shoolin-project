@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   CheckSquare,
   Plus,
+  Edit,
   Search,
   ChevronRight,
   ChevronDown,
@@ -15,8 +16,8 @@ import {
   CheckCircle2,
   Circle
 } from 'lucide-react';
-import { StatusBadge, PriorityBadge } from '@/components/common/Badges';
-import { UserAvatar } from '@/components/common/UserAvatar';
+import { StatusBadge, PriorityBadge, StatusSelect } from '@/components/common/Badges';
+import { UserAvatar, resolveUserObject } from '@/components/common/UserAvatar';
 import { KanbanBoardView } from '@/components/views/KanbanBoardView';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { useUrlParam } from '@/hooks/useUrlState';
@@ -27,41 +28,13 @@ export function TasksView({
   users,
   onSelectTask,
   onOpenCreateTask,
+  onOpenEditTask,
   onUpdateTaskStatus,
   onCreateQuickTask
 }) {
-  const { isCompletedStatus, getTaskStatuses, toggleTaskComplete } = useAppContext();
-  const [activeView, setActiveView] = useUrlParam('view', 'tree'); // 'tree' | 'kanban'
-  const [quickTitle, setQuickTitle] = useState('');
-  const [quickProjectId, setQuickProjectId] = useState(projects[0]?.id || '');
-  const [quickPriority, setQuickPriority] = useState('Medium');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedProject, setSelectedProject] = useState('ALL');
-  const [selectedStatus, setSelectedStatus] = useState('ALL');
-  const [selectedPriority, setSelectedPriority] = useState('ALL');
-  const [selectedAssignee, setSelectedAssignee] = useState('ALL');
-
-  const [expandedTasks, setExpandedTasks] = useState({
-    'task-100': true,
-    'task-101': true,
-    'task-102': true,
-    'task-107': true,
-    'task-110': true,
-    'task-200': true,
-    'task-203': true,
-    'task-206': true,
-    'task-300': true,
-    'task-303': true,
-    'task-400': true,
-    'task-402': true,
-    'task-500': true,
-    'task-503': true,
-    'task-600': true,
-    'task-700': true,
-    'task-my-1': true
-  });
-
-  const taskStatusesList = useMemo(() => {
+  const { currentUser, isCompletedStatus, getTaskStatuses, toggleTaskComplete } = useAppContext();
+  
+  const taskStatusesList = React.useMemo(() => {
     const list = getTaskStatuses ? getTaskStatuses() : [];
     if (list.length > 0) return list;
     return [
@@ -72,22 +45,63 @@ export function TasksView({
       { id: '5', name: 'Completed', marksAsCompleted: true },
     ];
   }, [getTaskStatuses]);
+  const activeProjects = React.useMemo(() => {
+    return (projects || []).filter(p => p && !p.isDeleted && p.status !== 'Deleted');
+  }, [projects]);
+
+  const activeProjectIdsSet = React.useMemo(() => {
+    const set = new Set();
+    activeProjects.forEach(p => {
+      if (p.id) set.add(String(p.id));
+      if (p._id) set.add(String(p._id));
+      if (p.code) set.add(String(p.code));
+    });
+    return set;
+  }, [activeProjects]);
+
+  const [activeView, setActiveView] = useUrlParam('view', 'tree'); // 'tree' | 'kanban'
+  const [quickTitle, setQuickTitle] = useState('');
+  const [quickProjectId, setQuickProjectId] = useState(activeProjects[0]?.id || '');
+  const [quickPriority, setQuickPriority] = useState('Medium');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedProject, setSelectedProject] = useState('ALL');
+  const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [selectedPriority, setSelectedPriority] = useState('ALL');
+  const [selectedAssignee, setSelectedAssignee] = useState('ALL');
+
+  const [expandedTasks, setExpandedTasks] = useState(() => {
+    if (typeof window === 'undefined' || !currentUser?.id) return { 'task-100': true };
+    try {
+      const saved = localStorage.getItem(`pulsepm_expanded_tasks_${currentUser.id}`);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return { 'task-100': true };
+  });
 
   const toggleTaskExpand = (taskId) => {
-    setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }));
+    setExpandedTasks((prev) => {
+      const next = { ...prev, [taskId]: !prev[taskId] };
+      if (typeof window !== 'undefined' && currentUser?.id) {
+        try {
+          localStorage.setItem(`pulsepm_expanded_tasks_${currentUser.id}`, JSON.stringify(next));
+        } catch (e) {}
+      }
+      return next;
+    });
   };
 
-  // Filter tasks
+  // Filter tasks (strictly excluding tasks belonging to deleted projects)
   const filteredTasks = tasks.filter(t => {
+    if (t.projectId && !activeProjectIdsSet.has(String(t.projectId))) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchTitle = t.title.toLowerCase().includes(q);
-      const matchCode = t.code.toLowerCase().includes(q);
+      const matchTitle = (t.title || '').toLowerCase().includes(q);
+      const matchCode = (t.code || '').toLowerCase().includes(q);
       if (!matchTitle && !matchCode) return false;
     }
     if (selectedProject !== 'ALL' && t.projectId !== selectedProject) return false;
     if (selectedStatus !== 'ALL' && t.status !== selectedStatus) return false;
-    if (selectedPriority !== 'ALL' && t.priority !== selectedPriority) return false;
+    if (selectedPriority !== 'ALL' && (t.priority || 'Medium') !== selectedPriority) return false;
     if (selectedAssignee !== 'ALL' && t.assignedTo !== selectedAssignee) return false;
     return true;
   });
@@ -133,7 +147,7 @@ export function TasksView({
       code: `${targetProject.code}.${projectTaskCount}`,
       title: quickTitle.trim(),
       projectId: targetProject.id,
-      assignedTo: users[0]?.id || 'usr-1',
+      assignedTo: users[0]?.id || users[0]?._id || '',
       status: 'Not Started',
       priority: quickPriority,
       createdDate: new Date().toISOString().slice(0, 10),
@@ -154,7 +168,7 @@ export function TasksView({
     const hasChildren = children.length > 0;
     const isExpanded = !!expandedTasks[task.id];
     const project = projects.find(p => p.id === task.projectId) || { code: "PRJ", name: "Project" };
-    const assignee = users.find(u => u.id === task.assignedTo) || users[0];
+    const assignee = resolveUserObject(task.assignedTo, users) || (users && users[0]) || { name: 'Unassigned', role: 'Member' };
 
     const isCompleted = isCompletedStatus ? isCompletedStatus(task.status) : (task.status === 'Completed');
 
@@ -234,7 +248,9 @@ export function TasksView({
           <td className="py-2.5 px-3 whitespace-nowrap">
             <div className="flex items-center gap-1.5">
               <UserAvatar user={assignee} size="xs" />
-              <span className="text-slate-700 dark:text-slate-300 font-medium">{assignee.name.split(' ')[0]}</span>
+              <span className="text-slate-700 dark:text-slate-300 font-medium" title={`${assignee.name} (${assignee.role || 'Member'})`}>
+                {assignee.name}
+              </span>
             </div>
           </td>
 
@@ -245,24 +261,12 @@ export function TasksView({
 
           {/* Status Dropdown */}
           <td className="py-2.5 px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-            <select
+            <StatusSelect
               value={task.status}
-              onChange={(e) => onUpdateTaskStatus(task.id, e.target.value)}
-              className={`border rounded-xs px-1.5 py-0.5 text-xs font-medium focus:outline-none focus:border-brand bg-white dark:bg-slate-800 transition-colors ${
-                isCompleted
-                  ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/40'
-                  : 'border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200'
-              }`}
-            >
-              {!taskStatusesList.some((s) => s.name === task.status) && (
-                <option value={task.status}>{task.status}</option>
-              )}
-              {taskStatusesList.map((st) => (
-                <option key={st.id || st.name} value={st.name}>
-                  {st.name} {st.marksAsCompleted ? '✓' : ''}
-                </option>
-              ))}
-            </select>
+              onChange={(newStatus) => onUpdateTaskStatus(task.id, newStatus)}
+              options={taskStatusesList}
+              size="xs"
+            />
           </td>
 
           {/* Target Date */}
@@ -281,6 +285,18 @@ export function TasksView({
               >
                 <Plus className="w-3 h-3" />
                 <span>Child</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenEditTask) onOpenEditTask(task);
+                  else onSelectTask(task);
+                }}
+                className="p-1 text-slate-500 hover:text-brand hover:bg-brand-light/30 rounded-xs font-semibold flex items-center gap-0.5 text-[11px]"
+                title="Edit Task Mandate"
+              >
+                <Edit className="w-3 h-3" />
+                <span>Edit</span>
               </button>
               <button
                 type="button"
@@ -393,8 +409,8 @@ export function TasksView({
             className="px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-brand font-medium"
           >
             <option value="ALL">All Projects</option>
-            {projects.map(p => (
-              <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
+            {activeProjects.map(p => (
+              <option key={p.id || p._id} value={p.id || p._id}>{p.code} - {p.name}</option>
             ))}
           </select>
 
@@ -407,7 +423,7 @@ export function TasksView({
             <option value="ALL">All Statuses</option>
             {taskStatusesList.map((st) => (
               <option key={st.id || st.name} value={st.name}>
-                {st.name} {st.marksAsCompleted ? '(Completed)' : ''}
+                {st.name}
               </option>
             ))}
           </select>
@@ -510,8 +526,8 @@ export function TasksView({
                         onChange={(e) => setQuickProjectId(e.target.value)}
                         className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] text-slate-700 dark:text-slate-300 font-medium shrink-0 shadow-2xs"
                       >
-                        {projects.map(p => (
-                          <option key={p.id} value={p.id}>{p.code} ({p.name})</option>
+                        {activeProjects.map(p => (
+                          <option key={p.id || p._id} value={p.id || p._id}>{p.code} ({p.name})</option>
                         ))}
                       </select>
                       <select

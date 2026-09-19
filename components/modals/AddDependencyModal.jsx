@@ -11,9 +11,13 @@ export function AddDependencyModal({
   users,
   onAddDependency
 }) {
-  const [fromUser, setFromUser] = useState(users[2]?.id || 'usr-3'); // Rahul
-  const [toUser, setToUser] = useState(users[4]?.id || 'usr-5'); // Marcus
-  const [projectId, setProjectId] = useState(projects[0]?.id || '');
+  const activeProjects = (projects || []).filter(
+    (p) => p && !p.isDeleted && p.status !== 'Deleted'
+  );
+
+  const [fromUser, setFromUser] = useState(users[1]?.id || users[0]?.id || '');
+  const [toUser, setToUser] = useState(users[2]?.id || users[0]?.id || '');
+  const [projectId, setProjectId] = useState(activeProjects[0]?.id || '');
   const [relatedTaskId, setRelatedTaskId] = useState(tasks[0]?.id || '');
   const [dependencyDescription, setDependencyDescription] = useState('');
   const [details, setDetails] = useState('');
@@ -24,7 +28,7 @@ export function AddDependencyModal({
 
   const projectTasks = tasks.filter(t => t.projectId === projectId);
   const selectedTask = tasks.find(t => t.id === relatedTaskId) || tasks[0];
-  const selectedProject = projects.find(p => p.id === projectId) || projects[0];
+  const selectedProject = activeProjects.find(p => p.id === projectId) || activeProjects[0];
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -113,8 +117,8 @@ export function AddDependencyModal({
                 onChange={(e) => setProjectId(e.target.value)}
                 className="w-full px-2.5 py-1.5 border border-slate-200 rounded-sm bg-white text-slate-800"
               >
-                {projects.map(p => (
-                  <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
+                {activeProjects.map(p => (
+                  <option key={p.id || p._id} value={p.id || p._id}>{p.code} - {p.name}</option>
                 ))}
               </select>
             </div>

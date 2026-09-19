@@ -89,7 +89,7 @@ export function DashboardView({
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-              Good morning, {currentUser.name.split(' ')[0]}
+              Good morning, {(currentUser?.name || 'Admin').split(' ')[0]}
             </h1>
           </div>
           <p className="text-xs flex flex-col md:flex-row text-slate-500 dark:text-slate-400 mt-1 items-start gap-2">Thursday, September 10, 2026</p>
@@ -262,7 +262,7 @@ export function DashboardView({
                   <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
                     <span>{p.client}</span>
                     <span>·</span>
-                    <span>Target: {p.targetDate}</span>
+                    <span>Category: {p.category || 'General'}</span>
                   </div>
                 </div>
 
@@ -386,17 +386,25 @@ export function DashboardView({
           </div>
 
           <div className="space-y-2.5 text-xs">
-            {recentActivities.map((act) => (
-              <div key={act.id} className="flex items-start gap-2.5">
-                <UserAvatar user={act.user} size="xs" />
-                <div className="min-w-0 flex-1 leading-snug">
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">{act.user.name}</span>{' '}
-                  <span className="text-slate-500 dark:text-slate-400">{act.action}</span>{' '}
-                  <span className="font-medium text-slate-900 dark:text-slate-100 font-mono text-[11px]">{act.target}</span>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{act.time}</p>
-                </div>
+            {tasks.length === 0 && projects.length === 0 && (
+              <div className="py-6 text-center text-slate-400 dark:text-slate-500 text-xs">
+                No recent activity yet. Create a project or task to begin!
               </div>
-            ))}
+            )}
+            {tasks.slice(0, 5).map((t, idx) => {
+              const assignedUser = users.find(u => u.id === t.assignedTo || u._id === t.assignedTo) || currentUser;
+              return (
+                <div key={t.id || idx} className="flex items-start gap-2.5">
+                  <UserAvatar user={assignedUser} size="xs" />
+                  <div className="min-w-0 flex-1 leading-snug">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{assignedUser?.name || 'User'}</span>{' '}
+                    <span className="text-slate-500 dark:text-slate-400">updated task</span>{' '}
+                    <span className="font-medium text-slate-900 dark:text-slate-100 font-mono text-[11px]">{t.code} - {t.title}</span>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Live updates active</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

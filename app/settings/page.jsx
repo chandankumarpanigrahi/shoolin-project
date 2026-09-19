@@ -1449,6 +1449,178 @@ function DisplayTab({ toast }) {
   );
 }
 
+// ─── Password & OTP Security Section ───
+function PasswordOtpCard({ toast }) {
+  const { currentUser } = useAppContext();
+  const [mode, setMode] = useState('otp'); // 'otp' | 'current'
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSendOtp = async () => {
+    setLoading(true);
+    try {
+      const res = await api.auth.sendOtp(currentUser.email);
+      setOtpSent(true);
+      toast.success(res.message || 'OTP sent to your registered email!');
+    } catch (e) {
+      toast.error(e.message || 'Failed to send OTP.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtpAndChange = async (e) => {
+    e.preventDefault();
+    if (!newPassword || newPassword !== confirmPassword) {
+      toast.error('Passwords do not match or are empty.');
+      return;
+    }
+    setLoading(true);
+    try {
+      if (mode === 'otp') {
+        if (!otpCode) {
+          toast.error('Please enter the OTP code.');
+          setLoading(false);
+          return;
+        }
+        await api.auth.verifyOtp(currentUser.email, otpCode, newPassword);
+        toast.success('Password successfully reset via OTP!');
+      } else {
+        await api.auth.changePassword(currentUser.id, currentPassword, newPassword);
+        toast.success('Password changed successfully!');
+      }
+      setOtpSent(false);
+      setOtpCode('');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (e) {
+      toast.error(e.message || 'Verification failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SectionCard
+      title="Password Setup & OTP Security"
+      description="Change your account password using email OTP verification or current password"
+      icon={Lock}
+      showFooterSave={false}
+    >
+      <div className="space-y-4 text-xs">
+        <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-fit">
+          <button
+            type="button"
+            onClick={() => setMode('otp')}
+            className={`px-3 py-1 rounded-md font-bold transition-all ${
+              mode === 'otp' ? 'bg-white dark:bg-slate-900 text-brand shadow-xs' : 'text-slate-500'
+            }`}
+          >
+            Reset via OTP Email
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('current')}
+            className={`px-3 py-1 rounded-md font-bold transition-all ${
+              mode === 'current' ? 'bg-white dark:bg-slate-900 text-brand shadow-xs' : 'text-slate-500'
+            }`}
+          >
+            Use Current Password
+          </button>
+        </div>
+
+        <form onSubmit={handleVerifyOtpAndChange} className="space-y-3 max-w-md">
+          {mode === 'otp' ? (
+            <>
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Registered Email</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="email"
+                    disabled
+                    value={currentUser.email}
+                    className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-mono text-slate-600 dark:text-slate-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendOtp}
+                    disabled={loading}
+                    className="px-3.5 py-2 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shrink-0 disabled:opacity-50"
+                  >
+                    {loading ? 'Sending...' : 'Send OTP'}
+                  </button>
+                </div>
+              </div>
+
+              {otpSent && (
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">6-Digit OTP Code</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter 6-digit OTP"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <div>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Current Password</label>
+              <input
+                type="password"
+                required
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">New Password</label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Confirm New Password</label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-colors shadow-xs"
+          >
+            {loading ? 'Processing...' : 'Update Password'}
+          </button>
+        </form>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ─── 6. Security & Data Management Tab ────────────────────────────────────────
 function SecurityTab({ toast }) {
   const { projects, tasks, users } = useAppContext();
@@ -1502,6 +1674,8 @@ function SecurityTab({ toast }) {
 
   return (
     <div className="space-y-5">
+      <PasswordOtpCard toast={toast} />
+
       <SectionCard
         title="Enterprise Security & Session Safeguards"
         description="Session duration, authentication policies, and cryptographic security audits"

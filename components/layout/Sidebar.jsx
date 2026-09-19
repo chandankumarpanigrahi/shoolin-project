@@ -62,7 +62,6 @@ export function Sidebar({
   const navItems = [
     { id: 'dashboard', href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'my-focus', href: '/my-focus', label: 'My Focus', icon: Target, badge: 'Focus' },
-    { id: 'my-projects', href: '/my-projects', label: 'My Projects', icon: FolderGit2, badge: 'Personal' },
     { id: 'projects', href: '/projects', label: 'Projects', icon: Briefcase, count: projects.length },
     { id: 'roadmap', href: '/roadmap', label: 'Roadmap', icon: CalendarRange, badge: 'Q3-Q4' },
     { id: 'tasks', href: '/tasks', label: 'Tasks', icon: CheckSquare, count: tasks.length },
@@ -72,6 +71,7 @@ export function Sidebar({
     { id: 'kpi', href: '/kpi', label: 'KPI Dashboard', icon: BarChart3, perm: 'kpi.view' },
     { id: 'templates', href: '/templates', label: 'Project Templates', icon: Layers, perm: 'templates.view' },
     { id: 'masters', href: '/masters', label: 'Masters Setup', icon: Database, badge: 'Masters', perm: 'masters.access' },
+    { id: 'activity-log', href: '/activity-log', label: 'Activity Log', icon: ShieldCheck, badge: 'SuperAdmin', perm: 'masters.access' },
     { id: 'settings', href: '/settings', label: 'Settings', icon: Settings },
   ];
 

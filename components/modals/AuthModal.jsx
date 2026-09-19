@@ -13,14 +13,20 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { USERS } from '@/data/users';
+import { useAppContext } from '@/components/providers/AppProvider';
+import { api } from '@/lib/api';
 
 export function AuthModal({ isOpen, onClose, onLoginAsUser }) {
+  const context = useAppContext();
+  const dynamicUsers = context?.users && context.users.length > 0 ? context.users : USERS;
+
   const [authMode, setAuthMode] = useState('password'); // 'password' | 'otp-request' | 'otp-verify' | 'otp-success'
-  const [contact, setContact] = useState('alex.rivera@pulsepm.io');
-  const [password, setPassword] = useState('••••••••••••');
+  const [contact, setContact] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
-  const [otpDigits, setOtpDigits] = useState(['4', '8', '2', '9', '1', '7']);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
 
   if (!isOpen) return null;
 
@@ -31,28 +37,67 @@ export function AuthModal({ isOpen, onClose, onLoginAsUser }) {
     setOtpDigits(updated);
   };
 
-  const handleSendOtp = (e) => {
+  const handleSendOtp = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    setErrorMsg(null);
+    try {
+      await api.auth.sendOtp(contact);
       setAuthMode('otp-verify');
-    }, 400);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to send OTP');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleVerifyOtp = (e) => {
+  const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    setErrorMsg(null);
+    try {
+      const res = await api.auth.verifyOtp(contact, otpDigits.join(''));
+      if (typeof window !== 'undefined' && res?.token) {
+        localStorage.setItem('pulsepm_jwt_token', res.token);
+      }
       setAuthMode('otp-success');
-    }, 500);
+      setTimeout(() => {
+        handleCompleteLogin(res?.user || dynamicUsers[0]);
+      }, 700);
+    } catch (err) {
+      setErrorMsg(err.message || 'Invalid OTP code');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePasswordLogin = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const res = await api.auth.login({ email: contact, password });
+      if (res && res.user) {
+        if (typeof window !== 'undefined' && res.token) {
+          localStorage.setItem('pulsepm_jwt_token', res.token);
+        }
+        handleCompleteLogin(res.user);
+      } else {
+        throw new Error('Authentication failed');
+      }
+    } catch (err) {
+      setErrorMsg(err.message || 'Invalid email or password');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCompleteLogin = (user) => {
-    onLoginAsUser(user || USERS[0]);
+    const targetUser = user || dynamicUsers[0];
+    onLoginAsUser(targetUser);
     onClose();
     setAuthMode('password');
+    setErrorMsg(null);
   };
 
   return (
@@ -82,9 +127,15 @@ export function AuthModal({ isOpen, onClose, onLoginAsUser }) {
         </div>
 
         <div className="p-6">
+          {errorMsg && (
+            <div className="mb-4 p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-sm text-xs text-rose-600 dark:text-rose-400 font-medium">
+              {errorMsg}
+            </div>
+          )}
+
           {/* STANDARD PASSWORD LOGIN */}
           {authMode === 'password' && (
-            <form onSubmit={(e) => { e.preventDefault(); handleCompleteLogin(USERS[0]); }} className="space-y-4">
+            <form onSubmit={handlePasswordLogin} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Email Address or Phone Number
@@ -286,12 +337,12 @@ export function AuthModal({ isOpen, onClose, onLoginAsUser }) {
               Quick Prototype Role Switcher
             </span>
             <div className="grid grid-cols-2 gap-1.5">
-              {USERS.slice(0, 4).map((u) => (
+              {dynamicUsers.slice(0, 6).map((u) => (
                 <button
-                  key={u.id}
+                  key={u.id || u._id}
                   type="button"
                   onClick={() => handleCompleteLogin(u)}
-                  className="text-left p-1.5 rounded-sm border border-slate-200 dark:border-slate-700 hover:border-brand hover:bg-brand-subtle transition-colors flex items-center gap-2"
+                  className="text-left p-1.5 rounded-sm border border-slate-200 dark:border-slate-700 hover:border-brand hover:bg-brand-subtle transition-colors flex items-center gap-2 cursor-pointer"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={u.avatar} alt={u.name} className="w-6 h-6 rounded-sm object-cover" />

@@ -1,29 +1,14 @@
 'use client';
 
-import React from 'react';
-import { ProjectsView } from '@/components/views/ProjectsView';
-import { useAppContext } from '@/components/providers/AppProvider';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function MyProjectsPage() {
-  const {
-    myProjects,
-    users,
-    handleSelectProject,
-    handleDeleteProject,
-    handleOpenCreateFromTemplate,
-    handleOpenCreateTask,
-    setIsCreateProjectOpen,
-  } = useAppContext();
+  const router = useRouter();
 
-  return (
-    <ProjectsView
-      projects={myProjects}
-      users={users}
-      onSelectProject={handleSelectProject}
-      onOpenCreateProject={() => setIsCreateProjectOpen(true)}
-      onOpenCreateFromTemplate={() => handleOpenCreateFromTemplate(null)}
-      onOpenCreateTaskForProject={(projectId) => handleOpenCreateTask(null, projectId)}
-      onDeleteProject={handleDeleteProject}
-    />
-  );
+  useEffect(() => {
+    router.replace('/projects');
+  }, [router]);
+
+  return null;
 }

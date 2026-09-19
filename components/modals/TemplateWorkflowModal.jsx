@@ -36,9 +36,9 @@ export function TemplateWorkflowModal({
   );
   const [client, setClient] = useState("PMV Global Group");
   const [brand, setBrand] = useState("PMV");
-  const [owner, setOwner] = useState(users[1]?.id || 'usr-2');
-  const [manager, setManager] = useState(users[3]?.id || 'usr-4');
-  const [team, setTeam] = useState([users[4]?.id || 'usr-5', users[6]?.id || 'usr-7']);
+  const [owner, setOwner] = useState(users[0]?.id || users[0]?._id || '');
+  const [manager, setManager] = useState(users[1]?.id || users[0]?.id || '');
+  const [team, setTeam] = useState(users.slice(0, 2).map((u) => u.id || u._id));
   const [startDate, setStartDate] = useState("2026-09-15");
   const [targetDate, setTargetDate] = useState("2026-11-30");
   const [recurringDay, setRecurringDay] = useState(5);

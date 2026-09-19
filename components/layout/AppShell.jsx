@@ -59,15 +59,24 @@ export function AppShell({ children }) {
     isCreateTemplateOpen, setIsCreateTemplateOpen,
     parentTaskForCreation,
     defaultProjectIdForTask,
+    taskToEdit,
     selectedTemplateForWorkflow,
     setSelectedTemplateForWorkflow,
+    projectToEdit,
     handleSelectProject,
     handleSelectTask,
     handleOpenCreateTask,
+    handleOpenEditTask,
     handleCreateProject,
+    handleUpdateProject,
     handleCreateTask,
+    handleUpdateTask,
     handleUpdateTaskStatus,
     handleScheduleMeeting,
+    handleUpdateMeeting,
+    meetingToEdit,
+    setMeetingToEdit,
+    activeProjects,
     handleAddDependency,
     handleAddLink,
     handleDeleteLink,
@@ -282,8 +291,13 @@ export function AppShell({ children }) {
         isOpen={isCreateProjectOpen}
         onClose={() => closeModal(() => setIsCreateProjectOpen(false))}
         users={users}
+        projectToEdit={projectToEdit}
         onCreateProject={(p) => {
           handleCreateProject(p);
+          closeModal(() => setIsCreateProjectOpen(false));
+        }}
+        onUpdateProject={(id, updates) => {
+          handleUpdateProject(id, updates);
           closeModal(() => setIsCreateProjectOpen(false));
         }}
       />
@@ -295,8 +309,13 @@ export function AppShell({ children }) {
         users={users}
         parentTask={parentTaskForCreation}
         defaultProjectId={defaultProjectIdForTask}
+        taskToEdit={taskToEdit}
         onCreateTask={(t) => {
           handleCreateTask(t);
+          closeModal(() => setIsCreateTaskOpen(false));
+        }}
+        onUpdateTask={(id, updates) => {
+          handleUpdateTask(id, updates);
           closeModal(() => setIsCreateTaskOpen(false));
         }}
       />
@@ -314,19 +333,36 @@ export function AppShell({ children }) {
           closeTaskDrawerWithUrl();
           openModal('create-task', () => handleOpenCreateTask(pTask, pTask.projectId));
         }}
+        onEditTask={(t) => {
+          closeTaskDrawerWithUrl();
+          openModal('create-task', () => handleOpenEditTask(t));
+        }}
         onSelectTask={(t) => openTaskWithUrl(t)}
       />
 
       <ScheduleMeetingModal
         isOpen={isScheduleMeetingOpen}
-        onClose={() => closeModal(() => setIsScheduleMeetingOpen(false))}
-        projects={projects}
+        meetingToEdit={meetingToEdit}
+        onClose={() => {
+          closeModal(() => {
+            setIsScheduleMeetingOpen(false);
+            if (setMeetingToEdit) setMeetingToEdit(null);
+          });
+        }}
+        projects={activeProjects || projects}
         tasks={tasks}
         users={users}
         currentUser={currentUser}
         onScheduleMeeting={(m) => {
           handleScheduleMeeting(m);
           closeModal(() => setIsScheduleMeetingOpen(false));
+        }}
+        onUpdateMeeting={(id, updates) => {
+          if (handleUpdateMeeting) handleUpdateMeeting(id, updates);
+          closeModal(() => {
+            setIsScheduleMeetingOpen(false);
+            if (setMeetingToEdit) setMeetingToEdit(null);
+          });
         }}
       />
 
