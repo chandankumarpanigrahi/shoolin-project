@@ -1,29 +1,35 @@
-'use client';
-
-import React, { useState } from 'react';
-import { X, Plus, FolderGit2, Calendar, RefreshCw, Layers, Sparkles } from 'lucide-react';
-import { TEMPLATES } from '@/data/templates';
+import React, { useState, useEffect } from 'react';
+import { X, Plus, FolderGit2, Calendar, RefreshCw, Layers, Sparkles, UserPlus, Check } from 'lucide-react';
+import { UserAvatar, resolveUserObject } from '@/components/common/UserAvatar';
+import { useAppContext } from '@/components/providers/AppProvider';
 
 export function CreateProjectModal({
   isOpen,
   onClose,
-  users,
+  users = [],
   onCreateProject,
+  onUpdateProject,
+  projectToEdit = null,
   initialTemplate = null
 }) {
-  const [name, setName] = useState(initialTemplate ? `${initialTemplate.name} - Batch 1` : '');
-  const [type, setType] = useState(initialTemplate ? initialTemplate.type : 'one-time');
+  let currentUser = null;
+  try {
+    const ctx = useAppContext();
+    if (ctx && ctx.currentUser) currentUser = ctx.currentUser;
+  } catch (e) {}
+
+  const [name, setName] = useState('');
+  const [type, setType] = useState('one-time');
   const [client, setClient] = useState('PMV Global Group');
   const [brand, setBrand] = useState('PMV');
-  const [category, setCategory] = useState(initialTemplate ? initialTemplate.category : 'Website Development');
-  const [owner, setOwner] = useState(users[1]?.id || users[0]?.id || '');
-  const [manager, setManager] = useState(users[2]?.id || users[0]?.id || '');
+  const [category, setCategory] = useState('Website Development');
+  const [owner, setOwner] = useState('');
+  const [manager, setManager] = useState('');
+  const [selectedTeam, setSelectedTeam] = useState([]);
   const [priority, setPriority] = useState('High');
   const [status, setStatus] = useState('In Progress');
   const [startDate, setStartDate] = useState('2026-09-15');
-  const [targetDate, setTargetDate] = useState('2026-12-15');
-  const [budget, setBudget] = useState('$35,000');
-  const [description, setDescription] = useState(initialTemplate ? initialTemplate.description : '');
+  const [description, setDescription] = useState('');
   const [color, setColor] = useState('#2563EB');
 
   // Recurring fields
@@ -32,48 +38,199 @@ export function CreateProjectModal({
   const [startMonth, setStartMonth] = useState('October 2026');
   const [endCondition, setEndCondition] = useState('Annual Contract (12 cycles)');
 
+  const lastInitializedKeyRef = React.useRef(null);
+
+  const resolveUserKey = (val, userList) => {
+    if (!val) return null;
+    const userObj = resolveUserObject(val, userList || users);
+    return userObj ? (userObj.id || userObj._id) : null;
+  };
+
+  // Resolve all raw IDs/strings to canonical user IDs, dropping any that don't map to a known user
+  const deduplicateTeam = (rawList) => {
+    const seen = new Set();
+    const result = [];
+    for (const entry of (rawList || [])) {
+      const canonicalId = resolveUserKey(entry, users);
+      if (canonicalId && !seen.has(canonicalId)) {
+        seen.add(canonicalId);
+        result.push(canonicalId);
+      }
+    }
+    return result;
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      lastInitializedKeyRef.current = null;
+      return;
+    }
+
+    const currentKey = projectToEdit
+      ? (projectToEdit.id || projectToEdit._id)
+      : initialTemplate
+      ? `template-${initialTemplate.id}`
+      : 'new';
+
+    // Prevent re-initialization from wiping in-progress user edits while modal is open
+    if (lastInitializedKeyRef.current === currentKey) {
+      return;
+    }
+    lastInitializedKeyRef.current = currentKey;
+
+    const creatorId = resolveUserKey(currentUser, users) || users[0]?.id || users[0]?._id;
+
+    if (projectToEdit) {
+      setName(projectToEdit.name || '');
+      setType(projectToEdit.type || 'one-time');
+      setClient(projectToEdit.client || 'PMV Global Group');
+      setBrand(projectToEdit.brand || 'PMV');
+      setCategory(projectToEdit.category || 'General');
+
+      const rawOwner = projectToEdit.owner || projectToEdit.ownerId || creatorId;
+      const rawManager = projectToEdit.manager || projectToEdit.managerId || creatorId;
+      const oId = resolveUserKey(rawOwner, users) || creatorId;
+      const mId = resolveUserKey(rawManager, users) || creatorId;
+
+      setOwner(oId);
+      setManager(mId);
+
+      const rawTeam = (projectToEdit.teamIds && projectToEdit.teamIds.length > 0)
+        ? projectToEdit.teamIds
+        : (projectToEdit.team || []);
+
+      // Resolve existing members against dynamic users
+      const resolvedExisting = deduplicateTeam(rawTeam.length > 0 ? rawTeam : [oId, mId]);
+      setSelectedTeam(resolvedExisting);
+
+      setPriority(projectToEdit.priority || 'High');
+      setStatus(projectToEdit.status || 'In Progress');
+      setStartDate(projectToEdit.startDate || '2026-09-15');
+      setDescription(projectToEdit.description || '');
+      setColor(projectToEdit.color || '#2563EB');
+      if (projectToEdit.type === 'recurring' && projectToEdit.recurringConfig) {
+        setRecurrenceFrequency(projectToEdit.recurringConfig.frequency || 'Monthly');
+        setMonthlyDay(projectToEdit.recurringConfig.monthlyDay || 5);
+        setStartMonth(projectToEdit.recurringConfig.startMonth || 'October 2026');
+        setEndCondition(projectToEdit.recurringConfig.endCondition || 'Annual Contract (12 cycles)');
+      }
+    } else if (initialTemplate) {
+      const oId = creatorId;
+      const mId = users[1] ? (users[1].id || users[1]._id) : creatorId;
+      setName(`${initialTemplate.name} - Batch 1`);
+      setType(initialTemplate.type || 'one-time');
+      setClient('PMV Global Group');
+      setBrand('PMV');
+      setCategory(initialTemplate.category || 'Website Development');
+      setOwner(oId);
+      setManager(mId);
+      setSelectedTeam(deduplicateTeam([creatorId, oId, mId]));
+      setPriority('High');
+      setStatus('In Progress');
+      setStartDate('2026-09-15');
+      setDescription(initialTemplate.description || '');
+      setColor('#2563EB');
+    } else {
+      const oId = creatorId;
+      const mId = users[1] ? (users[1].id || users[1]._id) : creatorId;
+      setName('');
+      setType('one-time');
+      setClient('PMV Global Group');
+      setBrand('PMV');
+      setCategory('Website Development');
+      setOwner(oId);
+      setManager(mId);
+      setSelectedTeam(deduplicateTeam([creatorId]));
+      setPriority('High');
+      setStatus('In Progress');
+      setStartDate('2026-09-15');
+      setDescription('');
+      setColor('#2563EB');
+    }
+  }, [isOpen, projectToEdit?.id || projectToEdit?._id, initialTemplate?.id, users]);
+
+  const handleToggleTeamMember = (userKey) => {
+    if (!userKey) return;
+    const targetCanonical = resolveUserKey(userKey, users);
+    if (!targetCanonical) return;
+
+    const isPresent = selectedTeam.some(item => resolveUserKey(item, users) === targetCanonical);
+
+    if (isPresent) {
+      setSelectedTeam(prev => deduplicateTeam(prev.filter(item => resolveUserKey(item, users) !== targetCanonical)));
+    } else {
+      setSelectedTeam(prev => deduplicateTeam([...prev, targetCanonical]));
+    }
+  };
+
+  const handleOwnerChange = (newOwner) => {
+    const canonicalOwner = resolveUserKey(newOwner, users) || newOwner;
+    setOwner(canonicalOwner);
+    if (canonicalOwner) {
+      setSelectedTeam((prev) => deduplicateTeam([...prev, canonicalOwner]));
+    }
+  };
+
+  const handleManagerChange = (newManager) => {
+    const canonicalManager = resolveUserKey(newManager, users) || newManager;
+    setManager(canonicalManager);
+    if (canonicalManager) {
+      setSelectedTeam((prev) => deduplicateTeam([...prev, canonicalManager]));
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    const code = (brand.slice(0, 3).toUpperCase() || 'PRJ') + '-' + Math.floor(100 + Math.random() * 900);
+    const creatorId = resolveUserKey(currentUser, users) || users[0]?.id || users[0]?._id;
+    const ownerId = resolveUserKey(owner, users) || creatorId;
+    const managerId = resolveUserKey(manager, users) || creatorId;
 
-    const newProj = {
-      id: "proj-" + Date.now(),
-      code,
+    const resolvedSelected = deduplicateTeam(selectedTeam);
+    const finalTeam = !projectToEdit
+      ? Array.from(new Set([creatorId, ownerId, managerId, ...resolvedSelected])).filter(Boolean)
+      : (resolvedSelected.length > 0 ? resolvedSelected : [ownerId, managerId]);
+
+    const payload = {
       name: name.trim(),
-      color,
+      type,
       client,
       brand,
-      type,
       category,
-      owner,
-      manager,
-      team: [owner, manager, users[4]?.id || users[0]?.id],
-      progress: 0,
-      status,
+      ownerId,
+      owner: ownerId,
+      managerId,
+      manager: managerId,
+      teamIds: finalTeam,
+      team: finalTeam,
       priority,
+      status,
       startDate,
-      targetDate,
-      description: description.trim() || "No extended description.",
-      budget: type === 'recurring' ? `${budget}/mo` : budget,
-      tasksCount: initialTemplate ? initialTemplate.tasksCount : 12,
-      completedTasksCount: 0,
-      ...(type === 'recurring' && {
+      description: description.trim() || 'No extended description provided.',
+      color,
+      ...(type === 'recurring' ? {
         recurringConfig: {
           frequency: recurrenceFrequency,
-          monthlyDay,
+          monthlyDay: Number(monthlyDay) || 5,
           startMonth,
-          endCondition,
-          deliverablesPerCycle: 12,
-          nextCycleDate: `2026-10-${monthlyDay < 10 ? '0' + monthlyDay : monthlyDay}`
+          endCondition
         }
-      })
+      } : {})
     };
 
-    onCreateProject(newProj);
+    if (projectToEdit) {
+      const targetId = projectToEdit.id || projectToEdit._id;
+      if (onUpdateProject) {
+        onUpdateProject(targetId, payload);
+      }
+    } else {
+      if (onCreateProject) {
+        onCreateProject(payload);
+      }
+    }
     onClose();
   };
 
@@ -93,7 +250,11 @@ export function CreateProjectModal({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
-                {initialTemplate ? `Create Project from Template: ${initialTemplate.name}` : "Create New Project Mandate"}
+                {projectToEdit
+                  ? `Edit Project: ${projectToEdit.name}`
+                  : initialTemplate
+                  ? `Create Project from Template: ${initialTemplate.name}`
+                  : "Create New Project Mandate"}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Set budget, accountable leadership, delivery cadence, and target dates
@@ -118,11 +279,10 @@ export function CreateProjectModal({
               <button
                 type="button"
                 onClick={() => setType('one-time')}
-                className={`p-3.5 border rounded-xl text-left transition-all ${
-                  type === 'one-time'
+                className={`p-3.5 border rounded-xl text-left transition-all ${type === 'one-time'
                     ? 'border-brand bg-brand-subtle text-brand-text ring-2 ring-brand/30'
                     : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">One Time Project</span>
@@ -136,11 +296,10 @@ export function CreateProjectModal({
               <button
                 type="button"
                 onClick={() => setType('recurring')}
-                className={`p-3.5 border rounded-xl text-left transition-all ${
-                  type === 'recurring'
+                className={`p-3.5 border rounded-xl text-left transition-all ${type === 'recurring'
                     ? 'border-cyan-500 bg-cyan-50/60 dark:bg-cyan-950/40 text-cyan-900 dark:text-cyan-200 ring-2 ring-cyan-400/30'
                     : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-bold text-slate-900 dark:text-slate-100 text-xs flex items-center gap-1">
@@ -214,9 +373,8 @@ export function CreateProjectModal({
                     type="button"
                     onClick={() => setColor(hex)}
                     style={{ backgroundColor: hex }}
-                    className={`w-4 h-4 rounded-full transition-transform ${
-                      color.toLowerCase() === hex.toLowerCase() ? 'scale-125 ring-2 ring-brand ring-offset-1' : 'hover:scale-110'
-                    }`}
+                    className={`w-4 h-4 rounded-full transition-transform ${color.toLowerCase() === hex.toLowerCase() ? 'scale-125 ring-2 ring-brand ring-offset-1' : 'hover:scale-110'
+                      }`}
                     title={hex}
                   />
                 ))}
@@ -262,11 +420,11 @@ export function CreateProjectModal({
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Project Owner (Accountable)</label>
               <select
                 value={owner}
-                onChange={(e) => setOwner(e.target.value)}
+                onChange={(e) => handleOwnerChange(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand"
               >
                 {users.map(u => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                  <option key={u.id || u._id} value={u.id || u._id}>{u.name} ({u.role})</option>
                 ))}
               </select>
             </div>
@@ -275,48 +433,104 @@ export function CreateProjectModal({
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Assigned Tech Lead / Manager</label>
               <select
                 value={manager}
-                onChange={(e) => setManager(e.target.value)}
+                onChange={(e) => handleManagerChange(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand"
               >
                 {users.map(u => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                  <option key={u.id || u._id} value={u.id || u._id}>{u.name} ({u.role})</option>
                 ))}
               </select>
             </div>
           </div>
 
-          {/* Dates & Budget */}
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Start Date</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100"
-              />
+          {/* Assigned Team Members & Squad */}
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Assigned Team Members &amp; Squad (Project Access List)
+            </label>
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-700 rounded-xl space-y-2">
+              <div className="flex flex-wrap gap-1.5 min-h-[32px] items-center">
+                {(() => {
+                  // Resolve & deduplicate — same user under different ID formats shows only once
+                  const seen = new Set();
+                  const dedupedMembers = [];
+                  for (const userId of selectedTeam) {
+                    const u = resolveUserObject(userId, users);
+                    if (!u) continue;
+                    const canonicalId = String(u.id || u._id || u.email || u.name).toLowerCase();
+                    if (!seen.has(canonicalId)) {
+                      seen.add(canonicalId);
+                      dedupedMembers.push({ raw: userId, user: u, canonicalId: u.id || u._id });
+                    }
+                  }
+                  return dedupedMembers.map(({ user: u, canonicalId }) => (
+                    <span
+                      key={canonicalId}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 shadow-2xs"
+                    >
+                      <UserAvatar user={u} size="xs" />
+                      <span>{u.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleTeamMember(canonicalId)}
+                        className="hover:text-rose-500 rounded-full p-0.5 transition-colors ml-0.5"
+                        title="Remove member from project team"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ));
+                })()}
+              </div>
+
+              {/* Add / Remove Checkbox Selector */}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1.5">
+                  Select squad members to grant project visibility:
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-32 overflow-y-auto">
+                  {users.map((u) => {
+                    const uId = u.id || u._id;
+                    const uName = u.name;
+                    const isSelected = selectedTeam.some((item) => {
+                      const itemCanonical = resolveUserKey(item, users);
+                      return itemCanonical === uId || item === uId || item === uName || String(item).toLowerCase() === String(uId).toLowerCase();
+                    });
+
+                    return (
+                      <label
+                        key={uId}
+                        className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${isSelected
+                            ? 'bg-brand-light/30 border-brand/40 text-brand font-semibold'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleTeamMember(uId)}
+                          className="rounded border-slate-300 text-brand focus:ring-brand"
+                        />
+                        <UserAvatar user={u} size="xs" />
+                        <span className="truncate">{u.name.split(' ')[0]}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+              </div>
             </div>
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Target / End Date</label>
-              <input
-                type="date"
-                value={targetDate}
-                onChange={(e) => setTargetDate(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                {type === 'recurring' ? 'Monthly Retainer' : 'Total Budget'}
-              </label>
-              <input
-                type="text"
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-                placeholder="$45,000"
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-100"
-              />
-            </div>
+          </div>
+
+          {/* Dates */}
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100"
+            />
           </div>
 
           {/* Additional Recurring Project Configuration Fields */}
@@ -407,8 +621,8 @@ export function CreateProjectModal({
               type="submit"
               className="px-5 py-2 bg-brand hover:bg-brand-hover active:bg-brand-hover text-white font-semibold rounded-md shadow-sm transition-colors flex items-center gap-1.5"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Create Project Mandate</span>
+              {projectToEdit ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+              <span>{projectToEdit ? "Save Project Changes" : "Create Project Mandate"}</span>
             </button>
           </div>
         </form>

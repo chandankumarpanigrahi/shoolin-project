@@ -34,10 +34,14 @@ export function KpiDashboardView({ projects = [], tasks = [], users = [] }) {
   const [teamSearch, setTeamSearch] = useState('');
 
   // ─── Filtered Datasets ───────────────────────────────────────────────────
+  const activeProjects = useMemo(() => {
+    return (projects || []).filter((p) => p && !p.isDeleted && p.status !== 'Deleted');
+  }, [projects]);
+
   const filteredProjects = useMemo(() => {
-    if (selectedProjectId === 'all') return projects;
-    return projects.filter((p) => p.id === selectedProjectId);
-  }, [projects, selectedProjectId]);
+    if (selectedProjectId === 'all') return activeProjects;
+    return activeProjects.filter((p) => p.id === selectedProjectId || p._id === selectedProjectId);
+  }, [activeProjects, selectedProjectId]);
 
   const filteredTasks = useMemo(() => {
     if (selectedProjectId === 'all') return tasks;
@@ -46,11 +50,11 @@ export function KpiDashboardView({ projects = [], tasks = [], users = [] }) {
 
   // ─── Dynamic Metric Calculations ──────────────────────────────────────────
   const totalTasks = filteredTasks.length;
-  const completedTasks = filteredTasks.filter((t) => t.status === 'Completed').length;
-  const inProgressTasks = filteredTasks.filter((t) => t.status === 'In Progress').length;
-  const reviewTasks = filteredTasks.filter((t) => t.status === 'Review').length;
-  const blockedTasks = filteredTasks.filter((t) => t.status === 'Blocked').length;
-  const notStartedTasks = filteredTasks.filter((t) => t.status === 'Not Started').length;
+  const completedTasks = filteredTasks.filter((t) => t.status === 'Completed' || t.status === 'Done').length;
+  const inProgressTasks = filteredTasks.filter((t) => t.status === 'In Progress' || t.status === 'Active').length;
+  const reviewTasks = filteredTasks.filter((t) => t.status === 'Review' || t.status === 'Testing').length;
+  const blockedTasks = filteredTasks.filter((t) => t.status === 'Blocked' || t.status === 'Waiting').length;
+  const notStartedTasks = filteredTasks.filter((t) => t.status === 'Not Started' || t.status === 'Backlog' || t.status === 'Todo').length;
 
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const onTimeDeliveryRate = KPI_METRICS.onTimeDeliveryRate || 94.2;
@@ -143,9 +147,9 @@ export function KpiDashboardView({ projects = [], tasks = [], users = [] }) {
             onChange={(e) => setSelectedProjectId(e.target.value)}
             className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:border-brand"
           >
-            <option value="all">All Projects ({projects.length})</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
+            <option value="all">All Projects ({activeProjects.length})</option>
+            {activeProjects.map((p) => (
+              <option key={p.id || p._id} value={p.id || p._id}>
                 {p.code} · {p.name}
               </option>
             ))}
@@ -451,8 +455,9 @@ export function KpiDashboardView({ projects = [], tasks = [], users = [] }) {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredUsers.map((u) => {
-                  const assigned = tasks.filter((t) => t.assignedTo === u.id).length;
-                  const closed = tasks.filter((t) => t.assignedTo === u.id && t.status === 'Completed').length;
+                  const uId = u.id || u._id;
+                  const assigned = tasks.filter((t) => t.assignedTo === uId || t.assignedTo === u.email).length;
+                  const closed = tasks.filter((t) => (t.assignedTo === uId || t.assignedTo === u.email) && (t.status === 'Completed' || t.status === 'Done')).length;
                   const pct = assigned > 0 ? Math.round((closed / assigned) * 100) : 100;
 
                   return (

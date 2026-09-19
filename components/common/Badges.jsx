@@ -1,63 +1,105 @@
-'use client';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDown, Check } from 'lucide-react';
 
-import React from 'react';
+export function getStatusStyle(status, masterStatuses = null) {
+  const norm = (status || '').trim();
+  const lower = norm.toLowerCase();
 
-export function StatusBadge({ status, size = 'sm' }) {
-  const map = {
-    Completed: 'bg-emerald-100/90 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700/70',
-    Resolved: 'bg-emerald-100/90 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700/70',
-    'On Track': 'bg-teal-100/90 text-teal-800 border-teal-300 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-700/70',
-    'In Progress': 'bg-blue-100/90 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-700/70',
-    Review: 'bg-purple-100/90 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-700/70',
-    Requested: 'bg-brand-light/40 text-brand border-brand/40',
-    Accepted: 'bg-emerald-100/90 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700/70',
-    Waiting: 'bg-amber-100/90 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/70',
-    Blocked: 'bg-rose-100/90 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-700/70',
-    Delayed: 'bg-rose-100/90 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-700/70',
-    Declined: 'bg-slate-200/80 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
-    Rescheduled: 'bg-violet-100/90 text-violet-800 border-violet-300 dark:bg-violet-950/60 dark:text-violet-300 dark:border-violet-700/70',
-    'Not Started': 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
+  const colorMap = {
+    emerald: {
+      style: 'bg-emerald-100/90 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700/70',
+      dot: 'bg-emerald-500'
+    },
+    blue: {
+      style: 'bg-blue-100/90 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-700/70',
+      dot: 'bg-blue-500'
+    },
+    violet: {
+      style: 'bg-purple-100/90 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-700/70',
+      dot: 'bg-purple-500'
+    },
+    purple: {
+      style: 'bg-purple-100/90 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-700/70',
+      dot: 'bg-purple-500'
+    },
+    amber: {
+      style: 'bg-amber-100/90 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/70',
+      dot: 'bg-amber-500'
+    },
+    rose: {
+      style: 'bg-rose-100/90 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-700/70',
+      dot: 'bg-rose-500 animate-pulse'
+    },
+    teal: {
+      style: 'bg-teal-100/90 text-teal-800 border-teal-300 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-700/70',
+      dot: 'bg-teal-500'
+    },
+    slate: {
+      style: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
+      dot: 'bg-slate-400'
+    },
   };
 
-  const dotColor = {
-    Completed: 'bg-emerald-500',
-    Resolved: 'bg-emerald-500',
-    'On Track': 'bg-teal-500',
-    'In Progress': 'bg-blue-500',
-    Review: 'bg-purple-500',
-    Requested: 'bg-brand',
-    Accepted: 'bg-emerald-500',
-    Waiting: 'bg-amber-500',
-    Blocked: 'bg-rose-500 animate-pulse',
-    Delayed: 'bg-rose-500',
-    Declined: 'bg-slate-400',
-    Rescheduled: 'bg-violet-500',
-    'Not Started': 'bg-slate-400',
-  };
-
-  const lower = (status || '').toLowerCase();
-  let defaultStyle = 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
-  let defaultDot = 'bg-slate-400';
-
-  if (lower.includes('complete') || lower.includes('done') || lower.includes('resolved') || lower.includes('finish') || lower.includes('ship')) {
-    defaultStyle = 'bg-emerald-100/90 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700/70';
-    defaultDot = 'bg-emerald-500';
-  } else if (lower.includes('progress') || lower.includes('dev') || lower.includes('wip') || lower.includes('active')) {
-    defaultStyle = 'bg-blue-100/90 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-700/70';
-    defaultDot = 'bg-blue-500';
-  } else if (lower.includes('review') || lower.includes('test') || lower.includes('qa') || lower.includes('audit')) {
-    defaultStyle = 'bg-purple-100/90 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-700/70';
-    defaultDot = 'bg-purple-500';
-  } else if (lower.includes('block') || lower.includes('delay') || lower.includes('cancel') || lower.includes('defect') || lower.includes('bug')) {
-    defaultStyle = 'bg-rose-100/90 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-700/70';
-    defaultDot = 'bg-rose-500 animate-pulse';
-  } else if (lower.includes('wait') || lower.includes('hold') || lower.includes('pause') || lower.includes('pend')) {
-    defaultStyle = 'bg-amber-100/90 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/70';
-    defaultDot = 'bg-amber-500';
+  let list = masterStatuses;
+  if (!list && typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('pulsepm_master_statuses_v2');
+      if (saved) list = JSON.parse(saved);
+    } catch (e) {
+      list = null;
+    }
   }
 
-  const style = map[status] || defaultStyle;
-  const dot = dotColor[status] || defaultDot;
+  if (Array.isArray(list) && list.length > 0) {
+    const found = list.find(s => s.name && s.name.trim().toLowerCase() === lower);
+    if (found && found.color && colorMap[found.color]) {
+      return colorMap[found.color];
+    }
+  }
+
+  const map = {
+    Completed: colorMap.emerald,
+    Resolved: colorMap.emerald,
+    Accepted: colorMap.emerald,
+    'On Track': colorMap.teal,
+    'In Progress': colorMap.blue,
+    'Active Project': colorMap.emerald,
+    'In Planning': colorMap.blue,
+    Planning: colorMap.blue,
+    Review: colorMap.purple,
+    Requested: { style: 'bg-brand-light/40 text-brand border-brand/40', dot: 'bg-brand' },
+    Waiting: colorMap.amber,
+    'On Hold': colorMap.amber,
+    Paused: colorMap.amber,
+    Blocked: colorMap.rose,
+    'At Risk': colorMap.rose,
+    Delayed: colorMap.rose,
+    Declined: colorMap.slate,
+    Rescheduled: colorMap.purple,
+    'Not Started': colorMap.slate,
+    Archived: colorMap.slate,
+  };
+
+  if (map[norm]) return map[norm];
+
+  if (lower.includes('complete') || lower.includes('done') || lower.includes('resolved') || lower.includes('finish') || lower.includes('ship')) {
+    return colorMap.emerald;
+  } else if (lower.includes('progress') || lower.includes('dev') || lower.includes('wip') || lower.includes('active')) {
+    return colorMap.blue;
+  } else if (lower.includes('review') || lower.includes('test') || lower.includes('qa') || lower.includes('audit')) {
+    return colorMap.purple;
+  } else if (lower.includes('block') || lower.includes('delay') || lower.includes('cancel') || lower.includes('defect') || lower.includes('bug') || lower.includes('risk')) {
+    return colorMap.rose;
+  } else if (lower.includes('wait') || lower.includes('hold') || lower.includes('pause') || lower.includes('pend')) {
+    return colorMap.amber;
+  }
+
+  return colorMap.slate;
+}
+
+export function StatusBadge({ status, size = 'sm' }) {
+  const { style, dot } = getStatusStyle(status);
   const sizeClass = size === 'xs' ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-0.5 text-xs';
 
   return (
@@ -65,6 +107,156 @@ export function StatusBadge({ status, size = 'sm' }) {
       <span className={`w-1.5 h-1.5 rounded-full ${dot}`}></span>
       {status}
     </span>
+  );
+}
+
+export function StatusSelect({
+  value,
+  onChange,
+  options = [],
+  size = 'xs',
+  disabled = false,
+  direction = 'auto',
+  className = ''
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, bottom: 'auto' });
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const calculatePosition = useCallback(() => {
+    if (!buttonRef.current) return null;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = direction === 'up' || (direction === 'auto' && spaceBelow < 230 && rect.top > spaceBelow);
+
+    return {
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - 170)),
+      top: openUp ? 'auto' : rect.bottom + 4,
+      bottom: openUp ? window.innerHeight - rect.top + 4 : 'auto',
+    };
+  }, [direction]);
+
+  const handleToggle = (e) => {
+    e.stopPropagation();
+    if (!isOpen) {
+      const pos = calculatePosition();
+      if (pos) setMenuPos(pos);
+      setIsOpen(true);
+    } else {
+      setIsOpen(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleScrollOrResize = () => {
+      const pos = calculatePosition();
+      if (pos) setMenuPos(pos);
+    };
+
+    window.addEventListener('resize', handleScrollOrResize);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+
+    function handleClickOutside(event) {
+      if (
+        buttonRef.current && !buttonRef.current.contains(event.target) &&
+        menuRef.current && !menuRef.current.contains(event.target)
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      window.removeEventListener('resize', handleScrollOrResize);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, calculatePosition]);
+
+  const currentStyle = getStatusStyle(value);
+  const sizeClass = size === 'xs' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs';
+
+  const formattedOptions = (options || []).map(opt => {
+    if (typeof opt === 'string') return { id: opt, name: opt };
+    return opt;
+  });
+
+  if (value && !formattedOptions.some(o => o.name === value)) {
+    formattedOptions.unshift({ id: value, name: value });
+  }
+
+  const renderPortalMenu = () => {
+    if (!isOpen || !mounted || typeof document === 'undefined') return null;
+
+    return createPortal(
+      <div
+        ref={menuRef}
+        style={{
+          position: 'fixed',
+          left: `${menuPos.left}px`,
+          top: menuPos.top !== 'auto' ? `${menuPos.top}px` : 'auto',
+          bottom: menuPos.bottom !== 'auto' ? `${menuPos.bottom}px` : 'auto',
+        }}
+        className="z-[9999] min-w-[155px] max-h-60 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-[15px] shadow-2xl p-1.5 space-y-1 animate-in fade-in duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {formattedOptions.map((st) => {
+          const stName = st.name || st;
+          const stStyle = getStatusStyle(stName);
+          const isSelected = stName === value;
+
+          return (
+            <button
+              key={st.id || stName}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange(stName);
+                setIsOpen(false);
+              }}
+              className={`w-full flex items-center justify-between gap-2 px-2.5 py-1 rounded-full border text-xs font-semibold transition-all cursor-pointer ${stStyle.style} ${isSelected ? '' : 'hover:scale-[1.01] hover:brightness-95 opacity-90 hover:opacity-100'
+                }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${stStyle.dot}`}></span>
+                <span>{stName}</span>
+              </div>
+              {isSelected && <Check className="w-3.5 h-3.5 text-current shrink-0" />}
+            </button>
+          );
+        })}
+      </div>,
+      document.body
+    );
+  };
+
+  return (
+    <div className={`inline-block text-left ${className}`}>
+      <button
+        ref={buttonRef}
+        type="button"
+        disabled={disabled}
+        onClick={handleToggle}
+        className={`inline-flex items-center justify-between gap-1.5 font-semibold rounded-full border whitespace-nowrap shadow-2xs transition-all duration-150 cursor-pointer hover:shadow-xs hover:brightness-95 active:scale-95 ${sizeClass} ${currentStyle.style} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+      >
+        <div className="flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full ${currentStyle.dot}`}></span>
+          <span>{value || 'Select Status'}</span>
+        </div>
+        <ChevronDown className={`w-3 h-3 opacity-60 shrink-0 ml-0.5 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {renderPortalMenu()}
+    </div>
   );
 }
 

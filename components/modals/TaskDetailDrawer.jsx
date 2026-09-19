@@ -5,6 +5,7 @@ import {
   X,
   CheckSquare,
   Plus,
+  Edit,
   Clock,
   Calendar,
   User,
@@ -18,8 +19,8 @@ import {
   CheckCircle2,
   Circle
 } from 'lucide-react';
-import { StatusBadge, PriorityBadge } from '@/components/common/Badges';
-import { UserAvatar } from '@/components/common/UserAvatar';
+import { StatusBadge, PriorityBadge, StatusSelect } from '@/components/common/Badges';
+import { UserAvatar, resolveUserObject } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
 
 export function TaskDetailDrawer({
@@ -32,15 +33,16 @@ export function TaskDetailDrawer({
   dependencies,
   onUpdateTaskStatus,
   onAddChildTask,
+  onEditTask,
   onSelectTask
 }) {
-  const { isCompletedStatus, getTaskStatuses, toggleTaskComplete } = useAppContext();
+  const { isCompletedStatus, getTaskStatuses, toggleTaskComplete, handleUpdateTask } = useAppContext();
   const [commentText, setCommentText] = useState('');
   const [comments, setComments] = useState([
     {
       id: "c-1",
-      user: users[3] || users[0], // Priya Patel
-      text: "Wireframes reviewed with PMV stakeholders. Moving into high-fidelity component implementation.",
+      user: users[0] || { name: 'Admin Shoolin', role: 'Super Admin' },
+      text: "Project requirements reviewed with PMV stakeholders. Moving forward according to schedule.",
       time: "Yesterday at 4:15 PM"
     }
   ]);
@@ -61,9 +63,32 @@ export function TaskDetailDrawer({
 
   const isTaskCompleted = isCompletedStatus ? isCompletedStatus(task.status) : (task.status === 'Completed');
 
-  const project = projects.find(p => p.id === task.projectId) || { code: "PRJ", name: "Project" };
-  const assignee = users.find(u => u.id === task.assignedTo) || { name: "Unassigned", role: "Member" };
-  const creator = users.find(u => u.id === task.createdBy) || { name: "System Admin" };
+  const project = (projects || []).find((p) => p.id === task.projectId || p._id === task.projectId || p.code === task.projectId) || { code: 'PRJ', name: 'Project' };
+  const assignee = resolveUserObject(task.assignedTo, users) || { name: 'Unassigned', role: 'Member' };
+  const creator = resolveUserObject(task.createdBy, users) || { name: 'Project Creator' };
+
+  const projectSquadUsers = React.useMemo(() => {
+    if (!project) return users || [];
+    const rawTeam = (project.teamIds && project.teamIds.length > 0)
+      ? project.teamIds
+      : (project.team && project.team.length > 0)
+      ? project.team
+      : [project.ownerId || project.owner, project.managerId || project.manager].filter(Boolean);
+
+    const resolved = [];
+    const seen = new Set();
+    for (const memberKey of rawTeam) {
+      const u = resolveUserObject(memberKey, users);
+      if (u) {
+        const id = u.id || u._id;
+        if (!seen.has(id)) {
+          seen.add(id);
+          resolved.push(u);
+        }
+      }
+    }
+    return resolved.length > 0 ? resolved : (users || []);
+  }, [project, users]);
 
   // Find parent task
   const parent = task.parentId ? allTasks.find(t => t.id === task.parentId) : null;
@@ -109,6 +134,20 @@ export function TaskDetailDrawer({
           </div>
 
           <div className="flex items-center gap-2">
+            {onEditTask && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onEditTask(task);
+                }}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-sm border border-slate-200 dark:border-slate-700 transition-colors"
+                title="Edit task mandate"
+              >
+                <Edit className="w-3.5 h-3.5" />
+                <span>Edit</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onAddChildTask(task)}
@@ -155,7 +194,7 @@ export function TaskDetailDrawer({
                   if (toggleTaskComplete) toggleTaskComplete(task.id);
                   else onUpdateTaskStatus(task.id, isTaskCompleted ? 'In Progress' : 'Completed');
                 }}
-                className="mt-0.5 p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0"
+                className="mt-1 p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0"
                 title={isTaskCompleted ? "Mark as Incomplete" : "Mark as Completed"}
               >
                 {isTaskCompleted ? (
@@ -165,13 +204,20 @@ export function TaskDetailDrawer({
                 )}
               </button>
               <div className="flex-1 min-w-0">
-                <h2 className={`text-base font-bold leading-snug transition-colors ${
-                  isTaskCompleted
-                    ? 'line-through text-slate-400 dark:text-slate-500 opacity-80'
-                    : 'text-slate-900 dark:text-slate-100'
-                }`}>
-                  {task.title}
-                </h2>
+                <input
+                  type="text"
+                  value={task.title}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (handleUpdateTask) handleUpdateTask(task.id, { title: val });
+                  }}
+                  placeholder="Task Title..."
+                  className={`w-full text-base font-bold leading-snug bg-transparent border-b border-transparent hover:border-slate-300 focus:border-brand focus:outline-none transition-colors ${
+                    isTaskCompleted
+                      ? 'line-through text-slate-400 dark:text-slate-500 opacity-80'
+                      : 'text-slate-900 dark:text-slate-100'
+                  }`}
+                />
                 {isTaskCompleted && (
                   <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                     <CheckCircle2 className="w-3 h-3 text-emerald-600" />
@@ -185,50 +231,75 @@ export function TaskDetailDrawer({
               {/* Status Select */}
               <div>
                 <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-1">Status</span>
-                <select
+                <StatusSelect
                   value={task.status}
-                  onChange={(e) => onUpdateTaskStatus(task.id, e.target.value)}
-                  className={`w-full px-2 py-1 border rounded-sm text-xs font-medium focus:outline-none focus:border-brand transition-colors ${
-                    isTaskCompleted
-                      ? 'bg-emerald-50/60 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800'
-                      : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-                  }`}
+                  onChange={(newStatus) => onUpdateTaskStatus(task.id, newStatus)}
+                  options={taskStatusesList}
+                  size="sm"
+                />
+              </div>
+
+              {/* Priority Select */}
+              <div>
+                <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-1">Priority</span>
+                <select
+                  value={task.priority || 'Medium'}
+                  onChange={(e) => {
+                    if (handleUpdateTask) handleUpdateTask(task.id || task._id, { priority: e.target.value });
+                  }}
+                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-brand"
                 >
-                  {!taskStatusesList.some((s) => s.name === task.status) && (
-                    <option value={task.status}>{task.status}</option>
-                  )}
-                  {taskStatusesList.map((st) => (
-                    <option key={st.id || st.name} value={st.name}>
-                      {st.name} {st.marksAsCompleted ? '✓' : ''}
-                    </option>
-                  ))}
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                  <option value="Urgent">Urgent</option>
                 </select>
               </div>
 
-              {/* Priority */}
+              {/* Assignee Select */}
               <div>
-                <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-1">Priority</span>
-                <div className="py-1">
-                  <PriorityBadge priority={task.priority} />
-                </div>
-              </div>
-
-              {/* Assignee */}
-              <div>
-                <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-1">Assignee</span>
-                <div className="flex items-center gap-1.5 py-0.5">
-                  <UserAvatar user={assignee} size="xs" />
-                  <span className="font-medium text-slate-800 dark:text-slate-200 truncate">{assignee.name}</span>
-                </div>
+                <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-1">
+                  Assignee <span className="text-brand font-normal">(Squad)</span>
+                </span>
+                <select
+                  value={task.assignedTo || ''}
+                  onChange={(e) => {
+                    if (handleUpdateTask) handleUpdateTask(task.id || task._id, { assignedTo: e.target.value });
+                  }}
+                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-brand"
+                >
+                  <optgroup label="Project Squad Members">
+                    {projectSquadUsers.map((u) => (
+                      <option key={u.id || u._id} value={u.id || u._id}>
+                        {u.name} ({u.role || 'Member'})
+                      </option>
+                    ))}
+                  </optgroup>
+                  {users.some(u => !projectSquadUsers.some(su => (su.id || su._id) === (u.id || u._id))) && (
+                    <optgroup label="Other Workspace Members">
+                      {users
+                        .filter(u => !projectSquadUsers.some(su => (su.id || su._id) === (u.id || u._id)))
+                        .map((u) => (
+                          <option key={u.id || u._id} value={u.id || u._id}>
+                            {u.name} ({u.role || 'Member'})
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                </select>
               </div>
 
               {/* Target Date */}
               <div>
                 <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-1">Target Date</span>
-                <div className="flex items-center gap-1 py-1 text-slate-700 dark:text-slate-300 font-mono">
-                  <Calendar className="w-3 h-3 text-slate-400 dark:text-slate-500" />
-                  <span>{task.targetDate}</span>
-                </div>
+                <input
+                  type="date"
+                  value={task.targetDate || ''}
+                  onChange={(e) => {
+                    if (handleUpdateTask) handleUpdateTask(task.id || task._id, { targetDate: e.target.value });
+                  }}
+                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:border-brand"
+                />
               </div>
             </div>
           </div>
@@ -238,9 +309,15 @@ export function TaskDetailDrawer({
             <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-xs uppercase tracking-wider text-[11px] text-slate-500 dark:text-slate-400">
               Description &amp; Specifications
             </h3>
-            <div className="p-3 bg-slate-50/70 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 rounded-sm text-slate-700 dark:text-slate-300 leading-relaxed text-xs">
-              {task.description}
-            </div>
+            <textarea
+              rows={3}
+              value={task.description || ''}
+              onChange={(e) => {
+                if (handleUpdateTask) handleUpdateTask(task.id || task._id, { description: e.target.value });
+              }}
+              placeholder="Add description..."
+              className="w-full p-3 bg-slate-50/70 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 rounded-sm text-slate-700 dark:text-slate-300 leading-relaxed text-xs focus:outline-none focus:border-brand"
+            />
           </div>
 
           {/* Child Subtasks Section */}

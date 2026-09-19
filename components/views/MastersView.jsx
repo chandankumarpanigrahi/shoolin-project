@@ -24,7 +24,7 @@ import {
   Sparkles,
   Layers,
   UserCheck,
-  Crown,
+  Camera,
   Palette,
   PlayCircle,
   AlertOctagon,
@@ -146,7 +146,7 @@ export function MastersView() {
     name: '',
     email: '',
     role: 'User',
-    department: 'Frontend Engineering',
+    department: 'Executive Operations',
     phone: '',
     status: 'Active',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
@@ -311,24 +311,24 @@ export function MastersView() {
   const [depSearch, setDepSearch] = useState('');
   const [depsList, setDepsList] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('pulsepm_master_deps_v2');
+      const saved = localStorage.getItem('pulsepm_master_deps_v4');
       if (saved) {
         try { return JSON.parse(saved); } catch (e) { }
       }
     }
     return [
-      { id: 'dep-1', code: 'EXEC', name: 'Executive & Tech Lead', lead: 'Alex Rivera', members: 2, status: 'Active' },
-      { id: 'dep-2', code: 'OPS', name: 'Project Operations', lead: 'Sarah Chen', members: 4, status: 'Active' },
-      { id: 'dep-3', code: 'ENG-BE', name: 'Backend Engineering', lead: 'Rahul Sharma', members: 6, status: 'Active' },
-      { id: 'dep-4', code: 'ENG-FE', name: 'Frontend Engineering', lead: 'Marcus Vance', members: 5, status: 'Active' },
-      { id: 'dep-5', code: 'DESIGN', name: 'UI/UX & Product Design', lead: 'Priya Patel', members: 3, status: 'Active' },
-      { id: 'dep-6', code: 'QA-DEVOPS', name: 'QA & DevOps', lead: 'David Kim', members: 4, status: 'Active' },
+      { id: 'dep-1', code: 'EXEC', name: 'Executive Operations', status: 'Active' },
+      { id: 'dep-2', code: 'OPS', name: 'Project Operations', status: 'Active' },
+      { id: 'dep-3', code: 'ENG-BE', name: 'Backend Engineering', status: 'Active' },
+      { id: 'dep-4', code: 'ENG-FE', name: 'Frontend Engineering', status: 'Active' },
+      { id: 'dep-5', code: 'DESIGN', name: 'UI/UX & Product Design', status: 'Active' },
+      { id: 'dep-6', code: 'QA-DEVOPS', name: 'QA & DevOps', status: 'Active' },
     ];
   });
 
   const [isDepModalOpen, setIsDepModalOpen] = useState(false);
   const [editingDep, setEditingDep] = useState(null);
-  const [depForm, setDepForm] = useState({ code: '', name: '', lead: '', members: 0, status: 'Active' });
+  const [depForm, setDepForm] = useState({ code: '', name: '', members: 0, status: 'Active' });
 
   // Persistence helpers
   const saveRoles = (items) => {
@@ -415,7 +415,7 @@ export function MastersView() {
     return depsList.filter((d) => {
       if (depSearch.trim()) {
         const q = depSearch.toLowerCase();
-        return d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q) || d.lead.toLowerCase().includes(q);
+        return d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q);
       }
       return true;
     });
@@ -438,26 +438,10 @@ export function MastersView() {
         role: userForm.role,
         department: userForm.department,
         phone: userForm.phone.trim(),
-        status: userForm.status
+        status: userForm.status,
+        avatar: userForm.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80'
       };
       if (handleUpdateUser) handleUpdateUser(updated);
-
-      // Handle two-way Department <-> TL synchronization
-      if (userForm.isDepartmentLead) {
-        const nextDeps = depsList.map((d) => {
-          if (d.name === userForm.department) {
-            return { ...d, lead: trimmedName };
-          }
-          if (d.lead === editingUser.name && d.name !== userForm.department) {
-            return { ...d, lead: 'Unassigned' };
-          }
-          return d;
-        });
-        saveDeps(nextDeps);
-      } else if (depsList.some((d) => d.name === userForm.department && d.lead === editingUser.name)) {
-        const nextDeps = depsList.map((d) => (d.name === userForm.department ? { ...d, lead: 'Unassigned' } : d));
-        saveDeps(nextDeps);
-      }
     } else {
       const newUser = {
         id: 'usr-' + Date.now(),
@@ -469,15 +453,10 @@ export function MastersView() {
         activeTasks: 0,
         projectsCount: 0,
         status: userForm.status,
-        avatar: userForm.avatar,
+        avatar: userForm.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
         lastActive: 'Just now'
       };
       if (handleAddUser) handleAddUser(newUser);
-
-      if (userForm.isDepartmentLead) {
-        const nextDeps = depsList.map((d) => (d.name === userForm.department ? { ...d, lead: trimmedName } : d));
-        saveDeps(nextDeps);
-      }
     }
     setIsUserModalOpen(false);
     setEditingUser(null);
@@ -768,8 +747,6 @@ export function MastersView() {
   };
 
   // =========================================================================
-  // ACTIONS: DEPARTMENTS
-  // =========================================================================
   const handleDepSubmit = (e) => {
     e.preventDefault();
     if (!depForm.name.trim() || !depForm.code.trim()) return;
@@ -778,8 +755,24 @@ export function MastersView() {
     const depLead = depForm.lead ? depForm.lead.trim() : 'Unassigned';
 
     if (editingDep) {
-      const updated = depsList.map((d) => (d.id === editingDep.id ? { ...d, ...depForm, code: depForm.code.toUpperCase().trim(), name: depName, lead: depLead } : d));
+      const oldDepName = editingDep.name;
+      const updated = depsList.map((d) =>
+        d.id === editingDep.id
+          ? { ...d, ...depForm, code: depForm.code.toUpperCase().trim(), name: depName, lead: depLead }
+          : d
+      );
       saveDeps(updated);
+
+      // CASCADE SYNC: If department name changed, update all assigned users dynamically
+      if (oldDepName && oldDepName !== depName) {
+        (users || []).forEach((u) => {
+          if (u.department === oldDepName || u.departmentId === editingDep.id) {
+            if (handleUpdateUser) {
+              handleUpdateUser({ ...u, department: depName, departmentId: editingDep.id });
+            }
+          }
+        });
+      }
     } else {
       const newDep = {
         id: 'dep-' + Date.now(),
@@ -1260,7 +1253,7 @@ export function MastersView() {
                   <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     <th className="py-3 px-4">User Member</th>
                     <th className="py-3 px-4">Email &amp; Phone</th>
-                    <th className="py-3 px-4">Department &amp; TL</th>
+                    <th className="py-3 px-4">Department</th>
                     <th className="py-3 px-4">Access Role</th>
                     <th className="py-3 px-4">Status State</th>
                     <th className="py-3 px-4 text-right">Actions</th>
@@ -1276,8 +1269,6 @@ export function MastersView() {
                   ) : (
                     filteredUsers.map((u) => {
                       const isCurrent = u.id === currentUser?.id;
-                      const deptInfo = depsList.find((d) => d.name === u.department);
-                      const isDeptTL = deptInfo && deptInfo.lead === u.name;
 
                       return (
                         <tr key={u.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
@@ -1306,20 +1297,7 @@ export function MastersView() {
                           </td>
 
                           <td className="py-3 px-4 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-slate-800 dark:text-slate-200 font-semibold">{u.department}</span>
-                              {isDeptTL && (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded text-[10px] font-bold">
-                                  <Crown className="w-2.5 h-2.5" />
-                                  <span>Dept TL</span>
-                                </span>
-                              )}
-                            </div>
-                            {!isDeptTL && deptInfo?.lead && deptInfo.lead !== 'Unassigned' && (
-                              <div className="text-[11px] text-slate-400 mt-0.5">
-                                TL: <span className="font-medium text-slate-600 dark:text-slate-300">{deptInfo.lead}</span>
-                              </div>
-                            )}
+                            <span className="text-slate-800 dark:text-slate-200 font-semibold">{u.department}</span>
                           </td>
 
                           <td className="py-3 px-4 whitespace-nowrap">
@@ -1337,16 +1315,14 @@ export function MastersView() {
                                 type="button"
                                 onClick={() => {
                                   setEditingUser(u);
-                                  const isLeadOfDept = depsList.some((d) => d.name === u.department && d.lead === u.name);
                                   setUserForm({
                                     name: u.name || '',
                                     email: u.email || '',
                                     role: u.role || 'User',
-                                    department: u.department || 'Frontend Engineering',
+                                    department: u.department || depsList[0]?.name || 'Executive Operations',
                                     phone: u.phone || '',
                                     status: u.status || 'Active',
-                                    avatar: u.avatar || '',
-                                    isDepartmentLead: isLeadOfDept
+                                    avatar: u.avatar || ''
                                   });
                                   setIsUserModalOpen(true);
                                 }}
@@ -2088,7 +2064,7 @@ export function MastersView() {
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
               <input
                 type="text"
-                placeholder="Search departments by name, code, or lead..."
+                placeholder="Search departments by name or code..."
                 value={depSearch}
                 onChange={(e) => setDepSearch(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs focus:outline-none focus:border-brand text-slate-900 dark:text-slate-100"
@@ -2099,7 +2075,7 @@ export function MastersView() {
               type="button"
               onClick={() => {
                 setEditingDep(null);
-                setDepForm({ code: '', name: '', lead: '', members: 0, status: 'Active' });
+                setDepForm({ code: '', name: '', members: 0, status: 'Active' });
                 setIsDepModalOpen(true);
               }}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-brand hover:bg-brand-hover rounded-lg shadow-xs transition-colors shrink-0"
@@ -2116,7 +2092,6 @@ export function MastersView() {
                   <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     <th className="py-3 px-4">Department Code</th>
                     <th className="py-3 px-4">Department Title</th>
-                    <th className="py-3 px-4">Department Lead</th>
                     <th className="py-3 px-4">Active Headcount</th>
                     <th className="py-3 px-4">Status State</th>
                     <th className="py-3 px-4 text-right">Actions</th>
@@ -2125,7 +2100,7 @@ export function MastersView() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredDeps.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400 font-medium">
+                      <td colSpan={5} className="py-8 text-center text-slate-400 font-medium">
                         No departments found
                       </td>
                     </tr>
@@ -2138,22 +2113,6 @@ export function MastersView() {
 
                         <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                           {d.name}
-                        </td>
-
-                        <td className="py-3 px-4 text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                          {d.lead && d.lead !== 'Unassigned' ? (
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-5 h-5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 flex items-center justify-center text-[10px] font-bold border border-amber-200 dark:border-amber-800">
-                                👑
-                              </span>
-                              <span className="font-semibold text-slate-900 dark:text-slate-100">{d.lead}</span>
-                              <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded font-mono font-medium">
-                                TL
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 italic text-xs">Unassigned</span>
-                          )}
                         </td>
 
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-400 whitespace-nowrap">
@@ -2285,65 +2244,51 @@ export function MastersView() {
                   </label>
                   <select
                     value={userForm.department}
-                    onChange={(e) => {
-                      const newDept = e.target.value;
-                      const deptData = depsList.find((d) => d.name === newDept);
-                      const isAlreadyLead = editingUser && deptData?.lead === editingUser.name;
-                      setUserForm({
-                        ...userForm,
-                        department: newDept,
-                        isDepartmentLead: Boolean(isAlreadyLead)
-                      });
-                    }}
+                    onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand font-medium"
                   >
                     {depsList.map((d) => (
                       <option key={d.id} value={d.name}>
-                        {d.name} {d.lead && d.lead !== 'Unassigned' ? `(TL: ${d.lead})` : ''}
+                        {d.name}
                       </option>
                     ))}
                   </select>
-
-                  {/* Dependent TL Dynamic Indicator */}
-                  {(() => {
-                    const selDept = depsList.find((d) => d.name === userForm.department);
-                    return (
-                      <div className="mt-1.5 p-2 bg-slate-50 dark:bg-slate-800/80 rounded-lg border border-slate-200/70 dark:border-slate-700/70 text-[11px]">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-500 dark:text-slate-400 font-medium">Department TL:</span>
-                          {selDept?.lead && selDept.lead !== 'Unassigned' ? (
-                            <span className="font-bold text-brand flex items-center gap-1">
-                              <Crown className="w-3 h-3 text-amber-500" />
-                              <span>{selDept.lead}</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 italic">No TL currently assigned</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()}
                 </div>
               </div>
 
-              {/* TL Assignment Checkbox */}
-              <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700 flex items-start gap-2.5">
-                <input
-                  type="checkbox"
-                  id="setAsDeptLead"
-                  checked={Boolean(userForm.isDepartmentLead)}
-                  onChange={(e) => setUserForm({ ...userForm, isDepartmentLead: e.target.checked })}
-                  className="mt-0.5 rounded border-slate-300 text-brand focus:ring-brand w-4 h-4 cursor-pointer"
-                />
-                <label htmlFor="setAsDeptLead" className="cursor-pointer text-xs select-none flex-1">
-                  <span className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1">
-                    <Crown className="w-3 h-3 text-amber-500" />
-                    <span>Set as Department Team Lead (TL)</span>
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5 leading-tight">
-                    Designates {userForm.name.trim() || 'this user'} as the official TL for <strong>{userForm.department}</strong> in Department Master.
-                  </span>
+              {/* User Avatar Image URL Field */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700 space-y-1.5">
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Camera className="w-3.5 h-3.5 text-brand" />
+                  <span>Profile Picture / Avatar Image URL</span>
                 </label>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 shrink-0 flex items-center justify-center">
+                    {userForm.avatar ? (
+                      <img
+                        src={userForm.avatar}
+                        alt="Avatar Preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80';
+                        }}
+                      />
+                    ) : (
+                      <span className="text-xs font-bold text-slate-500">IMG</span>
+                    )}
+                  </div>
+                  <input
+                    type="url"
+                    placeholder="https://images.unsplash.com/... or avatar image link"
+                    value={userForm.avatar || ''}
+                    onChange={(e) => setUserForm({ ...userForm, avatar: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-400 block">
+                  Paste any public image URL (Unsplash, Gravatar, GitHub, Cloudinary, etc.) to set user photo.
+                </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -2977,45 +2922,7 @@ export function MastersView() {
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Department Team Lead (TL)
-                  </label>
-                  <span className="text-[10px] text-slate-400">Assigned from users</span>
-                </div>
-                <select
-                  value={depForm.lead || 'Unassigned'}
-                  onChange={(e) => setDepForm({ ...depForm, lead: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand font-medium"
-                >
-                  <option value="Unassigned">-- Unassigned --</option>
-                  <optgroup label="Managers & Team Leads">
-                    {(users || [])
-                      .filter((u) => u.role === 'Manager / TL' || u.role === 'Super Admin' || u.role === 'Admin')
-                      .map((u) => (
-                        <option key={u.id} value={u.name}>
-                          {u.name} ({u.role} - {u.department || 'No dept'})
-                        </option>
-                      ))}
-                  </optgroup>
-                  <optgroup label="All Other Members">
-                    {(users || [])
-                      .filter((u) => u.role !== 'Manager / TL' && u.role !== 'Super Admin' && u.role !== 'Admin')
-                      .map((u) => (
-                        <option key={u.id} value={u.name}>
-                          {u.name} ({u.role} - {u.department || 'No dept'})
-                        </option>
-                      ))}
-                  </optgroup>
-                </select>
-                {depForm.lead && depForm.lead !== 'Unassigned' && (
-                  <p className="text-[11px] text-brand mt-1.5 flex items-center gap-1 font-medium">
-                    <Crown className="w-3 h-3 text-amber-500" />
-                    <span>Designated TL: <strong>{depForm.lead}</strong> will lead {depForm.name || 'this department'}</span>
-                  </p>
-                )}
-              </div>
+
 
               <div>
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">

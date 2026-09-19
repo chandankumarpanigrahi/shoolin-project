@@ -160,13 +160,17 @@ export function RoadmapTimelineView({
     setExpandedProjects(prev => ({ ...prev, [pId]: !prev[pId] }));
   };
 
+  const activeProjects = useMemo(() => {
+    return (projects || []).filter(p => p && !p.isDeleted && p.status !== 'Deleted');
+  }, [projects]);
+
   const filteredProjects = useMemo(() => {
-    return projects.filter(p => {
-      const matchProject = selectedProjectId === 'ALL' || p.id === selectedProjectId;
+    return activeProjects.filter(p => {
+      const matchProject = selectedProjectId === 'ALL' || p.id === selectedProjectId || p._id === selectedProjectId;
       const matchStatus = selectedStatus === 'ALL' || p.status === selectedStatus;
       return matchProject && matchStatus;
     });
-  }, [projects, selectedProjectId, selectedStatus]);
+  }, [activeProjects, selectedProjectId, selectedStatus]);
 
   // Helper to calculate pixel position & width for Gantt bars
   const getBarPixelPos = (startDateIso, endDateIso, overrideStartIdx, overrideEndIdx) => {
@@ -377,9 +381,9 @@ export function RoadmapTimelineView({
             onChange={(e) => setSelectedProjectId(e.target.value)}
             className="px-2.5 py-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xs text-slate-800 dark:text-slate-200 outline-none focus:border-brand font-medium shadow-2xs"
           >
-            <option value="ALL">All Projects ({projects.length})</option>
-            {projects.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+            <option value="ALL">All Projects ({activeProjects.length})</option>
+            {activeProjects.map(p => (
+              <option key={p.id || p._id} value={p.id || p._id}>{p.name}</option>
             ))}
           </select>
 

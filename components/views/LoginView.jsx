@@ -16,10 +16,13 @@ import {
   Moon,
   Sparkles,
   Layers,
-  Check
+  Check,
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { USERS } from '@/data/users';
+import { api } from '@/lib/api';
 
 export function LoginView() {
   const router = useRouter();
@@ -27,20 +30,28 @@ export function LoginView() {
 
   // Authentication mode: 'password' | 'otp-request' | 'otp-verify' | 'otp-success'
   const [authMode, setAuthMode] = useState('password');
-  const [email, setEmail] = useState('alex.rivera@shoolin.com');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [otpEmail, setOtpEmail] = useState('alex.rivera@shoolin.com');
+  const [otpEmail, setOtpEmail] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
-  const [otpDigits, setOtpDigits] = useState(['4', '8', '2', '9', '1', '7']);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [countdown, setCountdown] = useState(30);
   const [canResend, setCanResend] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null);
   const [forgotModalOpen, setForgotModalOpen] = useState(false);
+  const [resetStep, setResetStep] = useState(1); // 1: email, 2: otp + new pass, 3: success
   const [resetEmail, setResetEmail] = useState('');
-  const [resetSent, setResetSent] = useState(false);
+  const [resetOtp, setResetOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState(null);
+  const [resetSuccessMsg, setResetSuccessMsg] = useState(null);
 
   // OTP inputs refs
   const inputRefs = useRef([]);
@@ -61,6 +72,22 @@ export function LoginView() {
     }
     return () => clearInterval(timer);
   }, [authMode, countdown]);
+
+  // Handle remote termination banner
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const notice = sessionStorage.getItem('pulsepm_termination_notice');
+      const params = new URLSearchParams(window.location.search);
+      if (notice) {
+        setErrorMsg(notice);
+        sessionStorage.removeItem('pulsepm_termination_notice');
+      } else if (params.get('reason') === 'terminated' || params.get('terminated') === 'true') {
+        setErrorMsg('Your session was remotely terminated by an administrator. Please sign in again.');
+      }
+    }
+  }, []);
+
+
 
   const handleDigitChange = (index, value) => {
     const val = value.replace(/[^0-9]/g, '').slice(-1);
@@ -93,8 +120,16 @@ export function LoginView() {
     }
   };
 
-  const handleLoginSuccess = (userToLogin) => {
-    const targetUser = userToLogin || USERS.find((u) => u.email === email || u.email === otpEmail) || USERS[0];
+  const handleLoginSuccess = (userToLogin, token, sessionId) => {
+    const targetUser =
+      userToLogin ||
+      USERS.find(
+        (u) =>
+          u.email?.toLowerCase() === email.toLowerCase() ||
+          u.email?.toLowerCase() === otpEmail.toLowerCase()
+      ) ||
+      USERS[0];
+
     setCurrentUser(targetUser);
 
     if (setIsAuthenticated) {
@@ -105,61 +140,182 @@ export function LoginView() {
       try {
         localStorage.setItem('pulsepm_current_user', JSON.stringify(targetUser));
         localStorage.setItem('pulsepm_is_authenticated', 'true');
-      } catch (err) { }
+        if (token) {
+          localStorage.setItem('pulsepm_jwt_token', token);
+        }
+        if (sessionId) {
+          localStorage.setItem('pulsepm_session_id', sessionId);
+        }
+      } catch (err) {}
     }
 
-    setLoadingMessage(`Welcome back, ${targetUser.name}! Loading workspace...`);
+    setLoadingMessage(`Welcome back, ${targetUser.name || 'Member'}! Loading workspace...`);
     setIsLoading(true);
 
     setTimeout(() => {
       router.push('/dashboard');
-    }, 900);
+    }, 600);
   };
 
-  const handlePasswordSubmit = (e) => {
+  const handlePasswordSubmit = async (e) => {
     e.preventDefault();
+    setErrorMsg(null);
+    setFeedbackMsg(null);
+
+    const cleanEmail = email.trim();
+    const cleanPassword = password.trim();
+
+    if (!cleanEmail || !cleanPassword) {
+      setErrorMsg('Please enter both your work email and password.');
+      return;
+    }
+
     setIsLoading(true);
     setLoadingMessage('Authenticating with Shoolin Innovations Limited security gateway...');
-    setTimeout(() => {
+
+    try {
+      const res = await api.auth.login({ email: cleanEmail, password: cleanPassword });
+      if (res && res.user) {
+        handleLoginSuccess(res.user, res.token, res.sessionId);
+      } else {
+        throw new Error('Authentication failed. No user returned.');
+      }
+    } catch (err) {
       setIsLoading(false);
-      handleLoginSuccess();
-    }, 800);
+      setErrorMsg(err.message || 'Invalid email or password. Please verify your credentials.');
+    }
   };
 
-  const handleSendOtp = (e) => {
+  const handleSendOtp = async (e) => {
     e.preventDefault();
+    setErrorMsg(null);
+    setFeedbackMsg(null);
+
+    const cleanEmail = otpEmail.trim();
+    if (!cleanEmail) {
+      setErrorMsg('Please enter your work email address.');
+      return;
+    }
+
     setIsLoading(true);
-    setLoadingMessage(`Generating secure 6-digit OTP for ${otpEmail}...`);
-    setTimeout(() => {
+    setLoadingMessage(`Generating secure 6-digit OTP for ${cleanEmail}...`);
+
+    try {
+      await api.auth.sendOtp(cleanEmail);
       setIsLoading(false);
       setCountdown(30);
       setCanResend(false);
       setAuthMode('otp-verify');
+      setFeedbackMsg(`Verification code dispatched to ${cleanEmail}`);
       setTimeout(() => {
         inputRefs.current[0]?.focus();
       }, 100);
-    }, 600);
+    } catch (err) {
+      setIsLoading(false);
+      setErrorMsg(err.message || 'Failed to dispatch security code.');
+    }
   };
 
-  const handleVerifyOtp = (e) => {
+  const handleVerifyOtp = async (e) => {
     e.preventDefault();
+    setErrorMsg(null);
+    setFeedbackMsg(null);
+
+    const otpCode = otpDigits.join('');
+    if (otpCode.length < 6) {
+      setErrorMsg('Please enter the full 6-digit verification code.');
+      return;
+    }
+
     setIsLoading(true);
     setLoadingMessage('Verifying one-time security code...');
-    setTimeout(() => {
+
+    try {
+      const res = await api.auth.verifyOtp(otpEmail.trim(), otpCode);
       setIsLoading(false);
       setAuthMode('otp-success');
       setTimeout(() => {
-        handleLoginSuccess(USERS[0]);
-      }, 900);
-    }, 700);
+        handleLoginSuccess(res.user, res.token, res.sessionId);
+      }, 800);
+    } catch (err) {
+      setIsLoading(false);
+      setErrorMsg(err.message || 'Invalid or expired OTP code.');
+    }
   };
 
-  const handleResendOtp = () => {
+  const handleRequestResetOtp = async (e) => {
+    e.preventDefault();
+    setResetError(null);
+    setResetSuccessMsg(null);
+
+    const cleanEmail = resetEmail.trim();
+    if (!cleanEmail) {
+      setResetError('Please enter your registered work email address.');
+      return;
+    }
+
+    setResetLoading(true);
+    try {
+      const res = await api.auth.forgotPassword(cleanEmail);
+      setResetStep(2);
+      setResetSuccessMsg(res.message || `Password recovery code dispatched to ${cleanEmail}`);
+    } catch (err) {
+      setResetError(err.message || 'No registered account found for this email address.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleSetNewPassword = async (e) => {
+    e.preventDefault();
+    setResetError(null);
+    setResetSuccessMsg(null);
+
+    const cleanOtp = resetOtp.trim();
+    const cleanPass = newPassword.trim();
+
+    if (!cleanOtp || !cleanPass) {
+      setResetError('Please enter both the 6-digit OTP and your new password.');
+      return;
+    }
+
+    if (cleanPass.length < 6) {
+      setResetError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (cleanPass !== confirmPassword.trim()) {
+      setResetError('Passwords do not match. Please re-enter.');
+      return;
+    }
+
+    setResetLoading(true);
+    try {
+      const res = await api.auth.resetPassword({
+        email: resetEmail.trim(),
+        otp: cleanOtp,
+        newPassword: cleanPass,
+      });
+      setResetStep(3);
+      setResetSuccessMsg(res.message || 'Password successfully configured! You can now log in.');
+    } catch (err) {
+      setResetError(err.message || 'Invalid or expired OTP code.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
     if (!canResend) return;
     setCanResend(false);
     setCountdown(30);
-    setOtpDigits(['5', '1', '9', '3', '0', '7']);
-    setFeedbackMsg(`New 6-digit code sent to ${otpEmail}`);
+    setErrorMsg(null);
+    try {
+      await api.auth.sendOtp(otpEmail.trim());
+      setFeedbackMsg(`New 6-digit code sent to ${otpEmail.trim()}`);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to resend code');
+    }
     setTimeout(() => setFeedbackMsg(null), 3500);
   };
 
@@ -301,6 +457,7 @@ export function LoginView() {
                   onClick={() => {
                     setAuthMode('password');
                     setFeedbackMsg(null);
+                    setErrorMsg(null);
                   }}
                   className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${authMode === 'password'
                     ? 'bg-brand text-white shadow-xs font-bold'
@@ -315,6 +472,7 @@ export function LoginView() {
                   onClick={() => {
                     setAuthMode(authMode === 'otp-verify' ? 'otp-verify' : 'otp-request');
                     setFeedbackMsg(null);
+                    setErrorMsg(null);
                   }}
                   className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${authMode.startsWith('otp')
                     ? 'bg-brand text-white shadow-xs font-bold'
@@ -326,10 +484,28 @@ export function LoginView() {
                 </button>
               </div>
 
-              {/* Feedback Alert if present */}
-              {feedbackMsg && (
-                <div className="p-3 bg-brand/10 border border-brand/30 rounded-xl text-xs text-brand font-medium flex items-center gap-2 animate-in fade-in">
-                  <Sparkles className="w-4 h-4 shrink-0" />
+              {/* Prominent Red Error Alert */}
+              {errorMsg && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/80 rounded-xl text-xs text-rose-700 dark:text-rose-300 font-semibold flex items-center justify-between gap-2.5 animate-in fade-in slide-in-from-top-1 shadow-sm">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                    <span className="break-words">{errorMsg}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setErrorMsg(null)}
+                    className="text-rose-400 hover:text-rose-700 dark:hover:text-rose-200 p-0.5 cursor-pointer shrink-0"
+                    title="Dismiss"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Success/Feedback Alert */}
+              {feedbackMsg && !errorMsg && (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900/80 rounded-xl text-xs text-emerald-700 dark:text-emerald-300 font-medium flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   <span>{feedbackMsg}</span>
                 </div>
               )}
@@ -363,9 +539,16 @@ export function LoginView() {
                       <input
                         type="email"
                         required
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="email@shoolin.com"
-                        className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand font-medium transition-all"
+                        value={email}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          if (errorMsg) setErrorMsg(null);
+                        }}
+                        placeholder="admin@shoolin.co.uk"
+                        className={`w-full pl-10 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none font-medium transition-all ${errorMsg
+                          ? 'border-rose-300 dark:border-rose-800 focus:border-rose-500 focus:ring-1 focus:ring-rose-500'
+                          : 'border-slate-300 dark:border-slate-800 focus:border-brand focus:ring-1 focus:ring-brand'
+                          }`}
                       />
                     </div>
                   </div>
@@ -389,9 +572,16 @@ export function LoginView() {
                       <input
                         type={showPassword ? 'text' : 'password'}
                         required
-                        onChange={(e) => setPassword(e.target.value)}
+                        value={password}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          if (errorMsg) setErrorMsg(null);
+                        }}
                         placeholder="Enter your security password"
-                        className="w-full pl-10 pr-10 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand font-medium transition-all"
+                        className={`w-full pl-10 pr-10 py-2.5 bg-slate-50 dark:bg-slate-950 border rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none font-medium transition-all ${errorMsg
+                          ? 'border-rose-300 dark:border-rose-800 focus:border-rose-500 focus:ring-1 focus:ring-rose-500'
+                          : 'border-slate-300 dark:border-slate-800 focus:border-brand focus:ring-1 focus:ring-brand'
+                          }`}
                       />
                       <button
                         type="button"
@@ -450,9 +640,16 @@ export function LoginView() {
                       <input
                         type="email"
                         required
-                        onChange={(e) => setOtpEmail(e.target.value)}
-                        placeholder="alex.rivera@shoolin.com"
-                        className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand font-medium transition-all"
+                        value={otpEmail}
+                        onChange={(e) => {
+                          setOtpEmail(e.target.value);
+                          if (errorMsg) setErrorMsg(null);
+                        }}
+                        placeholder="admin@shoolin.co.uk"
+                        className={`w-full pl-10 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none font-medium transition-all ${errorMsg
+                          ? 'border-rose-300 dark:border-rose-800 focus:border-rose-500 focus:ring-1 focus:ring-rose-500'
+                          : 'border-slate-300 dark:border-slate-800 focus:border-brand focus:ring-1 focus:ring-brand'
+                          }`}
                       />
                     </div>
                   </div>
@@ -571,67 +768,197 @@ export function LoginView() {
         <p>© 2026 Shoolin Innovations Limited. All rights reserved. Zero-Trust RBAC Governance.</p>
       </footer>
 
-      {/* FORGOT PASSWORD MODAL */}
+      {/* FORGOT PASSWORD / SET PASSWORD MODAL */}
       {forgotModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <KeyRound className="w-4 h-4 text-brand" />
-              <span>Password Recovery</span>
-            </h3>
-            {resetSent ? (
-              <div className="text-center py-4 space-y-2">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
-                <p className="text-xs text-slate-800 dark:text-slate-200 font-medium">Reset instructions dispatched!</p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Check <span className="font-semibold text-slate-900 dark:text-white">{resetEmail}</span> for security link.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setResetSent(false);
-                    setForgotModalOpen(false);
-                  }}
-                  className="mt-2 w-full py-2 bg-brand text-white text-xs font-bold rounded-xl"
-                >
-                  Close
-                </button>
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setResetSent(true);
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-brand" />
+                <span>{resetStep === 1 ? 'Password Recovery' : resetStep === 2 ? 'Configure New Password' : 'Password Configured'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotModalOpen(false);
+                  setResetStep(1);
+                  setResetError(null);
+                  setResetSuccessMsg(null);
                 }}
-                className="space-y-3"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1"
               >
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Enter your registered work email to receive password reset instructions.
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Error Feedback */}
+            {resetError && (
+              <div className="p-2.5 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 rounded-xl text-xs text-rose-700 dark:text-rose-300 font-medium flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                <span>{resetError}</span>
+              </div>
+            )}
+
+            {/* Info / Success Feedback */}
+            {resetSuccessMsg && resetStep === 2 && (
+              <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 rounded-xl text-xs text-emerald-700 dark:text-emerald-300 font-medium flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+                <span>{resetSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* STEP 1: REQUEST OTP */}
+            {resetStep === 1 && (
+              <form onSubmit={handleRequestResetOtp} className="space-y-4">
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Enter your registered work email address. We will dispatch a 6-digit verification code to set your new security password.
                 </p>
-                <input
-                  type="email"
-                  required
-                  value={resetEmail}
-                  onChange={(e) => setResetEmail(e.target.value)}
-                  placeholder="name@shoolin.com"
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-brand"
-                />
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Work Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="email"
+                      required
+                      value={resetEmail}
+                      onChange={(e) => {
+                        setResetEmail(e.target.value);
+                        if (resetError) setResetError(null);
+                      }}
+                      placeholder="name@shoolin.co.uk"
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-brand font-medium"
+                    />
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-end gap-2 pt-2">
                   <button
                     type="button"
                     onClick={() => setForgotModalOpen(false)}
-                    className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    className="px-3.5 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-1.5 bg-brand hover:bg-brand-hover text-white text-xs font-bold rounded-xl shadow-xs"
+                    disabled={resetLoading}
+                    className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
-                    Send Reset Link
+                    {resetLoading ? 'Sending...' : 'Send Verification OTP'}
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* STEP 2: VERIFY OTP AND SET PASSWORD */}
+            {resetStep === 2 && (
+              <form onSubmit={handleSetNewPassword} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    6-Digit Verification Code
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={resetOtp}
+                    onChange={(e) => {
+                      setResetOtp(e.target.value);
+                      if (resetError) setResetError(null);
+                    }}
+                    placeholder="e.g. 123456"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold tracking-widest text-slate-900 dark:text-white focus:outline-none focus:border-brand"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    New Security Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      value={newPassword}
+                      onChange={(e) => {
+                        setNewPassword(e.target.value);
+                        if (resetError) setResetError(null);
+                      }}
+                      placeholder="Minimum 6 characters"
+                      className="w-full pl-3.5 pr-10 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-brand font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                    >
+                      {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Confirm New Password
+                  </label>
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      if (resetError) setResetError(null);
+                    }}
+                    placeholder="Re-enter new password"
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-brand font-medium"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setResetStep(1)}
+                    className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 cursor-pointer"
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={resetLoading}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {resetLoading ? 'Updating...' : 'Set & Save Password'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* STEP 3: SUCCESS STATE */}
+            {resetStep === 3 && (
+              <div className="text-center py-4 space-y-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">Password Configured!</h4>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  {resetSuccessMsg || 'Your new security credentials are saved. You can now sign in.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail(resetEmail);
+                    setPassword('');
+                    setForgotModalOpen(false);
+                    setResetStep(1);
+                  }}
+                  className="w-full py-2.5 bg-brand hover:bg-brand-hover text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
+                >
+                  Proceed to Sign In
+                </button>
+              </div>
             )}
           </div>
         </div>

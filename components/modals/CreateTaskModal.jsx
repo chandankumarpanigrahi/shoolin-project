@@ -1,46 +1,121 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Plus, CheckSquare, Calendar, User, Flag, AlertCircle } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { StatusSelect } from '@/components/common/Badges';
+import { resolveUserObject } from '@/components/common/UserAvatar';
 
 export function CreateTaskModal({
   isOpen,
   onClose,
-  projects,
-  users,
+  projects = [],
+  users = [],
   parentTask,
   defaultProjectId,
-  onCreateTask
+  taskToEdit,
+  onCreateTask,
+  onUpdateTask
 }) {
-  const { getTaskStatuses } = useAppContext();
+  const { getTaskStatuses, handleUpdateTask: globalUpdateTask, currentUser } = useAppContext();
   const availableStatuses = (getTaskStatuses ? getTaskStatuses() : []).filter(s => s.status !== 'Inactive');
   const fallbackStatuses = ['Not Started', 'In Progress', 'Review', 'Blocked', 'Completed'];
   const statusOptions = availableStatuses.length > 0 ? availableStatuses.map(s => s.name) : fallbackStatuses;
 
+  const activeProjects = (projects || []).filter(
+    (p) => p && !p.isDeleted && p.status !== 'Deleted'
+  );
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [projectId, setProjectId] = useState(defaultProjectId || projects[0]?.id || '');
+  const [projectId, setProjectId] = useState(defaultProjectId || activeProjects[0]?.id || '');
   const [assignedTo, setAssignedTo] = useState(users[0]?.id || '');
   const [priority, setPriority] = useState('High');
   const [status, setStatus] = useState(statusOptions[0] || 'Not Started');
   const [targetDate, setTargetDate] = useState('2026-10-15');
 
+  const selectedProj = useMemo(
+    () => (projects || []).find((p) => p.id === projectId || p._id === projectId || p.code === projectId),
+    [projects, projectId]
+  );
+
+  const projectSquadUsers = useMemo(() => {
+    if (!selectedProj) return users || [];
+    const rawTeam = (selectedProj.teamIds && selectedProj.teamIds.length > 0)
+      ? selectedProj.teamIds
+      : (selectedProj.team && selectedProj.team.length > 0)
+      ? selectedProj.team
+      : [selectedProj.ownerId || selectedProj.owner, selectedProj.managerId || selectedProj.manager].filter(Boolean);
+
+    const resolved = [];
+    const seen = new Set();
+    for (const memberKey of rawTeam) {
+      const u = resolveUserObject(memberKey, users);
+      if (u) {
+        const id = u.id || u._id;
+        if (!seen.has(id)) {
+          seen.add(id);
+          resolved.push(u);
+        }
+      }
+    }
+    return resolved.length > 0 ? resolved : (users || []);
+  }, [selectedProj, users]);
+
   useEffect(() => {
-    if (parentTask) {
+    if (!isOpen) return;
+    if (taskToEdit) {
+      setTitle(taskToEdit.title || '');
+      setDescription(taskToEdit.description || '');
+      setProjectId(taskToEdit.projectId || defaultProjectId || projects[0]?.id || '');
+      setAssignedTo(taskToEdit.assignedTo || users[0]?.id || '');
+      setPriority(taskToEdit.priority || 'High');
+      setStatus(taskToEdit.status || 'Not Started');
+      setTargetDate(taskToEdit.targetDate || '2026-10-15');
+    } else if (parentTask) {
       setProjectId(parentTask.projectId);
       setTitle('');
       setDescription('');
-    } else if (defaultProjectId) {
-      setProjectId(defaultProjectId);
+      setAssignedTo(users[0]?.id || '');
+      setPriority('High');
+      setStatus(statusOptions[0] || 'Not Started');
+      setTargetDate('2026-10-15');
+    } else {
+      if (defaultProjectId) setProjectId(defaultProjectId);
+      setTitle('');
+      setDescription('');
+      setAssignedTo(users[0]?.id || '');
+      setPriority('High');
+      setStatus(statusOptions[0] || 'Not Started');
+      setTargetDate('2026-10-15');
     }
-  }, [parentTask, defaultProjectId, isOpen]);
+  }, [taskToEdit, parentTask, defaultProjectId, isOpen, projects, users]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!title.trim()) return;
+
+    if (taskToEdit) {
+      const targetId = taskToEdit.id || taskToEdit._id;
+      const updates = {
+        title: title.trim(),
+        description: description.trim() || 'No extended description provided.',
+        projectId,
+        assignedTo,
+        priority,
+        status,
+        targetDate,
+      };
+      if (onUpdateTask) {
+        onUpdateTask(targetId, updates);
+      } else if (globalUpdateTask) {
+        globalUpdateTask(targetId, updates);
+      }
+      onClose();
+      return;
+    }
 
     // Generate hierarchical code
     let newCode = "TSK-" + Math.floor(100 + Math.random() * 900);
@@ -64,11 +139,11 @@ export function CreateTaskModal({
       status,
       targetDate,
       createdDate: new Date().toISOString().split('T')[0],
-      createdBy: "usr-1",
+      createdBy: currentUser?.id || currentUser?._id || users[0]?.id || users[0]?._id,
       dependencies: []
     };
 
-    onCreateTask(newTask);
+    if (onCreateTask) onCreateTask(newTask);
     onClose();
     setTitle('');
     setDescription('');
@@ -87,7 +162,7 @@ export function CreateTaskModal({
           <div className="flex items-center gap-2">
             <CheckSquare className="w-4 h-4 text-brand" />
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              {parentTask ? `Create Subtask under ${parentTask.code}` : "Create New Task"}
+              {taskToEdit ? `Edit Task: ${taskToEdit.code}` : parentTask ? `Create Subtask under ${parentTask.code}` : "Create New Task"}
             </h3>
           </div>
           <button
@@ -134,8 +209,8 @@ export function CreateTaskModal({
                 onChange={(e) => setProjectId(e.target.value)}
                 className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs focus:outline-none focus:border-brand bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 disabled:bg-slate-100 dark:disabled:bg-slate-900"
               >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
+                {activeProjects.map((p) => (
+                  <option key={p.id || p._id} value={p.id || p._id}>
                     {p.code} - {p.name}
                   </option>
                 ))}
@@ -143,17 +218,32 @@ export function CreateTaskModal({
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Assignee</label>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Assignee <span className="text-[10px] text-brand font-normal">(Squad First)</span>
+              </label>
               <select
                 value={assignedTo}
                 onChange={(e) => setAssignedTo(e.target.value)}
                 className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs focus:outline-none focus:border-brand bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
               >
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} ({u.role})
-                  </option>
-                ))}
+                <optgroup label="Project Squad Members">
+                  {projectSquadUsers.map((u) => (
+                    <option key={u.id || u._id} value={u.id || u._id}>
+                      {u.name} ({u.role || 'Member'})
+                    </option>
+                  ))}
+                </optgroup>
+                {users.some(u => !projectSquadUsers.some(su => (su.id || su._id) === (u.id || u._id))) && (
+                  <optgroup label="Other Workspace Members">
+                    {users
+                      .filter(u => !projectSquadUsers.some(su => (su.id || su._id) === (u.id || u._id)))
+                      .map((u) => (
+                        <option key={u.id || u._id} value={u.id || u._id}>
+                          {u.name} ({u.role || 'Member'})
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
               </select>
             </div>
           </div>
@@ -175,17 +265,13 @@ export function CreateTaskModal({
 
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Status</label>
-              <select
+              <StatusSelect
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs focus:outline-none focus:border-brand bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-              >
-                {statusOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
+                onChange={setStatus}
+                options={statusOptions}
+                size="sm"
+                className="w-full"
+              />
             </div>
 
             <div>
@@ -223,8 +309,8 @@ export function CreateTaskModal({
               type="submit"
               className="px-4 py-1.5 bg-brand hover:bg-brand-hover active:bg-brand-hover text-white font-semibold rounded-sm shadow-xs transition-colors flex items-center gap-1.5"
             >
-              <Plus className="w-3.5 h-3.5" />
-              {parentTask ? "Create Subtask" : "Create Task"}
+              {taskToEdit ? <CheckSquare className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+              {taskToEdit ? "Save Task Changes" : parentTask ? "Create Subtask" : "Create Task"}
             </button>
           </div>
         </form>

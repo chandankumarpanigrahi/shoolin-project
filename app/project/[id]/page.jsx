@@ -17,6 +17,7 @@ export default function ProjectDetailPage() {
     links,
     selectedProject,
     setSelectedProject,
+    handleOpenEditProject,
     handleSelectTask,
     handleOpenCreateTask,
     handleUpdateTaskStatus,
@@ -27,13 +28,13 @@ export default function ProjectDetailPage() {
 
   // Sync selectedProject from URL param
   useEffect(() => {
-    const found = projects.find((p) => p.id === params.id);
+    const found = projects.find((p) => p.id === params.id || p._id === params.id);
     if (found) {
       setSelectedProject(found);
     }
   }, [params.id, projects, setSelectedProject]);
 
-  const project = projects.find((p) => p.id === params.id) || selectedProject;
+  const project = projects.find((p) => p.id === params.id || p._id === params.id) || selectedProject;
 
   if (!project) {
     return (
@@ -59,7 +60,8 @@ export default function ProjectDetailPage() {
         router.push('/projects');
       }}
       onSelectTask={handleSelectTask}
-      onOpenCreateTask={(parent) => handleOpenCreateTask(parent, project.id)}
+      onEditProject={handleOpenEditProject}
+      onOpenCreateTask={(parent) => handleOpenCreateTask(parent, project.id || project._id)}
       onOpenScheduleMeeting={() => setIsScheduleMeetingOpen(true)}
       onOpenAddDependency={() => setIsAddDependencyOpen(true)}
       onOpenAddLink={() => setIsAddLinkOpen(true)}

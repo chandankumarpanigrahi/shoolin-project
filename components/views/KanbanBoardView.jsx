@@ -14,7 +14,7 @@ import {
   CircleDot
 } from 'lucide-react';
 import { PriorityBadge } from '@/components/common/Badges';
-import { UserAvatar } from '@/components/common/UserAvatar';
+import { UserAvatar, resolveUserObject } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
 
 const COLUMNS = [
@@ -110,8 +110,8 @@ export function KanbanBoardView({
                 </div>
               ) : (
                 colTasks.map((t) => {
-                  const project = projects.find((p) => p.id === t.projectId);
-                  const assignee = users.find((u) => u.id === t.assigneeId || u.id === t.assignedTo);
+                  const project = (projects || []).find((p) => p.id === t.projectId || p._id === t.projectId || p.code === t.projectId);
+                  const assignee = resolveUserObject(t.assigneeId || t.assignedTo, users);
                   const subtasks = tasks.filter((st) => st.parentId === t.id);
                   const isCompleted = isCompletedStatus ? isCompletedStatus(t.status) : t.status === 'Completed';
                   const completedSubtasks = subtasks.filter(s => isCompletedStatus ? isCompletedStatus(s.status) : s.status === 'Completed').length;

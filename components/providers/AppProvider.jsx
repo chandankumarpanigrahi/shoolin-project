@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { PROJECTS as INITIAL_PROJECTS } from '@/data/projects';
 import { INITIAL_TASKS } from '@/data/tasks';
@@ -74,7 +74,23 @@ const getInitialState = (cacheKey, fallback) => {
     const saved = localStorage.getItem(`pulsepm_live_${cacheKey}`);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        if (cacheKey === 'users') {
+          const hasFakeUser = parsed.some(
+            (u) =>
+              u.name === 'Alex Morgan' ||
+              u.name === 'Sarah Connor' ||
+              u.name === 'Priya Patel' ||
+              u.id === 'usr-1' ||
+              u.id === 'usr-chandan'
+          );
+          if (hasFakeUser) {
+            localStorage.removeItem('pulsepm_live_users');
+            return fallback;
+          }
+        }
+        return parsed;
+      }
     }
   } catch (e) {}
   return fallback;
@@ -158,8 +174,17 @@ export function AppProvider({ children }) {
   const [userOverrides, setUserOverrides] = useState({});
   const [accessAuditLog, setAccessAuditLog] = useState([]);
 
+  const [notifications, setNotificationsState] = useState([]);
+
+  const setNotifications = (val) => {
+    setNotificationsState((prev) => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      return next;
+    });
+  };
+
   // Active User & Session
-  const [currentUser, setCurrentUser] = useState(INITIAL_USERS[0]);
+  const [currentUser, setCurrentUser] = useState(INITIAL_USERS[0] || { id: 'admin-1', name: 'Primary Admin', email: 'admin@shoolin.co.uk', role: 'Super Admin' });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authLoaded, setAuthLoaded] = useState(false);
 
@@ -209,9 +234,10 @@ export function AppProvider({ children }) {
             dbRbacMatrix,
             dbUserOverrides,
             dbAuditLogs,
+            dbNotifications,
           ] = await Promise.all([
-            api.projects.getAll().catch(() => null),
-            api.tasks.getAll().catch(() => null),
+            api.projects.getAll({ includeDeleted: true }).catch(() => null),
+            api.tasks.getAll(null, { includeDeletedProjects: true }).catch(() => null),
             api.meetings.getAll().catch(() => null),
             api.dependencies.getAll().catch(() => null),
             api.links.getAll().catch(() => null),
@@ -222,15 +248,51 @@ export function AppProvider({ children }) {
             api.rbac.getMatrix().catch(() => null),
             api.rbac.getUserOverrides().catch(() => null),
             api.rbac.getAuditLog().catch(() => null),
+            api.notifications.getAll().catch(() => null),
           ]);
 
-          if (Array.isArray(dbProjects) && dbProjects.length > 0) setProjects(dbProjects);
-          if (Array.isArray(dbTasks) && dbTasks.length > 0) setTasks(dbTasks);
-          if (Array.isArray(dbMeetings) && dbMeetings.length > 0) setMeetings(dbMeetings);
-          if (Array.isArray(dbDeps) && dbDeps.length > 0) setDependencies(dbDeps);
-          if (Array.isArray(dbLinks) && dbLinks.length > 0) setLinks(dbLinks);
-          if (Array.isArray(dbUsers) && dbUsers.length > 0) setUsers(dbUsers);
-          if (Array.isArray(dbTemplates) && dbTemplates.length > 0) setTemplates(dbTemplates);
+          if (Array.isArray(dbProjects) && dbProjects.length > 0) {
+            const normalizedProjects = dbProjects.map((p) => ({
+              ...p,
+              ownerId: p.ownerId || p.owner,
+              owner: p.ownerId || p.owner,
+              managerId: p.managerId || p.manager,
+              manager: p.managerId || p.manager,
+              teamIds: p.teamIds || p.team || [],
+              team: p.teamIds || p.team || [],
+            }));
+            setProjects(normalizedProjects);
+          }
+          if (Array.isArray(dbTasks) && dbTasks.length > 0) {
+            setTasks(dbTasks);
+          }
+          if (Array.isArray(dbMeetings) && dbMeetings.length > 0) {
+            setMeetings(dbMeetings);
+          }
+          if (Array.isArray(dbDeps) && dbDeps.length > 0) {
+            setDependencies(dbDeps);
+          }
+          if (Array.isArray(dbLinks) && dbLinks.length > 0) {
+            setLinks(dbLinks);
+          }
+          if (Array.isArray(dbUsers) && dbUsers.length > 0) {
+            setUsers(dbUsers);
+            setCurrentUser((prev) => {
+              if (!prev) return dbUsers[0];
+              const match = dbUsers.find(
+                (u) =>
+                  u.id === prev.id ||
+                  u._id === prev.id ||
+                  u._id === prev._id ||
+                  u.email === prev.email ||
+                  (u.name && prev.name && u.name.toLowerCase() === prev.name.toLowerCase())
+              );
+              return match || dbUsers[0];
+            });
+          }
+          if (Array.isArray(dbTemplates) && dbTemplates.length > 0) {
+            setTemplates(dbTemplates);
+          }
           if (Array.isArray(dbStatuses) && dbStatuses.length > 0) setMasterStatuses(dbStatuses);
           if (Array.isArray(dbRoles) && dbRoles.length > 0) setRolesList(dbRoles);
           if (dbRbacMatrix && typeof dbRbacMatrix === 'object' && Object.keys(dbRbacMatrix).length > 0) {
@@ -242,13 +304,15 @@ export function AppProvider({ children }) {
           if (Array.isArray(dbAuditLogs) && dbAuditLogs.length > 0) {
             setAccessAuditLog(dbAuditLogs);
           }
+          if (Array.isArray(dbNotifications)) {
+            setNotifications(dbNotifications);
+          }
         } catch (e) {
           console.warn('MongoDB connection fallback to local cache:', e);
         }
       };
 
       loadLiveMongoDBData();
-      const syncInterval = setInterval(loadLiveMongoDBData, 5000);
 
       // Multi-device Instant Real-Time WebSocket Synchronization Engine
       const unsubProjectCreated = subscribeToRealtimeEvent('project_created', (newProj) => {
@@ -286,11 +350,49 @@ export function AppProvider({ children }) {
       });
 
       const unsubMeetingCreated = subscribeToRealtimeEvent('meeting_created', (newMeeting) => {
-        setMeetings((prev) => [newMeeting, ...prev.filter((m) => m.id !== newMeeting.id)]);
+        setMeetings((prev) => [newMeeting, ...prev.filter((m) => m.id !== newMeeting.id && m._id !== newMeeting._id)]);
+      });
+
+      const unsubMeetingUpdated = subscribeToRealtimeEvent('meeting_updated', (updatedMeeting) => {
+        setMeetings((prev) =>
+          prev.map((m) => (m.id === updatedMeeting.id || m._id === updatedMeeting._id ? { ...m, ...updatedMeeting } : m))
+        );
       });
 
       const unsubMeetingDeleted = subscribeToRealtimeEvent('meeting_deleted', ({ id }) => {
-        setMeetings((prev) => prev.filter((m) => m.id !== id));
+        setMeetings((prev) => prev.filter((m) => m.id !== id && m._id !== id));
+      });
+
+      const unsubNotificationReceived = subscribeToRealtimeEvent('notification_received', (newNotif) => {
+        setNotifications((prev) => [newNotif, ...prev.filter((n) => n.id !== newNotif.id && n._id !== newNotif._id)]);
+      });
+
+      const unsubDepCreated = subscribeToRealtimeEvent('dependency_created', (newDep) => {
+        setDependencies((prev) => [newDep, ...prev.filter((d) => d.id !== newDep.id && d._id !== newDep._id)]);
+      });
+
+      const unsubDepUpdated = subscribeToRealtimeEvent('dependency_updated', (updatedDep) => {
+        setDependencies((prev) =>
+          prev.map((d) => (d.id === updatedDep.id || d._id === updatedDep._id ? { ...d, ...updatedDep } : d))
+        );
+      });
+
+      const unsubLinkCreated = subscribeToRealtimeEvent('link_created', (newLink) => {
+        setLinks((prev) => [newLink, ...prev.filter((l) => l.id !== newLink.id && l._id !== newLink._id)]);
+      });
+
+      const unsubLinkUpdated = subscribeToRealtimeEvent('link_updated', (updatedLink) => {
+        setLinks((prev) =>
+          prev.map((l) => (l.id === updatedLink.id || l._id === updatedLink._id ? { ...l, ...updatedLink } : l))
+        );
+      });
+
+      const unsubLinkDeleted = subscribeToRealtimeEvent('link_deleted', ({ id }) => {
+        setLinks((prev) => prev.filter((l) => l.id !== id && l._id !== id));
+      });
+
+      const unsubTemplateCreated = subscribeToRealtimeEvent('template_created', (newTmpl) => {
+        setTemplates((prev) => [newTmpl, ...prev.filter((t) => t.id !== newTmpl.id && t._id !== newTmpl._id)]);
       });
 
       const unsubRbacMatrix = subscribeToRealtimeEvent('rbac_matrix_updated', ({ roleName, permissions }) => {
@@ -340,8 +442,33 @@ export function AppProvider({ children }) {
       }
       setAuthLoaded(true);
 
+      const handleStorageChange = (e) => {
+        if (!e.key || !e.newValue) return;
+        try {
+          if (e.key === 'pulsepm_live_projects') setProjectsState(JSON.parse(e.newValue));
+          else if (e.key === 'pulsepm_live_tasks') setTasksState(JSON.parse(e.newValue));
+          else if (e.key === 'pulsepm_live_users') setUsersState(JSON.parse(e.newValue));
+          else if (e.key === 'pulsepm_live_meetings') setMeetingsState(JSON.parse(e.newValue));
+          else if (e.key === 'pulsepm_live_dependencies') setDependenciesState(JSON.parse(e.newValue));
+          else if (e.key === 'pulsepm_live_links') setLinksState(JSON.parse(e.newValue));
+          else if (e.key === 'pulsepm_live_templates') setTemplatesState(JSON.parse(e.newValue));
+          else if (e.key === 'pulsepm_is_authenticated') setIsAuthenticated(e.newValue === 'true');
+          else if (e.key === 'pulsepm_session_terminated_broadcast') {
+            const data = JSON.parse(e.newValue);
+            const mySessId = localStorage.getItem('pulsepm_session_id');
+            if (data.allOthers && mySessId !== data.exceptSessionId) {
+              logout('Your session was remotely terminated by an administrator.');
+            } else if (data.sessionId && data.sessionId === mySessId) {
+              logout('Your session was remotely terminated by an administrator.');
+            }
+          }
+        } catch (err) {}
+      };
+
+      window.addEventListener('storage', handleStorageChange);
+
       return () => {
-        clearInterval(syncInterval);
+        window.removeEventListener('storage', handleStorageChange);
         unsubProjectCreated();
         unsubProjectUpdated();
         unsubProjectDeleted();
@@ -351,6 +478,12 @@ export function AppProvider({ children }) {
         unsubTaskDeleted();
         unsubMeetingCreated();
         unsubMeetingDeleted();
+        unsubDepCreated();
+        unsubDepUpdated();
+        unsubLinkCreated();
+        unsubLinkUpdated();
+        unsubLinkDeleted();
+        unsubTemplateCreated();
         unsubUserCreated();
         unsubUserUpdated();
         unsubUserDeleted();
@@ -363,13 +496,78 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  const logout = () => {
+  const logout = (reason = null) => {
     setIsAuthenticated(false);
     try {
       localStorage.removeItem('pulsepm_is_authenticated');
+      localStorage.removeItem('pulsepm_jwt_token');
+      localStorage.removeItem('pulsepm_current_user');
+      localStorage.removeItem('pulsepm_session_id');
+      if (reason && typeof window !== 'undefined') {
+        sessionStorage.setItem('pulsepm_termination_notice', reason);
+      }
     } catch (e) {}
-    router.push('/login');
+    if (reason && typeof window !== 'undefined') {
+      showError('Session Ended', reason);
+    }
+    router.push('/login?reason=terminated');
   };
+
+  // Active session liveness verification (auto-detect remote termination or 30-day expiry)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let lastCheckTime = 0;
+    let isChecking = false;
+
+    const checkCurrentSession = async (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastCheckTime < 1500) return; // throttle to 1.5s
+      if (isChecking) return;
+
+      const sessId = typeof window !== 'undefined' ? localStorage.getItem('pulsepm_session_id') : null;
+      if (!sessId) return;
+
+      isChecking = true;
+      lastCheckTime = now;
+
+      try {
+        const res = await api.sessions.check(sessId);
+        if (res && res.active === false) {
+          logout('Your session was remotely terminated by an administrator or has expired.');
+        }
+      } catch (err) {
+        if (err?.message?.includes('401') || err?.message?.includes('terminated') || err?.message?.includes('expired')) {
+          logout('Your session was remotely terminated by an administrator or has expired.');
+        }
+      } finally {
+        isChecking = false;
+      }
+    };
+
+    // Instant verification on mount and rapid check every 2 seconds for immediate termination
+    checkCurrentSession(true);
+    const interval = setInterval(() => checkCurrentSession(true), 2000);
+
+    // Also check on window focus, tab visibility change, and user interaction
+    const onActivity = () => checkCurrentSession(false);
+    window.addEventListener('focus', () => checkCurrentSession(true));
+    const onVisChange = () => {
+      if (document.visibilityState === 'visible') checkCurrentSession(true);
+    };
+    document.addEventListener('visibilitychange', onVisChange);
+    window.addEventListener('click', onActivity);
+    window.addEventListener('keydown', onActivity);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', () => checkCurrentSession(true));
+      document.removeEventListener('visibilitychange', onVisChange);
+      window.removeEventListener('click', onActivity);
+      window.removeEventListener('keydown', onActivity);
+    };
+  }, [isAuthenticated]);
+
 
   const changeBrandColor = (colorPresetOrHex) => {
     setBrandColorState(colorPresetOrHex);
@@ -527,8 +725,11 @@ export function AppProvider({ children }) {
     }
   };
 
+  const [projectToEdit, setProjectToEdit] = useState(null);
+
   const setIsCreateProjectOpen = (open) => {
     setIsCreateProjectOpenState(open);
+    if (!open) setProjectToEdit(null);
     if (open) {
       if (getUrlParam('modal') !== 'create-project') setUrlParam('modal', 'create-project');
     } else {
@@ -609,49 +810,168 @@ export function AppProvider({ children }) {
   // Modal Context State
   const [parentTaskForCreation, setParentTaskForCreation] = useState(null);
   const [defaultProjectIdForTask, setDefaultProjectIdForTask] = useState(null);
+  const [taskToEdit, setTaskToEdit] = useState(null);
   const [selectedTemplateForWorkflow, setSelectedTemplateForWorkflow] = useState(null);
+  const [meetingToEdit, setMeetingToEdit] = useState(null);
+
+  const handleOpenEditMeeting = (meeting) => {
+    setMeetingToEdit(meeting);
+    setIsScheduleMeetingOpen(true);
+  };
 
   // Project Handlers
   const handleSelectProject = (project) => {
     setSelectedProject(project);
-    router.push(`/project/${project.id}`);
+    router.push(`/project/${project.id || project._id}`);
+  };
+
+  const handleOpenEditProject = (project) => {
+    setProjectToEdit(project);
+    setIsCreateProjectOpen(true);
+  };
+
+  const isProjectAccessibleToUser = (project, user = currentUser) => {
+    if (!project) return false;
+    if (!user) return true;
+    const role = (user.role || '').toLowerCase();
+    if (role.includes('admin') || role === 'super admin') return true;
+
+    const uId = String(user.id || user._id || '').toLowerCase();
+    const uEmail = String(user.email || '').toLowerCase();
+    const uName = String(user.name || '').toLowerCase();
+
+    // Check creator
+    const creator = String(project.createdBy || '').toLowerCase();
+    if (creator && (creator === uId || creator === uEmail)) return true;
+
+    // Check owner
+    const owner = String(project.ownerId || project.owner || '').toLowerCase();
+    if (owner && (owner === uId || owner === uEmail || (uName.includes('chandan') && (owner === 'usr-1' || owner === 'usr-chandan')) || (uName.includes('sasmita') && (owner === 'usr-2' || owner === 'usr-sasmita')))) return true;
+
+    // Check manager
+    const manager = String(project.managerId || project.manager || '').toLowerCase();
+    if (manager && (manager === uId || manager === uEmail || (uName.includes('chandan') && (manager === 'usr-1' || manager === 'usr-chandan')) || (uName.includes('sasmita') && (manager === 'usr-2' || manager === 'usr-sasmita')))) return true;
+
+    // Check teamIds / squad
+    const team = (project.teamIds || project.team || []).map(t => String(t).toLowerCase());
+    if (team.includes(uId) || team.includes(uEmail)) return true;
+    if (uName.includes('chandan') && (team.includes('usr-1') || team.includes('usr-chandan'))) return true;
+    if (uName.includes('sasmita') && (team.includes('usr-2') || team.includes('usr-sasmita'))) return true;
+
+    return false;
   };
 
   const handleCreateProject = async (newProj) => {
+    const creatorVal = currentUser?.id || currentUser?._id || 'admin-1';
+    const ownerVal = newProj.ownerId || newProj.owner || creatorVal;
+    const managerVal = newProj.managerId || newProj.manager || ownerVal;
+    const rawTeam = newProj.teamIds || newProj.team || [];
+    const teamVal = Array.from(new Set([creatorVal, ownerVal, managerVal, ...rawTeam])).filter(Boolean);
+
+    const payload = {
+      ...newProj,
+      createdBy: creatorVal,
+      ownerId: ownerVal,
+      owner: ownerVal,
+      managerId: managerVal,
+      manager: managerVal,
+      teamIds: teamVal,
+      team: teamVal,
+    };
+
     try {
-      const created = await api.projects.create(newProj);
-      const projItem = created || newProj;
+      const created = await api.projects.create(payload);
+      const projItem = created
+        ? {
+            ...created,
+            ownerId: created.ownerId || created.owner,
+            owner: created.ownerId || created.owner,
+            managerId: created.managerId || created.manager,
+            manager: created.managerId || created.manager,
+            teamIds: created.teamIds || created.team || [],
+            team: created.teamIds || created.team || [],
+          }
+        : payload;
       setProjects((prev) => [projItem, ...prev]);
+      return projItem;
     } catch (err) {
       console.error('Failed to create project in MongoDB:', err);
-      setProjects((prev) => [newProj, ...prev]);
+      setProjects((prev) => [payload, ...prev]);
+      return payload;
     }
   };
 
   const handleUpdateProject = async (projectId, updates) => {
+    const normalizedUpdates = { ...updates };
+    if (updates.ownerId || updates.owner) {
+      normalizedUpdates.ownerId = updates.ownerId || updates.owner;
+      normalizedUpdates.owner = updates.ownerId || updates.owner;
+    }
+    if (updates.managerId || updates.manager) {
+      normalizedUpdates.managerId = updates.managerId || updates.manager;
+      normalizedUpdates.manager = updates.managerId || updates.manager;
+    }
+    if (updates.teamIds || updates.team) {
+      const t = updates.teamIds || updates.team;
+      normalizedUpdates.teamIds = t;
+      normalizedUpdates.team = t;
+    }
+
     try {
-      await api.projects.update(projectId, updates);
+      await api.projects.update(projectId, normalizedUpdates);
     } catch (err) {
       console.error('Failed to update project in MongoDB:', err);
     }
-    setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, ...updates } : p)));
-    if (selectedProject?.id === projectId) {
-      setSelectedProject((prev) => (prev ? { ...prev, ...updates } : null));
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectId || p._id === projectId ? { ...p, ...normalizedUpdates } : p
+      )
+    );
+    if (selectedProject?.id === projectId || selectedProject?._id === projectId) {
+      setSelectedProject((prev) => (prev ? { ...prev, ...normalizedUpdates } : null));
     }
   };
 
-  const handleDeleteProject = async (projectId) => {
+  const handleDeleteProject = async (projectId, options = {}) => {
+    const isPermanent = options.permanent === true;
     try {
-      await api.projects.delete(projectId);
+      await api.projects.delete(projectId, { permanent: isPermanent });
     } catch (err) {
       console.error('Failed to delete project in MongoDB:', err);
     }
-    setProjects((prev) => prev.filter((p) => p.id !== projectId));
-    setTasks((prev) => prev.filter((t) => t.projectId !== projectId));
-    if (selectedProject?.id === projectId) {
+    if (isPermanent) {
+      setProjects((prev) =>
+        prev.filter((p) => p.id !== projectId && p._id !== projectId && p.code !== projectId)
+      );
+      setTasks((prev) => prev.filter((t) => t.projectId !== projectId));
+    } else {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId || p._id === projectId || p.code === projectId
+            ? { ...p, isDeleted: true, status: 'Deleted', deletedAt: new Date().toISOString() }
+            : p
+        )
+      );
+    }
+    if (selectedProject?.id === projectId || selectedProject?._id === projectId || selectedProject?.code === projectId) {
       setSelectedProject(null);
       router.push('/projects');
     }
+  };
+
+  const handleRestoreProject = async (projectId) => {
+    try {
+      await api.projects.restore(projectId);
+    } catch (err) {
+      console.error('Failed to restore project in MongoDB:', err);
+    }
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectId || p._id === projectId || p.code === projectId
+          ? { ...p, isDeleted: false, status: 'In Progress', deletedAt: null }
+          : p
+      )
+    );
   };
 
   // Task Handlers
@@ -664,8 +984,17 @@ export function AppProvider({ children }) {
   };
 
   const handleOpenCreateTask = (parent = null, projectId = null) => {
+    setTaskToEdit(null);
     setParentTaskForCreation(parent);
     setDefaultProjectIdForTask(projectId || selectedProject?.id || null);
+    setUrlParam('modal', 'create-task');
+    setIsCreateTaskOpen(true);
+  };
+
+  const handleOpenEditTask = (task) => {
+    setTaskToEdit(task);
+    setParentTaskForCreation(null);
+    setDefaultProjectIdForTask(task?.projectId || selectedProject?.id || null);
     setUrlParam('modal', 'create-task');
     setIsCreateTaskOpen(true);
   };
@@ -765,6 +1094,48 @@ export function AppProvider({ children }) {
     }
   };
 
+  const handleUpdateTask = async (taskId, updates) => {
+    try {
+      if (api.tasks && api.tasks.update) {
+        await api.tasks.update(taskId, updates);
+      }
+    } catch (err) {
+      console.error('Failed to update task in MongoDB:', err);
+    }
+    let targetProjectId = null;
+    const updatedTasks = tasks.map((t) => {
+      if (t.id === taskId || t._id === taskId || t.code === taskId) {
+        targetProjectId = updates.projectId || t.projectId;
+        return { ...t, ...updates };
+      }
+      return t;
+    });
+    setTasks(updatedTasks);
+    if (selectedTask && (selectedTask.id === taskId || selectedTask._id === taskId || selectedTask.code === taskId)) {
+      setSelectedTask((prev) => (prev ? { ...prev, ...updates } : null));
+    }
+
+    if (targetProjectId) {
+      const projectTasks = updatedTasks.filter((t) => t.projectId === targetProjectId);
+      if (projectTasks.length > 0) {
+        const completedCount = projectTasks.filter((t) => isCompletedStatus(t.status)).length;
+        const calculatedProgress = Math.round((completedCount / projectTasks.length) * 100);
+        setProjects((prev) => {
+          return prev.map((p) =>
+            p.id === targetProjectId || p._id === targetProjectId || p.code === targetProjectId
+              ? { ...p, progress: calculatedProgress, tasksCount: projectTasks.length }
+              : p
+          );
+        });
+        if (selectedProject && (selectedProject.id === targetProjectId || selectedProject._id === targetProjectId)) {
+          setSelectedProject((prev) =>
+            prev ? { ...prev, progress: calculatedProgress, tasksCount: projectTasks.length } : null
+          );
+        }
+      }
+    }
+  };
+
   const saveMasterStatuses = (updated) => {
     setMasterStatuses(updated);
     if (typeof window !== 'undefined') {
@@ -807,14 +1178,204 @@ export function AppProvider({ children }) {
   };
 
   // Meeting Handlers
-  const handleScheduleMeeting = (newMeeting) => {
-    setMeetings((prev) => {
-      const updated = [newMeeting, ...prev];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pulsepm_meetings_v1', JSON.stringify(updated));
-      }
+  const handleScheduleMeeting = async (newMeeting) => {
+    try {
+      const created = await api.meetings.create(newMeeting);
+      const meetingToAdd = created || newMeeting;
+      setMeetings((prev) => [
+        meetingToAdd,
+        ...prev.filter((m) => m.id !== meetingToAdd.id && m._id !== meetingToAdd._id),
+      ]);
+      return meetingToAdd;
+    } catch (e) {
+      console.error('Failed to create meeting in MongoDB:', e);
+      setMeetings((prev) => [newMeeting, ...prev]);
+      return newMeeting;
+    }
+  };
+
+  const handleUpdateMeeting = async (meetingId, updates) => {
+    try {
+      const updated = await api.meetings.update(meetingId, updates);
+      setMeetings((prev) =>
+        prev.map((m) =>
+          m.id === meetingId || m._id === meetingId ? { ...m, ...updates, ...(updated || {}) } : m
+        )
+      );
       return updated;
-    });
+    } catch (e) {
+      console.error('Failed to update meeting:', e);
+      setMeetings((prev) =>
+        prev.map((m) => (m.id === meetingId || m._id === meetingId ? { ...m, ...updates } : m))
+      );
+    }
+  };
+
+  const handleApproveMeeting = async (meetingId, comments = '') => {
+    try {
+      await api.meetings.approve(meetingId, comments, currentUser?.name);
+    } catch (e) {
+      console.error('Failed to approve meeting:', e);
+    }
+    setMeetings((prev) =>
+      prev.map((m) =>
+        m.id === meetingId || m._id === meetingId
+          ? {
+              ...m,
+              status: 'Approved',
+              comments: comments
+                ? [
+                    ...(m.comments || []),
+                    {
+                      text: comments,
+                      authorName: currentUser?.name || 'Approver',
+                      createdAt: new Date().toISOString(),
+                    },
+                  ]
+                : m.comments || [],
+            }
+          : m
+      )
+    );
+  };
+
+  const handleDeclineMeeting = async (meetingId, comments = '') => {
+    try {
+      await api.meetings.decline(meetingId, comments, currentUser?.name);
+    } catch (e) {
+      console.error('Failed to decline meeting:', e);
+    }
+    setMeetings((prev) =>
+      prev.map((m) =>
+        m.id === meetingId || m._id === meetingId
+          ? {
+              ...m,
+              status: 'Declined',
+              comments: comments
+                ? [
+                    ...(m.comments || []),
+                    {
+                      text: comments,
+                      authorName: currentUser?.name || 'Approver',
+                      createdAt: new Date().toISOString(),
+                    },
+                  ]
+                : m.comments || [],
+            }
+          : m
+      )
+    );
+  };
+
+  const handleRescheduleMeeting = async (meetingId, date, time, comments = '', duration = null) => {
+    try {
+      await api.meetings.reschedule(meetingId, date, time, comments, currentUser?.name, duration);
+    } catch (e) {
+      console.error('Failed to reschedule meeting:', e);
+    }
+    setMeetings((prev) =>
+      prev.map((m) =>
+        m.id === meetingId || m._id === meetingId
+          ? {
+              ...m,
+              date,
+              time,
+              duration: duration || m.duration || '45 mins',
+              status: 'Pending Approval',
+              isArchived: false,
+              archivedAt: null,
+              comments: comments
+                ? [
+                    ...(m.comments || []),
+                    {
+                      text: `Rescheduled: ${comments}`,
+                      authorName: currentUser?.name || 'User',
+                      createdAt: new Date().toISOString(),
+                    },
+                  ]
+                : m.comments || [],
+            }
+          : m
+      )
+    );
+  };
+
+  const handleRestoreMeeting = async (meetingId, date = null, time = null) => {
+    try {
+      await api.meetings.restore(meetingId, { date, time });
+    } catch (e) {
+      console.error('Failed to restore meeting:', e);
+    }
+    setMeetings((prev) =>
+      prev.map((m) =>
+        m.id === meetingId || m._id === meetingId
+          ? {
+              ...m,
+              ...(date ? { date } : {}),
+              ...(time ? { time } : {}),
+              status: date ? 'Pending Approval' : 'Approved',
+              isArchived: false,
+              archivedAt: null,
+            }
+          : m
+      )
+    );
+  };
+
+  const handleDeleteMeeting = async (meetingId) => {
+    try {
+      await api.meetings.delete(meetingId);
+    } catch (e) {
+      console.error('Failed to delete meeting:', e);
+    }
+    setMeetings((prev) => prev.filter((m) => m.id !== meetingId && m._id !== meetingId));
+  };
+
+  const handleAddMeetingComment = async (meetingId, text) => {
+    try {
+      await api.meetings.addComment(meetingId, text, currentUser?.name, currentUser?.id);
+    } catch (e) {
+      console.error('Failed to add comment to meeting:', e);
+    }
+    setMeetings((prev) =>
+      prev.map((m) =>
+        m.id === meetingId || m._id === meetingId
+          ? {
+              ...m,
+              comments: [
+                ...(m.comments || []),
+                {
+                  text,
+                  authorName: currentUser?.name || 'User',
+                  authorId: currentUser?.id || '',
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+            }
+          : m
+      )
+    );
+  };
+
+  // Notification Handlers
+  const markNotificationRead = async (notifId) => {
+    try {
+      await api.notifications.markRead(notifId);
+    } catch (e) {
+      console.error('Failed to mark notification read:', e);
+    }
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notifId || n._id === notifId ? { ...n, unread: false } : n))
+    );
+  };
+
+  const clearAllNotifications = async () => {
+    try {
+      await api.notifications.clearAll(currentUser.id);
+    } catch (e) {
+      console.error('Failed to clear notifications:', e);
+    }
+    setNotifications((prev) => prev.filter((n) => n.userId !== currentUser.id && n.userId !== 'all'));
   };
 
   // Dependency Handlers
@@ -958,7 +1519,7 @@ export function AppProvider({ children }) {
     try {
       const created = await api.users.create(newUser);
       if (created) {
-        setUsers((prev) => prev.map((u) => (u.id === newUser.id ? transform(created) : u)));
+        setUsers((prev) => prev.map((u) => (u.id === newUser.id ? { ...newUser, ...created } : u)));
       }
     } catch (e) {
       console.error('Failed to create user in MongoDB', e);
@@ -1302,10 +1863,31 @@ export function AppProvider({ children }) {
     addAuditEntry('Delete Role', `Deleted custom role "${target.name}"`);
   };
 
+  // Memoized Active Projects & Task Isolation for deleted projects
+  const activeProjects = useMemo(() => {
+    return (projects || []).filter((p) => p && !p.isDeleted && p.status !== 'Deleted');
+  }, [projects]);
+
+  const activeProjectIdsSet = useMemo(() => {
+    const set = new Set();
+    activeProjects.forEach((p) => {
+      if (p.id) set.add(String(p.id));
+      if (p._id) set.add(String(p._id));
+      if (p.code) set.add(String(p.code));
+    });
+    return set;
+  }, [activeProjects]);
+
+  const visibleTasks = useMemo(() => {
+    return (tasks || []).filter((t) => t && (!t.projectId || activeProjectIdsSet.has(String(t.projectId))));
+  }, [tasks, activeProjectIdsSet]);
+
   const value = {
     // Data
     projects,
-    tasks,
+    activeProjects,
+    tasks: visibleTasks,
+    allTasks: tasks,
     users,
     setUsers,
     handleAddUser,
@@ -1314,11 +1896,19 @@ export function AppProvider({ children }) {
     handleToggleUserStatus,
     meetings,
     setMeetings,
+    notifications,
+    markNotificationRead,
+    clearAllNotifications,
+    handleApproveMeeting,
+    handleDeclineMeeting,
+    handleRescheduleMeeting,
+    handleAddMeetingComment,
     dependencies,
     links,
     templates,
     setTemplates,
     myProjects,
+    isProjectAccessibleToUser,
 
     // Theme (Dark / Light & Brand Color)
     theme,
@@ -1373,20 +1963,34 @@ export function AppProvider({ children }) {
     // Modal context
     parentTaskForCreation,
     defaultProjectIdForTask,
+    taskToEdit,
+    setTaskToEdit,
+    handleOpenEditTask,
     selectedTemplateForWorkflow,
     setSelectedTemplateForWorkflow,
+    projectToEdit,
+    setProjectToEdit,
+    handleOpenEditProject,
+    meetingToEdit,
+    setMeetingToEdit,
+    handleOpenEditMeeting,
 
     // Handlers
     handleSelectProject,
     handleCreateProject,
     handleUpdateProject,
     handleDeleteProject,
+    handleRestoreProject,
     handleSelectTask,
     handleOpenCreateTask,
     handleCreateTask,
+    handleUpdateTask,
     handleUpdateTaskStatus,
     handleDeleteTask,
     handleScheduleMeeting,
+    handleUpdateMeeting,
+    handleRestoreMeeting,
+    handleDeleteMeeting,
     handleAddDependency,
     handleUpdateDependencyStatus,
     handleAddLink,
