@@ -353,17 +353,8 @@ export function AppShell({ children }) {
         tasks={tasks}
         users={users}
         currentUser={currentUser}
-        onScheduleMeeting={(m) => {
-          handleScheduleMeeting(m);
-          closeModal(() => setIsScheduleMeetingOpen(false));
-        }}
-        onUpdateMeeting={(id, updates) => {
-          if (handleUpdateMeeting) handleUpdateMeeting(id, updates);
-          closeModal(() => {
-            setIsScheduleMeetingOpen(false);
-            if (setMeetingToEdit) setMeetingToEdit(null);
-          });
-        }}
+        onScheduleMeeting={handleScheduleMeeting}
+        onUpdateMeeting={handleUpdateMeeting}
       />
 
       <AddDependencyModal

@@ -1179,182 +1179,75 @@ export function AppProvider({ children }) {
 
   // Meeting Handlers
   const handleScheduleMeeting = async (newMeeting) => {
-    try {
-      const created = await api.meetings.create(newMeeting);
-      const meetingToAdd = created || newMeeting;
-      setMeetings((prev) => [
-        meetingToAdd,
-        ...prev.filter((m) => m.id !== meetingToAdd.id && m._id !== meetingToAdd._id),
-      ]);
-      return meetingToAdd;
-    } catch (e) {
-      console.error('Failed to create meeting in MongoDB:', e);
-      setMeetings((prev) => [newMeeting, ...prev]);
-      return newMeeting;
-    }
+    const created = await api.meetings.create(newMeeting);
+    setMeetings((prev) => [
+      created,
+      ...prev.filter((m) => m.id !== created.id && m._id !== created._id),
+    ]);
+    return created;
   };
 
   const handleUpdateMeeting = async (meetingId, updates) => {
-    try {
-      const updated = await api.meetings.update(meetingId, updates);
-      setMeetings((prev) =>
-        prev.map((m) =>
-          m.id === meetingId || m._id === meetingId ? { ...m, ...updates, ...(updated || {}) } : m
-        )
-      );
-      return updated;
-    } catch (e) {
-      console.error('Failed to update meeting:', e);
-      setMeetings((prev) =>
-        prev.map((m) => (m.id === meetingId || m._id === meetingId ? { ...m, ...updates } : m))
-      );
-    }
+    const updated = await api.meetings.update(meetingId, updates);
+    setMeetings((prev) =>
+      prev.map((m) => (m.id === meetingId || m._id === meetingId ? updated : m))
+    );
+    return updated;
   };
 
   const handleApproveMeeting = async (meetingId, comments = '') => {
-    try {
-      await api.meetings.approve(meetingId, comments, currentUser?.name);
-    } catch (e) {
-      console.error('Failed to approve meeting:', e);
-    }
+    const updated = await api.meetings.approve(meetingId, comments, currentUser?.name);
     setMeetings((prev) =>
       prev.map((m) =>
-        m.id === meetingId || m._id === meetingId
-          ? {
-              ...m,
-              status: 'Approved',
-              comments: comments
-                ? [
-                    ...(m.comments || []),
-                    {
-                      text: comments,
-                      authorName: currentUser?.name || 'Approver',
-                      createdAt: new Date().toISOString(),
-                    },
-                  ]
-                : m.comments || [],
-            }
-          : m
+        m.id === meetingId || m._id === meetingId ? updated : m
       )
     );
+    return updated;
   };
 
   const handleDeclineMeeting = async (meetingId, comments = '') => {
-    try {
-      await api.meetings.decline(meetingId, comments, currentUser?.name);
-    } catch (e) {
-      console.error('Failed to decline meeting:', e);
-    }
+    const updated = await api.meetings.decline(meetingId, comments, currentUser?.name);
     setMeetings((prev) =>
       prev.map((m) =>
-        m.id === meetingId || m._id === meetingId
-          ? {
-              ...m,
-              status: 'Declined',
-              comments: comments
-                ? [
-                    ...(m.comments || []),
-                    {
-                      text: comments,
-                      authorName: currentUser?.name || 'Approver',
-                      createdAt: new Date().toISOString(),
-                    },
-                  ]
-                : m.comments || [],
-            }
-          : m
+        m.id === meetingId || m._id === meetingId ? updated : m
       )
     );
+    return updated;
   };
 
   const handleRescheduleMeeting = async (meetingId, date, time, comments = '', duration = null) => {
-    try {
-      await api.meetings.reschedule(meetingId, date, time, comments, currentUser?.name, duration);
-    } catch (e) {
-      console.error('Failed to reschedule meeting:', e);
-    }
+    const updated = await api.meetings.reschedule(meetingId, date, time, comments, currentUser?.name, duration);
     setMeetings((prev) =>
       prev.map((m) =>
-        m.id === meetingId || m._id === meetingId
-          ? {
-              ...m,
-              date,
-              time,
-              duration: duration || m.duration || '45 mins',
-              status: 'Pending Approval',
-              isArchived: false,
-              archivedAt: null,
-              comments: comments
-                ? [
-                    ...(m.comments || []),
-                    {
-                      text: `Rescheduled: ${comments}`,
-                      authorName: currentUser?.name || 'User',
-                      createdAt: new Date().toISOString(),
-                    },
-                  ]
-                : m.comments || [],
-            }
-          : m
+        m.id === meetingId || m._id === meetingId ? updated : m
       )
     );
+    return updated;
   };
 
   const handleRestoreMeeting = async (meetingId, date = null, time = null) => {
-    try {
-      await api.meetings.restore(meetingId, { date, time });
-    } catch (e) {
-      console.error('Failed to restore meeting:', e);
-    }
+    const updated = await api.meetings.restore(meetingId, { date, time });
     setMeetings((prev) =>
       prev.map((m) =>
-        m.id === meetingId || m._id === meetingId
-          ? {
-              ...m,
-              ...(date ? { date } : {}),
-              ...(time ? { time } : {}),
-              status: date ? 'Pending Approval' : 'Approved',
-              isArchived: false,
-              archivedAt: null,
-            }
-          : m
+        m.id === meetingId || m._id === meetingId ? updated : m
       )
     );
+    return updated;
   };
 
   const handleDeleteMeeting = async (meetingId) => {
-    try {
-      await api.meetings.delete(meetingId);
-    } catch (e) {
-      console.error('Failed to delete meeting:', e);
-    }
+    await api.meetings.delete(meetingId);
     setMeetings((prev) => prev.filter((m) => m.id !== meetingId && m._id !== meetingId));
   };
 
   const handleAddMeetingComment = async (meetingId, text) => {
-    try {
-      await api.meetings.addComment(meetingId, text, currentUser?.name, currentUser?.id);
-    } catch (e) {
-      console.error('Failed to add comment to meeting:', e);
-    }
+    const updated = await api.meetings.addComment(meetingId, text, currentUser?.name, currentUser?.id);
     setMeetings((prev) =>
       prev.map((m) =>
-        m.id === meetingId || m._id === meetingId
-          ? {
-              ...m,
-              comments: [
-                ...(m.comments || []),
-                {
-                  text,
-                  authorName: currentUser?.name || 'User',
-                  authorId: currentUser?.id || '',
-                  createdAt: new Date().toISOString(),
-                },
-              ],
-            }
-          : m
+        m.id === meetingId || m._id === meetingId ? updated : m
       )
     );
+    return updated;
   };
 
   // Notification Handlers

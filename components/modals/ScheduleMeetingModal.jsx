@@ -4,6 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { X, Video, Calendar, Clock, Link as LinkIcon, Plus, Check, Flag } from 'lucide-react';
 import { UserAvatar } from '@/components/common/UserAvatar';
 
+const getLocalToday = () => {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60 * 1000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+};
+
 export function ScheduleMeetingModal({
   isOpen,
   onClose,
@@ -18,9 +24,12 @@ export function ScheduleMeetingModal({
   const activeProjects = (projects || []).filter(
     (p) => p && !p.isDeleted && p.status !== 'Deleted'
   );
+  const activeUsers = (users || []).filter((user) => user && user.status !== 'Inactive' && user.status !== 'Disabled');
+  const currentUserId = currentUser?.id || currentUser?._id || '';
+  const eligibleApprovers = activeUsers.filter((user) => (user.id || user._id) !== currentUserId);
 
   const [title, setTitle] = useState('');
-  const [date, setDate] = useState('2026-09-18');
+  const [date, setDate] = useState(getLocalToday);
   const [time, setTime] = useState('11:00');
   const [duration, setDuration] = useState('45 mins');
   const [priority, setPriority] = useState('Medium');
@@ -29,16 +38,18 @@ export function ScheduleMeetingModal({
   const [description, setDescription] = useState('');
   const [approverId, setApproverId] = useState('');
   const [participants, setParticipants] = useState(() => [
-    currentUser?.id || currentUser?._id || 'admin-1',
-  ]);
+    currentUser?.id || currentUser?._id,
+  ].filter(Boolean));
   const [optionalMembers, setOptionalMembers] = useState([]);
   const [meetUrl, setMeetUrl] = useState('');
+  const [formError, setFormError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Populate form if meetingToEdit is provided or reset
   useEffect(() => {
     if (meetingToEdit) {
       setTitle(meetingToEdit.title || '');
-      setDate(meetingToEdit.date || '2026-09-18');
+      setDate(meetingToEdit.date || getLocalToday());
       setTime(meetingToEdit.time || '11:00');
       setDuration(meetingToEdit.duration || '45 mins');
       setPriority(meetingToEdit.priority || 'Medium');
@@ -48,8 +59,8 @@ export function ScheduleMeetingModal({
       setApproverId(meetingToEdit.approverId || '');
       setParticipants(
         meetingToEdit.participants || meetingToEdit.participantIds || [
-          currentUser?.id || currentUser?._id || 'admin-1',
-        ]
+          currentUser?.id || currentUser?._id,
+        ].filter(Boolean)
       );
       setOptionalMembers(
         meetingToEdit.optionalMembers || meetingToEdit.optionalMemberIds || []
@@ -57,7 +68,7 @@ export function ScheduleMeetingModal({
       setMeetUrl(meetingToEdit.meetUrl || '');
     } else {
       setTitle('');
-      setDate('2026-09-18');
+      setDate(getLocalToday());
       setTime('11:00');
       setDuration('45 mins');
       setPriority('Medium');
@@ -65,17 +76,16 @@ export function ScheduleMeetingModal({
       setRelatedTaskId('');
       setDescription('');
       const defaultApprover =
-        users.find((u) => u.role === 'Super Admin' || u.role === 'Project Manager')?.id ||
-        users.find((u) => u.role === 'Super Admin' || u.role === 'Project Manager')?._id ||
-        users[0]?.id ||
-        users[0]?._id ||
+        eligibleApprovers.find((u) => /admin|manager|approver/i.test(u.role || ''))?.id ||
+        eligibleApprovers.find((u) => /admin|manager|approver/i.test(u.role || ''))?._id ||
         '';
       setApproverId(defaultApprover);
-      setParticipants([currentUser?.id || currentUser?._id || 'admin-1']);
+      setParticipants([currentUser?.id || currentUser?._id].filter(Boolean));
       setOptionalMembers([]);
       setMeetUrl('');
     }
-  }, [meetingToEdit, isOpen, currentUser]);
+    setFormError('');
+  }, [meetingToEdit, isOpen, currentUser, users, projects]);
 
   if (!isOpen) return null;
 
@@ -97,7 +107,7 @@ export function ScheduleMeetingModal({
     }
   };
 
-  const invitedCount = users.filter(isParticipantSelected).length;
+  const invitedCount = activeUsers.filter(isParticipantSelected).length;
 
   const toggleOptionalMember = (userId) => {
     if (optionalMembers.includes(userId)) {
@@ -107,57 +117,64 @@ export function ScheduleMeetingModal({
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim()) return;
-
-    if (meetingToEdit) {
-      const updates = {
-        title: title.trim(),
-        approverId,
-        participants,
-        participantIds: participants,
-        optionalMembers,
-        optionalMemberIds: optionalMembers,
-        meetUrl: meetUrl.trim() || '',
-        date,
-        time,
-        duration,
-        priority,
-        projectId,
-        relatedTaskId: relatedTaskId || null,
-        description: description.trim() || 'No agenda provided.',
-      };
-      if (onUpdateMeeting) {
-        onUpdateMeeting(meetingToEdit.id || meetingToEdit._id, updates);
-      }
-    } else {
-      const newMeeting = {
-        id: 'mtg-' + Date.now(),
-        title: title.trim(),
-        requestedBy: currentUser?.id || currentUser?._id || 'admin-1',
-        approverId,
-        participants,
-        participantIds: participants,
-        optionalMembers,
-        optionalMemberIds: optionalMembers,
-        meetUrl: meetUrl.trim() || '',
-        date,
-        time,
-        duration,
-        priority,
-        projectId,
-        relatedTaskId: relatedTaskId || null,
-        description: description.trim() || 'No agenda provided.',
-        status: 'Pending Approval',
-        isArchived: false,
-      };
-
-      if (onScheduleMeeting) {
-        onScheduleMeeting(newMeeting);
-      }
+    setFormError('');
+    if (!title.trim()) {
+      setFormError('Enter a meeting title.');
+      return;
     }
-    onClose();
+    if (!approverId) {
+      setFormError('Select a designated approver.');
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      if (meetingToEdit) {
+        const updates = {
+          title: title.trim(),
+          approverId,
+          participants,
+          participantIds: participants,
+          optionalMembers,
+          optionalMemberIds: optionalMembers,
+          meetUrl: meetUrl.trim() || '',
+          date,
+          time,
+          duration,
+          priority,
+          projectId,
+          relatedTaskId: relatedTaskId || null,
+          description: description.trim() || 'No agenda provided.',
+        };
+        await onUpdateMeeting?.(meetingToEdit.id || meetingToEdit._id, updates);
+      } else {
+        const newMeeting = {
+          title: title.trim(),
+          approverId,
+          participants,
+          participantIds: participants,
+          optionalMembers,
+          optionalMemberIds: optionalMembers,
+          meetUrl: meetUrl.trim() || '',
+          date,
+          time,
+          duration,
+          priority,
+          projectId,
+          relatedTaskId: relatedTaskId || null,
+          description: description.trim() || 'No agenda provided.',
+        };
+        await onScheduleMeeting?.(newMeeting);
+      }
+      onClose();
+    } catch (error) {
+      setFormError(error.message || 'Unable to save this meeting.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -186,6 +203,11 @@ export function ScheduleMeetingModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-3.5 text-xs">
+          {formError && (
+            <div className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
+              {formError}
+            </div>
+          )}
           {/* Meeting Title */}
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -321,14 +343,14 @@ export function ScheduleMeetingModal({
               className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600 font-medium"
             >
               <option value="">Select Approver</option>
-              {users.map((u) => (
+              {eligibleApprovers.map((u) => (
                 <option key={u.id || u._id} value={u.id || u._id}>
                   {u.name} ({u.role})
                 </option>
               ))}
             </select>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Only the creator and this approver can see the meeting until approved.
+              Only the creator and this approver can see the meeting until it is approved.
             </p>
           </div>
 
@@ -341,7 +363,7 @@ export function ScheduleMeetingModal({
               <span className="text-[10px] text-slate-500">Visible to them after approval</span>
             </div>
             <div className="max-h-32 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-sm p-2 grid grid-cols-2 gap-1.5 bg-slate-50/50 dark:bg-slate-800/50">
-              {users.map((u) => {
+              {activeUsers.map((u) => {
                 const isSelected = isParticipantSelected(u);
                 return (
                   <label
@@ -393,10 +415,11 @@ export function ScheduleMeetingModal({
             </button>
             <button
               type="submit"
+              disabled={isSaving}
               className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold rounded-sm transition-colors flex items-center gap-1.5 shadow-sm"
             >
               {meetingToEdit ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-              {meetingToEdit ? 'Save Changes' : 'Schedule Meeting'}
+              {isSaving ? 'Saving...' : meetingToEdit ? 'Save Changes' : 'Schedule Meeting'}
             </button>
           </div>
         </form>
