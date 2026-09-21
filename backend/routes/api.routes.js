@@ -264,13 +264,45 @@ router.post('/meetings', async (req, res) => {
   }
 });
 
+router.put('/meetings/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await Meeting.findByIdAndUpdate(id, req.body, { new: true });
+    if (!updated) return res.status(404).json({ error: 'Meeting not found' });
+    const result = transform(updated);
+    broadcastRealtimeEvent('meeting_updated', result);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.delete('/meetings/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const deleted = await Meeting.findByIdAndDelete(id);
-    if (!deleted) return res.status(404).json({ error: 'Meeting not found' });
+    const isPermanent = req.query.permanent === 'true';
+    const meeting = await Meeting.findById(id);
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+    if (!isPermanent && !meeting.isArchived && meeting.status !== 'Archived') {
+      meeting.isArchived = true;
+      meeting.archivedAt = new Date();
+      meeting.status = 'Archived';
+      await meeting.save();
+      const result = transform(meeting);
+      broadcastRealtimeEvent('meeting_updated', result);
+      return res.json({
+        success: true,
+        archived: true,
+        message: 'Meeting moved to Archive (visible to creator and approver only).',
+        id,
+        meeting: result,
+      });
+    }
+
+    await Meeting.findByIdAndDelete(id);
     broadcastRealtimeEvent('meeting_deleted', { id });
-    res.json({ success: true, id });
+    res.json({ success: true, deleted: true, id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1212,7 +1244,18 @@ router.patch('/meetings/:id/decline', async (req, res) => {
 router.patch('/meetings/:id/reschedule', async (req, res) => {
   try {
     const { id } = req.params;
-    const { date, time, duration, comments } = req.body;
+    const { date, time, duration, comments, approverId } = req.body;
+
+    let approverFields = {};
+    if (approverId) {
+      const approver = await User.findById(approverId).catch(() => null);
+      if (approver) {
+        approverFields = {
+          approverId: String(approver._id),
+          approverName: approver.name,
+        };
+      }
+    }
 
     const updated = await Meeting.findByIdAndUpdate(
       id,
@@ -1220,6 +1263,7 @@ router.patch('/meetings/:id/reschedule', async (req, res) => {
         ...(date ? { date } : {}),
         ...(time ? { time } : {}),
         ...(duration ? { duration } : {}),
+        ...approverFields,
         status: 'Rescheduled',
         ...(comments ? { $push: { comments } } : {}),
       },

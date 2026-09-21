@@ -26,9 +26,10 @@ import {
   Circle
 } from 'lucide-react';
 import { StatusBadge, PriorityBadge, ProjectTypeBadge, StatusSelect } from '@/components/common/Badges';
-import { UserAvatar, AvatarGroup, resolveUserObject } from '@/components/common/UserAvatar';
+import { UserAvatar, AvatarGroup, resolveUserObject, isTaskAssignee } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { useUrlTab } from '@/hooks/useUrlState';
+import { showError } from '@/lib/swal';
 
 export function ProjectDetailView({
   project,
@@ -46,7 +47,7 @@ export function ProjectDetailView({
   onOpenAddLink,
   onUpdateTaskStatus
 }) {
-  const { isCompletedStatus, getTaskStatuses, toggleTaskComplete, handleOpenEditProject, handleOpenEditTask, can } = useAppContext();
+  const { isCompletedStatus, getTaskStatuses, toggleTaskComplete, handleOpenEditProject, handleOpenEditTask, can, currentUser } = useAppContext();
   const [activeTab, setActiveTab] = useUrlTab('tab', 'tasks', [
     'overview',
     'tasks',
@@ -99,7 +100,31 @@ export function ProjectDetailView({
     }
     return false;
   });
-  const projectMeetings = meetings.filter(m => m.projectId === project.id || m.projectId === project._id);
+  const projectMeetings = (meetings || []).filter((m) => {
+    if (m.projectId !== project.id && m.projectId !== project._id) return false;
+    if (!currentUser) return false;
+    const currentId = String(currentUser.id || currentUser._id || '').toLowerCase();
+    const currentEmail = String(currentUser.email || '').toLowerCase();
+    const currentName = String(currentUser.name || '').trim().toLowerCase();
+    const matchesUser = (v) => {
+      if (!v) return false;
+      const s = String(v).trim().toLowerCase();
+      return s === currentId || s === currentEmail || (currentName && s === currentName);
+    };
+    const isCreator = matchesUser(m.requestedBy) || matchesUser(m.requestedByEmail) || matchesUser(m.requestedByName);
+    const isApprover = matchesUser(m.approverId) || matchesUser(m.approverEmail) || matchesUser(m.approverName);
+    const isAttendee = [
+      ...(m.participants || []),
+      ...(m.participantIds || []),
+      ...(m.optionalMembers || []),
+      ...(m.optionalMemberIds || [])
+    ].some(matchesUser);
+    const isArchived = m.isArchived === true || m.status === 'Archived';
+    if (isArchived) return isCreator || isApprover;
+    const isApproved = m.status === 'Approved' || m.status === 'Accepted' || m.status === 'Completed';
+    if (isApproved) return isCreator || isApprover || isAttendee;
+    return isCreator || isApprover;
+  });
   const projectDeps = dependencies.filter(d => d.projectId === project.id || d.projectId === project._id);
   const projectLinks = links.filter(l => l.brand === project.brand || l.brand === 'PMV');
 
@@ -175,6 +200,7 @@ export function ProjectDetailView({
     const assignee = resolveUserObject(task.assignedTo, users) || (users && users[0]) || { name: 'Unassigned', role: 'Member' };
 
     const isCompleted = isCompletedStatus ? isCompletedStatus(task.status) : (task.status === 'Completed');
+    const isAssignee = isTaskAssignee(task, currentUser, users);
 
     return (
       <React.Fragment key={task.id}>
@@ -198,9 +224,30 @@ export function ProjectDetailView({
               <span className="font-mono text-[11px] font-semibold text-brand shrink-0">{task.code}</span>
               <button
                 type="button"
-                onClick={() => toggleTaskComplete ? toggleTaskComplete(task.id) : onUpdateTaskStatus(task.id, isCompleted ? 'In Progress' : 'Completed')}
-                className="p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                title={isCompleted ? "Mark as Incomplete" : "Mark as Completed"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isAssignee) {
+                    showError(
+                      'Access Denied',
+                      `Only the assigned member (${assignee.name}) can change the status of this task.`
+                    );
+                    return;
+                  }
+                  if (toggleTaskComplete) toggleTaskComplete(task.id);
+                  else onUpdateTaskStatus(task.id, isCompleted ? 'In Progress' : 'Completed');
+                }}
+                className={`p-0.5 rounded-full transition-colors ${
+                  isAssignee
+                    ? 'hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
+                    : 'opacity-40 cursor-not-allowed'
+                }`}
+                title={
+                  !isAssignee
+                    ? `Only assigned member (${assignee.name}) can change status`
+                    : isCompleted
+                    ? 'Mark as Incomplete'
+                    : 'Mark as Completed'
+                }
               >
                 {isCompleted ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 hover:text-emerald-600 transition-transform active:scale-95" />
@@ -235,9 +282,20 @@ export function ProjectDetailView({
           <td className="py-2.5 px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
             <StatusSelect
               value={task.status}
-              onChange={(newStatus) => onUpdateTaskStatus(task.id, newStatus)}
+              onChange={(newStatus) => {
+                if (!isAssignee) {
+                  showError(
+                    'Access Denied',
+                    `Only the assigned member (${assignee.name}) can change the status of this task.`
+                  );
+                  return;
+                }
+                onUpdateTaskStatus(task.id, newStatus);
+              }}
               options={taskStatusesList}
               size="xs"
+              disabled={!isAssignee}
+              title={!isAssignee ? `Only assigned member (${assignee.name}) can change task status` : undefined}
             />
           </td>
 

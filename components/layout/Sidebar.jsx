@@ -28,6 +28,7 @@ import { UserAvatar } from '@/components/common/UserAvatar';
 import { RoleBadge } from '@/components/common/Badges';
 import { ROLES } from '@/data/permissions';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { showError } from '@/lib/swal';
 
 export function Sidebar({
   currentUser,
@@ -75,8 +76,16 @@ export function Sidebar({
     { id: 'settings', href: '/settings', label: 'Settings', icon: Settings },
   ];
 
-  const handleNavClick = (href) => {
-    router.push(href);
+  const handleNavClick = (item) => {
+    const hasAccess = item.perm ? can(item.perm) : true;
+    if (!hasAccess) {
+      showError(
+        'Access Denied',
+        `Your current role (${currentUser?.role || 'User'}) does not have permission to access ${item.label}. Contact your Super Administrator for access.`
+      );
+      return;
+    }
+    router.push(item.href);
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       if (setOpen) setOpen(false);
     }
@@ -151,57 +160,51 @@ export function Sidebar({
             Workspace
           </div>
 
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.href);
-            const hasAccess = item.perm ? can(item.perm) : true;
+          {navItems
+            .filter((item) => (item.perm ? can(item.perm) : true))
+            .map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.href);
 
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleNavClick(item.href)}
-                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-sm text-xs font-medium transition-colors ${active
-                  ? 'bg-brand text-white shadow-sm font-semibold'
-                  : hasAccess
-                    ? 'text-slate-300 hover:text-white hover:bg-slate-800/70'
-                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/40 opacity-75'
-                  }`}
-                title={!hasAccess ? `Access restricted by role/overrides: click to view governance` : undefined}
-              >
-                <div className="flex items-center gap-2.5 truncate">
-                  <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-white' : hasAccess ? 'text-slate-400' : 'text-slate-500'}`} />
-                  <span className="truncate">{item.label}</span>
-                </div>
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleNavClick(item)}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-sm text-xs font-medium transition-colors cursor-pointer ${active
+                    ? 'bg-brand text-white shadow-sm font-semibold'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-white' : 'text-slate-400'}`} />
+                    <span className="truncate">{item.label}</span>
+                  </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {!hasAccess && (
-                    <Lock className="w-3 h-3 text-amber-500/80" />
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {item.count && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-sm font-mono ${active ? 'bg-black/20 text-white' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                        {item.count}
+                      </span>
+                    )}
 
-                  {item.count && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-sm font-mono ${active ? 'bg-black/20 text-white' : 'bg-slate-800 text-slate-400'
-                      }`}>
-                      {item.count}
-                    </span>
-                  )}
-
-                  {item.badge && (
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-sm font-semibold ${active
-                      ? 'bg-white/20 text-white'
-                      : item.badge === 'SuperAdmin'
-                        ? 'bg-brand-light/30 text-brand-text border border-brand-border/40'
-                        : item.badge === 'Personal'
-                          ? 'bg-emerald-500/20 text-emerald-300'
-                          : 'bg-amber-500/20 text-amber-300'
-                      }`}>
-                      {item.badge}
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+                    {item.badge && (
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-sm font-semibold ${active
+                        ? 'bg-white/20 text-white'
+                        : item.badge === 'SuperAdmin'
+                          ? 'bg-brand-light/30 text-brand-text border border-brand-border/40'
+                          : item.badge === 'Personal'
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : 'bg-amber-500/20 text-amber-300'
+                        }`}>
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
         </div>
 
         {/* Bottom Section: Profile & Auth */}

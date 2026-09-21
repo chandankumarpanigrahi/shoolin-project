@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Plus, CheckSquare, Calendar, User, Flag, AlertCircle } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { StatusSelect } from '@/components/common/Badges';
-import { resolveUserObject } from '@/components/common/UserAvatar';
+import { resolveUserObject, isTaskAssignee } from '@/components/common/UserAvatar';
+import { showError } from '@/lib/swal';
 
 export function CreateTaskModal({
   isOpen,
@@ -93,19 +94,26 @@ export function CreateTaskModal({
 
   if (!isOpen) return null;
 
+  const isAssignee = taskToEdit ? isTaskAssignee(taskToEdit, currentUser, users) : true;
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!title.trim()) return;
 
     if (taskToEdit) {
       const targetId = taskToEdit.id || taskToEdit._id;
+      let effectiveStatus = status;
+      if (!isAssignee && status !== taskToEdit.status) {
+        showError('Access Denied', 'Only the assigned member can change the status of this task.');
+        effectiveStatus = taskToEdit.status;
+      }
       const updates = {
         title: title.trim(),
         description: description.trim() || 'No extended description provided.',
         projectId,
         assignedTo,
         priority,
-        status,
+        status: effectiveStatus,
         targetDate,
       };
       if (onUpdateTask) {
@@ -267,10 +275,18 @@ export function CreateTaskModal({
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Status</label>
               <StatusSelect
                 value={status}
-                onChange={setStatus}
+                onChange={(newSt) => {
+                  if (taskToEdit && !isAssignee) {
+                    showError('Access Denied', 'Only the assigned member can change the status of this task.');
+                    return;
+                  }
+                  setStatus(newSt);
+                }}
                 options={statusOptions}
                 size="sm"
                 className="w-full"
+                disabled={taskToEdit && !isAssignee}
+                title={taskToEdit && !isAssignee ? 'Only the assigned member can change status' : undefined}
               />
             </div>
 

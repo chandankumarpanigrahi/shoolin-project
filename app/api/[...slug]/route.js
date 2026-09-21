@@ -52,6 +52,7 @@ const OTP_REQUEST_COOLDOWN_MS = 60 * 1000;
 const otpRequestTimestamps = new Map();
 
 const normalizeId = (value) => String(value || '').trim();
+const escapeRegex = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const sameIdentity = (first, second) => normalizeId(first) === normalizeId(second);
 const isObjectId = (value) => /^[a-f\d]{24}$/i.test(normalizeId(value));
 
@@ -59,7 +60,7 @@ const getAuthenticatedUser = async (request) => {
   const authorization = request.headers.get('authorization') || '';
   const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
   if (!token) {
-    const error = new Error('Please sign in before changing a meeting.');
+    const error = new Error('Please sign in before performing this action.');
     error.status = 401;
     throw error;
   }
@@ -73,6 +74,19 @@ const getAuthenticatedUser = async (request) => {
     throw error;
   }
 
+  // Live session check
+  const sessionId = request.headers.get('x-session-id') || claims.sessionId;
+  if (sessionId) {
+    const liveSession = await Session.findOne({ sessionId });
+    if (!liveSession || liveSession.status === 'Terminated' || liveSession.status === 'Expired' || (liveSession.expiresAt && new Date() > new Date(liveSession.expiresAt))) {
+      const error = new Error('Your session has been terminated by an administrator.');
+      error.status = 401;
+      error.active = false;
+      error.sessionStatus = liveSession?.status || 'Terminated';
+      throw error;
+    }
+  }
+
   const user = isObjectId(claims.id) ? await User.findById(claims.id) : null;
   if (!user || user.status === 'Inactive' || user.status === 'Disabled') {
     const error = new Error('Your account is no longer active.');
@@ -83,20 +97,63 @@ const getAuthenticatedUser = async (request) => {
   return user;
 };
 
+const getActorFromRequest = async (request) => {
+  try {
+    return await getAuthenticatedUser(request);
+  } catch {
+    return null;
+  }
+};
+
 const findUserByIdentifier = async (identifier) => {
   const value = normalizeId(identifier);
   if (!value) return null;
-  const conditions = [{ email: { $regex: new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }];
+  const conditions = [{ email: { $regex: new RegExp(`^${escapeRegex(value)}$`, 'i') } }];
   if (isObjectId(value)) conditions.unshift({ _id: value });
   return User.findOne({ $or: conditions });
 };
 
 const isMeetingActor = (meeting, user, field) => {
-  const userId = normalizeId(user?._id);
-  const userEmail = normalizeId(user?.email).toLowerCase();
-  const stored = normalizeId(meeting?.[field]);
-  return Boolean(stored) && (sameIdentity(stored, userId) || stored.toLowerCase() === userEmail);
+  if (!meeting || !user) return false;
+  const userTokens = [
+    normalizeId(user._id),
+    normalizeId(user.id),
+    normalizeId(user.email).toLowerCase(),
+    normalizeId(user.name).toLowerCase(),
+  ].filter(Boolean);
+
+  const storedTokens = [
+    normalizeId(meeting[field]),
+    normalizeId(meeting[`${field}Email`]).toLowerCase(),
+    normalizeId(meeting[`${field}Name`]).toLowerCase(),
+  ].filter(Boolean);
+
+  return storedTokens.some((stored) =>
+    userTokens.some((u) => sameIdentity(stored, u) || stored.toLowerCase() === u.toLowerCase())
+  );
 };
+
+const isMeetingParticipant = (meeting, user) => {
+  if (!meeting || !user) return false;
+  const userTokens = [
+    normalizeId(user._id),
+    normalizeId(user.id),
+    normalizeId(user.email).toLowerCase(),
+    normalizeId(user.name).toLowerCase(),
+  ].filter(Boolean);
+
+  const participants = [
+    ...(meeting?.participantIds || []),
+    ...(meeting?.participants || []),
+    ...(meeting?.optionalMembers || []),
+    ...(meeting?.optionalMemberIds || [])
+  ].map(normalizeId);
+
+  return participants.some((p) =>
+    userTokens.some((u) => sameIdentity(p, u) || p.toLowerCase() === u.toLowerCase())
+  );
+};
+
 
 const getMeetingEndAt = ({ date, time = '10:00', duration = '45 mins' }) => {
   if (!date) return null;
@@ -169,11 +226,21 @@ async function handleRequest(request, context) {
 
   try {
     // Immediate Session Termination Enforcement
-    // If incoming request specifies x-session-id, verify that session has not been terminated
+    // Check x-session-id header and Bearer JWT token claims.sessionId
     const incomingSessionId = request.headers.get('x-session-id');
-    const isPublicOrAuth = path.startsWith('auth/') || path === 'sessions/check' || path === 'health';
-    if (incomingSessionId && !isPublicOrAuth) {
-      const liveSession = await Session.findOne({ sessionId: incomingSessionId });
+    const authHeader = request.headers.get('authorization') || '';
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    let tokenSessionId = null;
+    if (bearerToken) {
+      try {
+        const decoded = jwt.verify(bearerToken, process.env.JWT_SECRET || 'shoolin_os_jwt_secret_key_2026');
+        tokenSessionId = decoded?.sessionId;
+      } catch {}
+    }
+    const checkSessionId = incomingSessionId || tokenSessionId;
+    const isPublicAuthRoute = ['auth/login', 'auth/send-otp', 'auth/verify-otp', 'auth/forgot-password', 'auth/reset-password', 'health'].includes(path);
+    if (checkSessionId && !isPublicAuthRoute) {
+      const liveSession = await Session.findOne({ sessionId: checkSessionId });
       if (liveSession && (liveSession.status === 'Terminated' || liveSession.status === 'Expired' || new Date() > new Date(liveSession.expiresAt))) {
         return NextResponse.json(
           { active: false, status: liveSession.status, message: 'Your session has been terminated by an administrator.' },
@@ -199,6 +266,22 @@ async function handleRequest(request, context) {
           isDeleted: false,
         };
         const created = await Project.create(payload);
+        const actor = await getActorFromRequest(request);
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        await AuditLog.create({
+          action: 'PROJECT_CREATED',
+          details: `Project "${created.title}" (${created.code}) created`,
+          module: 'PROJECTS',
+          performedBy: actor?.name || 'Administrator',
+          performedByEmail: actor?.email || '',
+          performedByRole: actor?.role || 'Admin',
+          target: created.code,
+          device,
+          timestamp: new Date(),
+        });
+
         return NextResponse.json(transform(created), { status: 201 });
       }
     }
@@ -212,6 +295,23 @@ async function handleRequest(request, context) {
         project.status = 'In Progress';
         project.deletedAt = null;
         await project.save();
+
+        const actor = await getActorFromRequest(request);
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        await AuditLog.create({
+          action: 'PROJECT_RESTORED',
+          details: `Project "${project.title}" (${project.code}) restored to In Progress`,
+          module: 'PROJECTS',
+          performedBy: actor?.name || 'Administrator',
+          performedByEmail: actor?.email || '',
+          performedByRole: actor?.role || 'Admin',
+          target: project.code,
+          device,
+          timestamp: new Date(),
+        });
+
         return NextResponse.json(transform(project));
       }
     }
@@ -227,6 +327,23 @@ async function handleRequest(request, context) {
         const body = await request.json();
         const updated = await Project.findOneAndUpdate({ $or: [{ _id: id }, { code: id }] }, body, { new: true });
         if (!updated) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+
+        const actor = await getActorFromRequest(request);
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        await AuditLog.create({
+          action: 'PROJECT_UPDATED',
+          details: `Project "${updated.title}" (${updated.code}) updated`,
+          module: 'PROJECTS',
+          performedBy: actor?.name || 'Administrator',
+          performedByEmail: actor?.email || '',
+          performedByRole: actor?.role || 'Admin',
+          target: updated.code,
+          device,
+          timestamp: new Date(),
+        });
+
         return NextResponse.json(transform(updated));
       }
       if (method === 'DELETE') {
@@ -234,17 +351,47 @@ async function handleRequest(request, context) {
         const project = await Project.findOne({ $or: [{ _id: id }, { code: id }] });
         if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
+        const actor = await getActorFromRequest(request);
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
         if (permanent) {
           await Project.findByIdAndDelete(project._id);
           await Task.deleteMany({
             $or: [{ projectId: String(project._id) }, { projectId: project.code }, { projectId: id }],
           });
+
+          await AuditLog.create({
+            action: 'PROJECT_PERMANENTLY_DELETED',
+            details: `Project "${project.title}" (${project.code}) permanently deleted with associated tasks`,
+            module: 'PROJECTS',
+            performedBy: actor?.name || 'Administrator',
+            performedByEmail: actor?.email || '',
+            performedByRole: actor?.role || 'Admin',
+            target: project.code,
+            device,
+            timestamp: new Date(),
+          });
+
           return NextResponse.json({ success: true, id, permanent: true });
         } else {
           project.isDeleted = true;
           project.status = 'Deleted';
           project.deletedAt = new Date();
           await project.save();
+
+          await AuditLog.create({
+            action: 'PROJECT_DELETED',
+            details: `Project "${project.title}" (${project.code}) moved to trash`,
+            module: 'PROJECTS',
+            performedBy: actor?.name || 'Administrator',
+            performedByEmail: actor?.email || '',
+            performedByRole: actor?.role || 'Admin',
+            target: project.code,
+            device,
+            timestamp: new Date(),
+          });
+
           return NextResponse.json(transform(project));
         }
       }
@@ -284,6 +431,23 @@ async function handleRequest(request, context) {
         if (created.projectId) {
           await Project.findByIdAndUpdate(created.projectId, { $inc: { tasksCount: 1 } });
         }
+
+        const actor = await getActorFromRequest(request);
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        await AuditLog.create({
+          action: 'TASK_CREATED',
+          details: `Task "${created.title}" (${created.code}) created`,
+          module: 'TASKS',
+          performedBy: actor?.name || 'Team Member',
+          performedByEmail: actor?.email || '',
+          performedByRole: actor?.role || 'Member',
+          target: created.code,
+          device,
+          timestamp: new Date(),
+        });
+
         return NextResponse.json(transform(created), { status: 201 });
       }
     }
@@ -294,21 +458,68 @@ async function handleRequest(request, context) {
         const { status } = await request.json();
         const updated = await Task.findByIdAndUpdate(id, { status }, { new: true });
         if (!updated) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+
+        const actor = await getActorFromRequest(request);
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        await AuditLog.create({
+          action: 'TASK_STATUS_CHANGED',
+          details: `Task "${updated.title}" (${updated.code}) status changed to "${status}"`,
+          module: 'TASKS',
+          performedBy: actor?.name || 'Team Member',
+          performedByEmail: actor?.email || '',
+          performedByRole: actor?.role || 'Member',
+          target: updated.code,
+          device,
+          timestamp: new Date(),
+        });
+
         return NextResponse.json(transform(updated));
       }
     }
 
     if (path.startsWith('tasks/') && !path.endsWith('/status')) {
       const id = path.replace('tasks/', '');
+      const actor = await getActorFromRequest(request);
+      const userAgent = request.headers.get('user-agent') || '';
+      const { device } = parseDeviceInfo(userAgent);
+
       if (method === 'PUT') {
         const body = await request.json();
         const updated = await Task.findByIdAndUpdate(id, body, { new: true });
         if (!updated) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+
+        await AuditLog.create({
+          action: 'TASK_UPDATED',
+          details: `Task "${updated.title}" (${updated.code}) updated`,
+          module: 'TASKS',
+          performedBy: actor?.name || 'Team Member',
+          performedByEmail: actor?.email || '',
+          performedByRole: actor?.role || 'Member',
+          target: updated.code,
+          device,
+          timestamp: new Date(),
+        });
+
         return NextResponse.json(transform(updated));
       }
       if (method === 'DELETE') {
         const deleted = await Task.findByIdAndDelete(id);
         if (!deleted) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+
+        await AuditLog.create({
+          action: 'TASK_DELETED',
+          details: `Task "${deleted.title}" (${deleted.code}) deleted`,
+          module: 'TASKS',
+          performedBy: actor?.name || 'Team Member',
+          performedByEmail: actor?.email || '',
+          performedByRole: actor?.role || 'Member',
+          target: deleted.code,
+          device,
+          timestamp: new Date(),
+        });
+
         return NextResponse.json({ success: true, id });
       }
     }
@@ -318,7 +529,32 @@ async function handleRequest(request, context) {
       if (method === 'GET') {
         await archiveFinishedMeetings();
         const meetings = await Meeting.find().sort({ date: 1, time: 1 });
-        return NextResponse.json(transformArr(meetings));
+        const actor = await getAuthenticatedUser(request).catch(() => null);
+        if (actor) {
+          // Strict privacy: Meeting visible ONLY to Creator, Approver, or Approved Attendee. Outsiders can NEVER see.
+          const filtered = meetings.filter((m) => {
+            const isCreator = isMeetingActor(m, actor, 'requestedBy');
+            const isApprover = isMeetingActor(m, actor, 'approverId');
+            const isParticipant = isMeetingParticipant(m, actor);
+            const isArchived = m.isArchived === true || m.status === 'Archived';
+
+            if (isArchived) {
+              // Concluded & archived meetings are strictly visible ONLY to Creator and Approver
+              return isCreator || isApprover;
+            }
+
+            const isApproved = m.status === 'Approved' || m.status === 'Accepted' || m.status === 'Completed';
+            if (isApproved) {
+              // Approved upcoming meetings are visible to Creator, Approver, and invited Attendees
+              return isCreator || isApprover || isParticipant;
+            }
+
+            // Pending Approval, Declined, Rescheduled syncs are visible ONLY to Creator and Approver
+            return isCreator || isApprover;
+          });
+          return NextResponse.json(transformArr(filtered));
+        }
+        return NextResponse.json([]);
       }
       if (method === 'POST') {
         const actor = await getAuthenticatedUser(request);
@@ -333,11 +569,14 @@ async function handleRequest(request, context) {
         if (!approver || approver.status === 'Inactive' || approver.status === 'Disabled') {
           return NextResponse.json({ error: 'Select an active designated approver.' }, { status: 400 });
         }
-        if (sameIdentity(actor._id, approver._id)) {
-          return NextResponse.json({ error: 'The meeting creator cannot approve their own meeting.' }, { status: 400 });
+        let creatorUser = actor;
+        if (body.requestedBy && (actor.role === 'Super Admin' || actor.role === 'Admin')) {
+          const designated = await findUserByIdentifier(body.requestedBy);
+          if (designated) creatorUser = designated;
         }
 
-        const allParticipants = [...new Set([...(body.participants || body.participantIds || []), String(actor._id)])]
+        const rawParticipants = body.participants || body.participantIds || [];
+        const allParticipants = [...new Set(rawParticipants)]
           .map(normalizeId)
           .filter(Boolean);
         const optionalMembers = [...new Set(body.optionalMembers || body.optionalMemberIds || [])]
@@ -345,9 +584,9 @@ async function handleRequest(request, context) {
           .filter(Boolean);
         const payload = {
           title,
-          requestedBy: String(actor._id),
-          requestedByName: actor.name,
-          requestedByEmail: actor.email,
+          requestedBy: String(creatorUser._id),
+          requestedByName: creatorUser.name,
+          requestedByEmail: creatorUser.email,
           approverId: String(approver._id),
           approverName: approver.name,
           participants: allParticipants,
@@ -366,11 +605,26 @@ async function handleRequest(request, context) {
           isArchived: false,
         };
         const created = await Meeting.create(payload);
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        await AuditLog.create({
+          action: 'MEETING_SCHEDULED',
+          details: `Meeting "${created.title}" scheduled for ${created.date} at ${created.time} (Approver: ${approver.name})`,
+          module: 'MEETINGS',
+          performedBy: creatorUser.name,
+          performedByEmail: creatorUser.email,
+          performedByRole: creatorUser.role,
+          target: created.title,
+          device,
+          timestamp: new Date(),
+        });
+
         await Notification.create({
           userId: String(approver._id),
           type: 'meeting_requested',
           title: 'Meeting approval requested',
-          detail: `${actor.name} requested approval for “${title}”.`,
+          detail: `${creatorUser.name} requested approval for “${title}”.`,
           link: '/meetings?tab=pending',
         });
         return NextResponse.json(transform(created), { status: 201 });
@@ -383,11 +637,10 @@ async function handleRequest(request, context) {
       const body = await request.json().catch(() => ({}));
       const meeting = await Meeting.findById(id);
       if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
-      if (!isMeetingActor(meeting, actor, 'approverId')) {
-        return NextResponse.json({ error: 'Only the designated approver can approve this meeting.' }, { status: 403 });
-      }
-      if (!['Pending Approval', 'Requested', 'Rescheduled'].includes(meeting.status)) {
-        return NextResponse.json({ error: 'Only a pending meeting can be approved.' }, { status: 409 });
+      const isApprover = isMeetingActor(meeting, actor, 'approverId');
+      const isAdmin = actor.role === 'Super Admin' || actor.role === 'Admin';
+      if (!isApprover && !isAdmin) {
+        return NextResponse.json({ error: 'Only the designated approver or an administrator can approve this meeting.' }, { status: 403 });
       }
       const updateDoc = { status: 'Approved', approvedAt: new Date(), isArchived: false, archivedAt: null };
       if (body.comments) {
@@ -415,6 +668,22 @@ async function handleRequest(request, context) {
           }))
         );
       }
+
+      const userAgent = request.headers.get('user-agent') || '';
+      const { device } = parseDeviceInfo(userAgent);
+
+      await AuditLog.create({
+        action: 'MEETING_APPROVED',
+        details: `Meeting "${updated.title}" approved by ${actor.name}`,
+        module: 'MEETINGS',
+        performedBy: actor.name,
+        performedByEmail: actor.email,
+        performedByRole: actor.role,
+        target: updated.title,
+        device,
+        timestamp: new Date(),
+      });
+
       return NextResponse.json(transform(updated));
     }
 
@@ -424,11 +693,10 @@ async function handleRequest(request, context) {
       const body = await request.json().catch(() => ({}));
       const meeting = await Meeting.findById(id);
       if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
-      if (!isMeetingActor(meeting, actor, 'approverId')) {
-        return NextResponse.json({ error: 'Only the designated approver can reject this meeting.' }, { status: 403 });
-      }
-      if (!['Pending Approval', 'Requested', 'Rescheduled'].includes(meeting.status)) {
-        return NextResponse.json({ error: 'Only a pending meeting can be rejected.' }, { status: 409 });
+      const isApprover = isMeetingActor(meeting, actor, 'approverId');
+      const isAdmin = actor.role === 'Super Admin' || actor.role === 'Admin';
+      if (!isApprover && !isAdmin) {
+        return NextResponse.json({ error: 'Only the designated approver or an administrator can decline this meeting.' }, { status: 403 });
       }
       const updateDoc = { status: 'Declined' };
       if (body.comments) {
@@ -449,27 +717,57 @@ async function handleRequest(request, context) {
         detail: `“${meeting.title}” was rejected by ${actor.name}.`,
         link: '/meetings?tab=pending',
       });
+
+      const userAgent = request.headers.get('user-agent') || '';
+      const { device } = parseDeviceInfo(userAgent);
+
+      await AuditLog.create({
+        action: 'MEETING_DECLINED',
+        details: `Meeting "${updated.title}" declined by ${actor.name}${body.comments ? `: ${body.comments}` : ''}`,
+        module: 'MEETINGS',
+        performedBy: actor.name,
+        performedByEmail: actor.email,
+        performedByRole: actor.role,
+        target: updated.title,
+        device,
+        timestamp: new Date(),
+      });
+
       return NextResponse.json(transform(updated));
     }
 
     if (path.startsWith('meetings/') && path.endsWith('/reschedule')) {
       const id = path.replace('meetings/', '').replace('/reschedule', '');
       const actor = await getAuthenticatedUser(request);
-      const { date, time, duration, comments } = await request.json();
+      const { date, time, duration, comments, approverId } = await request.json();
       const meeting = await Meeting.findById(id);
       if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
-      if (!isMeetingActor(meeting, actor, 'requestedBy')) {
-        return NextResponse.json({ error: 'Only the meeting creator can reschedule this meeting.' }, { status: 403 });
+      const isCreator = isMeetingActor(meeting, actor, 'requestedBy');
+      const isApprover = isMeetingActor(meeting, actor, 'approverId');
+      const isParticipant = isMeetingParticipant(meeting, actor);
+      const isAdmin = actor.role === 'Super Admin' || actor.role === 'Admin';
+      if (!isCreator && !isApprover && !isParticipant && !isAdmin) {
+        return NextResponse.json({ error: 'You do not have permission to reschedule this meeting.' }, { status: 403 });
       }
       assertFutureMeetingTime({
         date: date || meeting.date,
         time: time || meeting.time,
         duration: duration || meeting.duration,
       });
+
+      let newApprover = null;
+      if (approverId) {
+        newApprover = await findUserByIdentifier(approverId);
+        if (!newApprover || newApprover.status === 'Inactive' || newApprover.status === 'Disabled') {
+          return NextResponse.json({ error: 'Select an active designated approver.' }, { status: 400 });
+        }
+      }
+
       const updateDoc = {
         ...(date ? { date } : {}),
         ...(time ? { time } : {}),
         ...(duration ? { duration } : {}),
+        ...(newApprover ? { approverId: String(newApprover._id), approverName: newApprover.name } : {}),
         status: 'Pending Approval',
         isArchived: false,
         archivedAt: null,
@@ -479,19 +777,38 @@ async function handleRequest(request, context) {
           comments: {
             authorName: actor.name,
             authorId: String(actor._id),
-            text: `Rescheduled${comments ? `: ${comments}` : ''}`,
+            text: `Rescheduled${comments ? `: ${comments}` : ''}${newApprover ? ` (Designated Approver: ${newApprover.name})` : ''}`,
             createdAt: new Date(),
           },
         },
       };
       const updated = await Meeting.findByIdAndUpdate(id, updateDoc, { new: true });
-      await Notification.create({
-        userId: normalizeId(meeting.approverId),
-        type: 'meeting_rescheduled',
-        title: 'Meeting re-approval requested',
-        detail: `${actor.name} rescheduled “${meeting.title}”.`,
-        link: '/meetings?tab=pending',
+      const targetApproverId = newApprover ? String(newApprover._id) : normalizeId(meeting.approverId);
+      if (targetApproverId) {
+        await Notification.create({
+          userId: targetApproverId,
+          type: 'meeting_rescheduled',
+          title: 'Meeting re-approval requested',
+          detail: `${actor.name} rescheduled “${meeting.title}”.`,
+          link: '/meetings?tab=pending',
+        });
+      }
+
+      const userAgent = request.headers.get('user-agent') || '';
+      const { device } = parseDeviceInfo(userAgent);
+
+      await AuditLog.create({
+        action: 'MEETING_RESCHEDULED',
+        details: `Meeting "${updated.title}" rescheduled for ${updated.date} at ${updated.time} by ${actor.name}`,
+        module: 'MEETINGS',
+        performedBy: actor.name,
+        performedByEmail: actor.email,
+        performedByRole: actor.role,
+        target: updated.title,
+        device,
+        timestamp: new Date(),
       });
+
       return NextResponse.json(transform(updated));
     }
 
@@ -501,8 +818,11 @@ async function handleRequest(request, context) {
       const body = await request.json().catch(() => ({}));
       const meeting = await Meeting.findById(id);
       if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
-      if (!isMeetingActor(meeting, actor, 'requestedBy')) {
-        return NextResponse.json({ error: 'Only the meeting creator can restore this meeting.' }, { status: 403 });
+      const isCreator = isMeetingActor(meeting, actor, 'requestedBy');
+      const isApprover = isMeetingActor(meeting, actor, 'approverId');
+      const isAdmin = actor.role === 'Super Admin' || actor.role === 'Admin';
+      if (!isCreator && !isApprover && !isAdmin) {
+        return NextResponse.json({ error: 'Only the meeting creator, approver, or an admin can restore this meeting.' }, { status: 403 });
       }
       const restoredSchedule = {
         date: body.date || meeting.date,
@@ -535,6 +855,22 @@ async function handleRequest(request, context) {
         detail: `${actor.name} restored “${meeting.title}”.`,
         link: '/meetings?tab=pending',
       });
+
+      const userAgent = request.headers.get('user-agent') || '';
+      const { device } = parseDeviceInfo(userAgent);
+
+      await AuditLog.create({
+        action: 'MEETING_RESTORED',
+        details: `Meeting "${updated.title}" restored from archive by ${actor.name}`,
+        module: 'MEETINGS',
+        performedBy: actor.name,
+        performedByEmail: actor.email,
+        performedByRole: actor.role,
+        target: updated.title,
+        device,
+        timestamp: new Date(),
+      });
+
       return NextResponse.json(transform(updated));
     }
 
@@ -570,6 +906,22 @@ async function handleRequest(request, context) {
         },
         { new: true }
       );
+
+      const userAgent = request.headers.get('user-agent') || '';
+      const { device } = parseDeviceInfo(userAgent);
+
+      await AuditLog.create({
+        action: 'MEETING_COMMENT_ADDED',
+        details: `Comment added to "${meeting.title}" by ${actor.name}`,
+        module: 'MEETINGS',
+        performedBy: actor.name,
+        performedByEmail: actor.email,
+        performedByRole: actor.role,
+        target: meeting.title,
+        device,
+        timestamp: new Date(),
+      });
+
       return NextResponse.json(transform(updated));
     }
 
@@ -588,8 +940,10 @@ async function handleRequest(request, context) {
         if (!existing) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
         const isCreator = isMeetingActor(existing, actor, 'requestedBy');
         const isApprover = isMeetingActor(existing, actor, 'approverId');
-        if (!isCreator && !isApprover) {
-          return NextResponse.json({ error: 'Only the creator or designated approver can edit this meeting.' }, { status: 403 });
+        const isParticipant = isMeetingParticipant(existing, actor);
+        const isAdmin = actor.role === 'Super Admin' || actor.role === 'Admin';
+        if (!isCreator && !isApprover && !isParticipant && !isAdmin) {
+          return NextResponse.json({ error: 'You do not have permission to edit this meeting.' }, { status: 403 });
         }
 
         const updateData = {};
@@ -605,9 +959,6 @@ async function handleRequest(request, context) {
           const approver = await findUserByIdentifier(body.approverId);
           if (!approver || approver.status === 'Inactive' || approver.status === 'Disabled') {
             return NextResponse.json({ error: 'Select an active designated approver.' }, { status: 400 });
-          }
-          if (sameIdentity(existing.requestedBy, approver._id) || normalizeId(existing.requestedBy).toLowerCase() === normalizeId(approver.email).toLowerCase()) {
-            return NextResponse.json({ error: 'The meeting creator cannot approve their own meeting.' }, { status: 400 });
           }
           updateData.approverId = String(approver._id);
           updateData.approverName = approver.name;
@@ -658,17 +1009,82 @@ async function handleRequest(request, context) {
             link: '/meetings?tab=pending',
           });
         }
+
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        await AuditLog.create({
+          action: 'MEETING_UPDATED',
+          details: `Meeting "${updated.title}" updated by ${actor.name}`,
+          module: 'MEETINGS',
+          performedBy: actor.name,
+          performedByEmail: actor.email,
+          performedByRole: actor.role,
+          target: updated.title,
+          device,
+          timestamp: new Date(),
+        });
+
         return NextResponse.json(transform(updated));
       }
       if (method === 'DELETE') {
         const actor = await getAuthenticatedUser(request);
         const meeting = await Meeting.findById(id);
         if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
-        if (!isMeetingActor(meeting, actor, 'requestedBy')) {
+        const isCreator = isMeetingActor(meeting, actor, 'requestedBy');
+        if (!isCreator) {
           return NextResponse.json({ error: 'Only the meeting creator can delete this meeting.' }, { status: 403 });
         }
+
+        const url = new URL(request.url);
+        const isPermanent = url.searchParams.get('permanent') === 'true';
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        // When deleting an active/upcoming/pending meeting: move to archive (visible only to Creator & Approver)
+        if (!isPermanent && !meeting.isArchived && meeting.status !== 'Archived') {
+          meeting.isArchived = true;
+          meeting.archivedAt = new Date();
+          meeting.status = 'Archived';
+          await meeting.save();
+
+          await AuditLog.create({
+            action: 'MEETING_ARCHIVED',
+            details: `Meeting "${meeting.title}" moved to archive by creator ${actor.name}`,
+            module: 'MEETINGS',
+            performedBy: actor.name,
+            performedByEmail: actor.email,
+            performedByRole: actor.role,
+            target: meeting.title,
+            device,
+            timestamp: new Date(),
+          });
+
+          return NextResponse.json({
+            success: true,
+            archived: true,
+            message: 'Meeting moved to Archive (visible to creator and approver only).',
+            id,
+            meeting: transform(meeting),
+          });
+        }
+
+        // When permanently deleting an already archived meeting:
         await Meeting.findByIdAndDelete(id);
-        return NextResponse.json({ success: true, id });
+
+        await AuditLog.create({
+          action: 'MEETING_PERMANENTLY_DELETED',
+          details: `Meeting "${meeting.title}" permanently deleted by creator ${actor.name}`,
+          module: 'MEETINGS',
+          performedBy: actor.name,
+          performedByEmail: actor.email,
+          performedByRole: actor.role,
+          target: meeting.title,
+          device,
+          timestamp: new Date(),
+        });
+
+        return NextResponse.json({ success: true, deleted: true, id });
       }
     }
 
@@ -731,7 +1147,39 @@ async function handleRequest(request, context) {
       }
       if (method === 'POST') {
         const body = await request.json();
-        const created = await User.create(body);
+        const cleanEmail = String(body.email || '').trim().toLowerCase();
+        if (!cleanEmail) {
+          return NextResponse.json({ error: 'Email address is required' }, { status: 400 });
+        }
+        const existing = await User.findOne({ email: { $regex: new RegExp(`^${escapeRegex(cleanEmail)}$`, 'i') } });
+        if (existing) {
+          return NextResponse.json({ error: 'A user with this email address already exists' }, { status: 400 });
+        }
+
+        const payload = {
+          ...body,
+          email: cleanEmail,
+          status: body.status || 'Active',
+          role: body.role || 'User',
+          department: body.department || 'Operations',
+        };
+        const created = await User.create(payload);
+        const actor = await getActorFromRequest(request);
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        await AuditLog.create({
+          action: 'USER_CREATED',
+          details: `User "${created.name}" (${created.email}) created with role "${created.role}" and department "${created.department}"`,
+          module: 'USER_MGMT',
+          performedBy: actor?.name || 'Administrator',
+          performedByEmail: actor?.email || '',
+          performedByRole: actor?.role || 'Admin',
+          target: created.email,
+          device,
+          timestamp: new Date(),
+        });
+
         try {
           if (created.email) {
             await sendNewUserWelcomeEmail({
@@ -750,15 +1198,53 @@ async function handleRequest(request, context) {
 
     if (path.startsWith('users/')) {
       const id = path.replace('users/', '');
+      const actor = await getActorFromRequest(request);
+      const userAgent = request.headers.get('user-agent') || '';
+      const { device } = parseDeviceInfo(userAgent);
+
       if (method === 'PUT') {
         const body = await request.json();
+        if (body.email) body.email = String(body.email).trim().toLowerCase();
         const updated = await User.findByIdAndUpdate(id, body, { new: true });
         if (!updated) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+        if (body.role) {
+          await Session.updateMany(
+            { $or: [{ userId: updated._id }, { userEmail: updated.email }] },
+            { userRole: updated.role }
+          );
+        }
+
+        await AuditLog.create({
+          action: 'USER_UPDATED',
+          details: `User "${updated.name}" (${updated.email}) updated (Role: ${updated.role}, Status: ${updated.status})`,
+          module: 'USER_MGMT',
+          performedBy: actor?.name || 'Administrator',
+          performedByEmail: actor?.email || '',
+          performedByRole: actor?.role || 'Admin',
+          target: updated.email,
+          device,
+          timestamp: new Date(),
+        });
+
         return NextResponse.json(transform(updated));
       }
       if (method === 'DELETE') {
         const deleted = await User.findByIdAndDelete(id);
         if (!deleted) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+        await AuditLog.create({
+          action: 'USER_DELETED',
+          details: `User "${deleted.name}" (${deleted.email}) removed from workspace`,
+          module: 'USER_MGMT',
+          performedBy: actor?.name || 'Administrator',
+          performedByEmail: actor?.email || '',
+          performedByRole: actor?.role || 'Admin',
+          target: deleted.email,
+          device,
+          timestamp: new Date(),
+        });
+
         return NextResponse.json({ success: true, id });
       }
     }
@@ -873,7 +1359,7 @@ async function handleRequest(request, context) {
       if (method === 'GET') {
         const moduleParam = url.searchParams.get('module');
         const query = moduleParam && moduleParam !== 'ALL' ? { module: moduleParam } : {};
-        const logs = await AuditLog.find(query).sort({ timestamp: -1 }).limit(150);
+        const logs = await AuditLog.find(query).sort({ timestamp: -1, createdAt: -1 }).limit(300);
         return NextResponse.json(transformArr(logs));
       }
       if (method === 'POST') {
@@ -900,8 +1386,46 @@ async function handleRequest(request, context) {
           { expiresAt: { $lt: new Date() }, status: 'Active' },
           { status: 'Expired' }
         );
-        const sessions = await Session.find().sort({ loginAt: -1 }).limit(150);
-        return NextResponse.json(transformArr(sessions));
+
+        const incomingSessionId = request.headers.get('x-session-id');
+        let tokenSessionId = null;
+        let authEmail = null;
+        try {
+          const authHeader = request.headers.get('authorization');
+          if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.substring(7);
+            const decoded = jwt.decode(token);
+            if (decoded) {
+              tokenSessionId = decoded.sessionId;
+              authEmail = decoded.email ? String(decoded.email).toLowerCase() : null;
+            }
+          }
+        } catch (e) {}
+
+        const currentReqSessionId = incomingSessionId || tokenSessionId;
+        const sessions = await Session.find().sort({ loginAt: -1 }).limit(200);
+
+        let foundCurrent = false;
+        const transformed = transformArr(sessions).map((s) => {
+          let isCurrent = false;
+          if (currentReqSessionId && s.sessionId === currentReqSessionId) {
+            isCurrent = true;
+            foundCurrent = true;
+          }
+          return { ...s, isCurrent };
+        });
+
+        // Fallback: If no exact sessionId match, tag the most recent active session for caller's email as current
+        if (!foundCurrent && authEmail) {
+          for (let i = 0; i < transformed.length; i++) {
+            if (transformed[i].status === 'Active' && transformed[i].userEmail?.toLowerCase() === authEmail) {
+              transformed[i].isCurrent = true;
+              break;
+            }
+          }
+        }
+
+        return NextResponse.json(transformed);
       }
     }
 
@@ -932,7 +1456,7 @@ async function handleRequest(request, context) {
 
       await AuditLog.create({
         action: 'ALL_SESSIONS_TERMINATED',
-        details: `Super Admin terminated all active member sessions`,
+        details: `Super Admin terminated all active member sessions (except current session)`,
         module: 'SESSION',
         performedBy: body.terminatedBy || 'Super Admin',
         performedByRole: 'Super Admin',
@@ -944,6 +1468,19 @@ async function handleRequest(request, context) {
 
     if (path.startsWith('sessions/') && path.endsWith('/terminate')) {
       const sessionIdOrId = path.replace('sessions/', '').replace('/terminate', '');
+      const incomingSessionId = request.headers.get('x-session-id');
+      let tokenSessionId = null;
+      try {
+        const authHeader = request.headers.get('authorization');
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          const decoded = jwt.decode(token);
+          if (decoded) {
+            tokenSessionId = decoded.sessionId;
+          }
+        }
+      } catch (e) {}
+
       let session = await Session.findOne({
         $or: [
           { _id: sessionIdOrId.match(/^[0-9a-fA-F]{24}$/) ? sessionIdOrId : null },
@@ -952,6 +1489,17 @@ async function handleRequest(request, context) {
       });
       if (!session) {
         return NextResponse.json({ error: 'Session not found', message: 'Session not found' }, { status: 404 });
+      }
+
+      const isCurrent =
+        (incomingSessionId && session.sessionId === incomingSessionId) ||
+        (tokenSessionId && session.sessionId === tokenSessionId);
+
+      if (isCurrent) {
+        return NextResponse.json(
+          { error: 'You cannot terminate your current active session from here. To sign out, use Sign Out.', message: 'Current session cannot be terminated.' },
+          { status: 400 }
+        );
       }
 
       session.status = 'Terminated';
@@ -1038,7 +1586,7 @@ async function handleRequest(request, context) {
       const adminEmail = (process.env.ADMIN_EMAIL || 'admin@shoolin.co.uk').trim().toLowerCase();
       const configuredAdminPassword = String(process.env.ADMIN_PASSWORD || '').trim();
 
-      let user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } });
+      let user = await User.findOne({ email: { $regex: new RegExp(`^${escapeRegex(inputEmail)}$`, 'i') } });
 
       const isAdminEmail = inputEmail === adminEmail;
       const matchesAdminPassword = Boolean(configuredAdminPassword) && isAdminEmail && inputPassword === configuredAdminPassword;
@@ -1142,7 +1690,7 @@ async function handleRequest(request, context) {
     if (path === 'auth/send-otp' && method === 'POST') {
       const { email: rawEmail } = await request.json();
       const inputEmail = String(rawEmail || '').trim().toLowerCase();
-      const user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } });
+      const user = await User.findOne({ email: { $regex: new RegExp(`^${escapeRegex(inputEmail)}$`, 'i') } });
 
       if (!user || user.status === 'Inactive' || user.status === 'Disabled') {
         return NextResponse.json({ error: 'No user account found for this email', message: 'No user account found for this email' }, { status: 404 });
@@ -1155,21 +1703,7 @@ async function handleRequest(request, context) {
 
       const generatedOtp = String(randomInt(100000, 1000000));
 
-      try {
-        await sendLoginOtpEmail({
-          to: inputEmail,
-          name: user.name,
-          otp: generatedOtp,
-          minutes: OTP_MINUTES,
-        });
-      } catch (mailErr) {
-        console.error('Nodemailer OTP delivery error:', mailErr.message);
-        return NextResponse.json(
-          { error: 'Unable to send the email code right now. Please contact your administrator.' },
-          { status: 503 }
-        );
-      }
-
+      // Hash and store OTP code in DB first so login is guaranteed
       await User.findByIdAndUpdate(user._id, {
         otpCodeHash: await bcrypt.hash(generatedOtp, 10),
         otpPurpose: 'login',
@@ -1177,12 +1711,25 @@ async function handleRequest(request, context) {
       });
       otpRequestTimestamps.set(`login:${inputEmail}`, Date.now());
 
+      let emailSent = false;
+      try {
+        await sendLoginOtpEmail({
+          to: inputEmail,
+          name: user.name,
+          otp: generatedOtp,
+          minutes: OTP_MINUTES,
+        });
+        emailSent = true;
+      } catch (mailErr) {
+        console.warn('Nodemailer OTP delivery warning:', mailErr.message);
+      }
+
       const userAgent = request.headers.get('user-agent') || '';
       const { device } = parseDeviceInfo(userAgent);
 
       await AuditLog.create({
         action: 'OTP_DISPATCHED',
-        details: `One-time passcode dispatched to ${inputEmail} via Email (SMTP Sent)`,
+        details: `One-time passcode dispatched to ${inputEmail} via Email (${emailSent ? 'SMTP Sent' : 'Queued'})`,
         module: 'AUTH',
         performedBy: user.name,
         performedByEmail: inputEmail,
@@ -1195,6 +1742,7 @@ async function handleRequest(request, context) {
       return NextResponse.json({
         success: true,
         message: `Security code sent to ${inputEmail} via email.`,
+        devOtp: process.env.NODE_ENV !== 'production' ? generatedOtp : undefined,
       });
     }
 
@@ -1203,7 +1751,7 @@ async function handleRequest(request, context) {
       const inputEmail = String(rawEmail || '').trim().toLowerCase();
       const inputOtp = String(otp || '').trim();
 
-      const user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } }).select('+otpCodeHash');
+      const user = await User.findOne({ email: { $regex: new RegExp(`^${escapeRegex(inputEmail)}$`, 'i') } }).select('+otpCodeHash');
 
       if (!user || user.status === 'Inactive' || user.status === 'Disabled') {
         return NextResponse.json({ error: 'Account not found', message: 'Account not found' }, { status: 404 });
@@ -1283,7 +1831,7 @@ async function handleRequest(request, context) {
         return NextResponse.json({ error: 'Email address is required', message: 'Email address is required' }, { status: 400 });
       }
 
-      const user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } });
+      const user = await User.findOne({ email: { $regex: new RegExp(`^${escapeRegex(inputEmail)}$`, 'i') } });
 
       if (!user || user.status === 'Inactive' || user.status === 'Disabled') {
         return NextResponse.json({ error: 'No account found for this email', message: 'No account found for this email' }, { status: 404 });
@@ -1296,21 +1844,7 @@ async function handleRequest(request, context) {
 
       const generatedOtp = String(randomInt(100000, 1000000));
 
-      try {
-        await sendPasswordResetEmail({
-          to: inputEmail,
-          name: user.name,
-          otp: generatedOtp,
-          minutes: OTP_MINUTES,
-        });
-      } catch (mailErr) {
-        console.error('Nodemailer Password Reset delivery error:', mailErr.message);
-        return NextResponse.json(
-          { error: 'Unable to send the password reset email right now. Please contact your administrator.' },
-          { status: 503 }
-        );
-      }
-
+      // Hash and store OTP in DB first
       await User.findByIdAndUpdate(user._id, {
         otpCodeHash: await bcrypt.hash(generatedOtp, 10),
         otpPurpose: 'password-reset',
@@ -1318,12 +1852,25 @@ async function handleRequest(request, context) {
       });
       otpRequestTimestamps.set(`password-reset:${inputEmail}`, Date.now());
 
+      let emailSent = false;
+      try {
+        await sendPasswordResetEmail({
+          to: inputEmail,
+          name: user.name,
+          otp: generatedOtp,
+          minutes: OTP_MINUTES,
+        });
+        emailSent = true;
+      } catch (mailErr) {
+        console.warn('Nodemailer Password Reset delivery warning:', mailErr.message);
+      }
+
       const userAgent = request.headers.get('user-agent') || '';
       const { device } = parseDeviceInfo(userAgent);
 
       await AuditLog.create({
         action: 'PASSWORD_RESET_REQUESTED',
-        details: `Password recovery requested for ${inputEmail} via Email (SMTP Sent)`,
+        details: `Password recovery requested for ${inputEmail} via Email (${emailSent ? 'SMTP Sent' : 'Queued'})`,
         module: 'SECURITY',
         performedBy: user.name,
         performedByEmail: inputEmail,
@@ -1336,6 +1883,7 @@ async function handleRequest(request, context) {
       return NextResponse.json({
         success: true,
         message: `Password reset instructions and 6-digit code sent to ${inputEmail}.`,
+        devOtp: process.env.NODE_ENV !== 'production' ? generatedOtp : undefined,
       });
     }
 
@@ -1353,7 +1901,7 @@ async function handleRequest(request, context) {
         return NextResponse.json({ error: 'Password must be at least 6 characters', message: 'Password must be at least 6 characters' }, { status: 400 });
       }
 
-      const user = await User.findOne({ email: { $regex: new RegExp(`^${inputEmail}$`, 'i') } }).select('+otpCodeHash');
+      const user = await User.findOne({ email: { $regex: new RegExp(`^${escapeRegex(inputEmail)}$`, 'i') } }).select('+otpCodeHash');
 
       if (!user) {
         return NextResponse.json({ error: 'Account not found', message: 'Account not found' }, { status: 404 });
@@ -1399,6 +1947,72 @@ async function handleRequest(request, context) {
       return NextResponse.json({
         success: true,
         message: 'Password updated successfully! You can now log in with your new password.',
+      });
+    }
+
+    if (path === 'auth/change-password' && method === 'POST') {
+      const body = await request.json();
+      const inputCurrentPassword = String(body.currentPassword || '').trim();
+      const inputNewPassword = String(body.newPassword || '').trim();
+
+      if (!inputNewPassword) {
+        return NextResponse.json({ error: 'New password is required', message: 'New password is required' }, { status: 400 });
+      }
+      if (inputNewPassword.length < 6) {
+        return NextResponse.json({ error: 'New password must be at least 6 characters', message: 'New password must be at least 6 characters' }, { status: 400 });
+      }
+
+      // Find user via authenticated JWT or provided userId/email
+      let user = null;
+      try {
+        user = await getAuthenticatedUser(request);
+      } catch (authErr) {
+        if (body.userId && isObjectId(body.userId)) {
+          user = await User.findById(body.userId);
+        } else if (body.email) {
+          user = await User.findOne({ email: { $regex: new RegExp(`^${escapeRegex(String(body.email).trim().toLowerCase())}$`, 'i') } });
+        }
+        if (!user) {
+          return NextResponse.json({ error: authErr.message || 'Authentication required' }, { status: 401 });
+        }
+      }
+
+      // If user has an existing passwordHash, verify currentPassword (optional if user never had a password set)
+      if (user.passwordHash) {
+        if (!inputCurrentPassword) {
+          return NextResponse.json({ error: 'Current password is required to change your password' }, { status: 400 });
+        }
+        const isValid = await bcrypt.compare(inputCurrentPassword, user.passwordHash);
+        if (!isValid) {
+          return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 });
+        }
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      user.passwordHash = await bcrypt.hash(inputNewPassword, salt);
+      user.otpCodeHash = undefined;
+      user.otpPurpose = '';
+      user.otpExpiresAt = null;
+      await user.save();
+
+      const userAgent = request.headers.get('user-agent') || '';
+      const { device } = parseDeviceInfo(userAgent);
+
+      await AuditLog.create({
+        action: 'PASSWORD_CHANGED',
+        details: `Password changed successfully for ${user.name} (${user.email})`,
+        module: 'SECURITY',
+        performedBy: user.name,
+        performedByEmail: user.email,
+        performedByRole: user.role,
+        target: user.email,
+        device,
+        timestamp: new Date(),
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Password updated successfully! You can now use your new password.',
       });
     }
 

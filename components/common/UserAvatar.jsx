@@ -24,39 +24,60 @@ const getFallbackAvatar = (str) => {
 
 export const resolveUserObject = (targetKey, contextUsers = []) => {
   if (!targetKey) return null;
-  if (typeof targetKey === 'object' && targetKey.name && (targetKey.id || targetKey._id)) return targetKey;
+  if (typeof targetKey === 'object' && targetKey.name) return targetKey;
 
-  const keyStr = String(typeof targetKey === 'object' ? targetKey.id || targetKey._id || targetKey.name || '' : targetKey).trim();
+  const keyStr = String(
+    typeof targetKey === 'object'
+      ? targetKey.id || targetKey._id || targetKey.name || targetKey.email || ''
+      : targetKey
+  ).trim();
   if (!keyStr) return null;
 
+  const lowerKey = keyStr.toLowerCase();
+
   // 1. Direct ID, _id, or Email Match
-  let match = (contextUsers || []).find(
-    (u) => u.id === keyStr || u._id === keyStr || u.email === keyStr
-  );
+  let match = (contextUsers || []).find((u) => {
+    if (!u) return false;
+    const uId = String(u.id || '').toLowerCase();
+    const u_Id = String(u._id || '').toLowerCase();
+    const uEmail = String(u.email || '').toLowerCase();
+    return uId === lowerKey || u_Id === lowerKey || uEmail === lowerKey;
+  });
   if (match) return match;
 
   // 2. Name exact or partial match
-  const lowerKey = keyStr.toLowerCase();
   match = (contextUsers || []).find((u) => {
-    if (!u.name) return false;
+    if (!u?.name) return false;
     const lowerName = u.name.toLowerCase();
-    return lowerName === lowerKey || lowerName.includes(lowerKey) || (lowerKey.length >= 3 && lowerName.split(' ')[0] === lowerKey.split(' ')[0]);
+    return (
+      lowerName === lowerKey ||
+      lowerName.includes(lowerKey) ||
+      (lowerKey.length >= 3 && lowerName.split(' ')[0] === lowerKey.split(' ')[0])
+    );
   });
   if (match) return match;
 
   // 3. Known legacy seed aliases mapped directly to live DB users
   if (keyStr === 'admin-1' || keyStr === 'admin@shoolin.co.uk' || lowerKey.includes('admin')) {
-    const adminMatch = (contextUsers || []).find((u) => u.role === 'Super Admin' || (u.name && u.name.toLowerCase().includes('admin')));
+    const adminMatch = (contextUsers || []).find(
+      (u) => u.role === 'Super Admin' || (u.name && u.name.toLowerCase().includes('admin'))
+    );
     if (adminMatch) return adminMatch;
   }
 
   if (keyStr === 'usr-1' || keyStr === 'usr-chandan' || lowerKey.includes('chandan')) {
-    const chandanMatch = (contextUsers || []).find((u) => (u.name && u.name.toLowerCase().includes('chandan')) || (u.email && u.email.toLowerCase().includes('uxdesigner')));
+    const chandanMatch = (contextUsers || []).find(
+      (u) =>
+        (u.name && u.name.toLowerCase().includes('chandan')) ||
+        (u.email && u.email.toLowerCase().includes('uxdesigner'))
+    );
     if (chandanMatch) return chandanMatch;
   }
 
   if (keyStr === 'usr-2' || keyStr === 'usr-sasmita' || lowerKey.includes('sasmita')) {
-    const sasmitaMatch = (contextUsers || []).find((u) => u.name && u.name.toLowerCase().includes('sasmita'));
+    const sasmitaMatch = (contextUsers || []).find(
+      (u) => u.name && u.name.toLowerCase().includes('sasmita')
+    );
     if (sasmitaMatch) return sasmitaMatch;
   }
 
@@ -145,7 +166,26 @@ export function AvatarGroup({ userIds = [], max = 3, size = 'sm' }) {
   } catch (e) {}
 
   const rawMembers = (userIds || [])
-    .map((uid) => resolveUserObject(uid, contextUsers))
+    .map((uid) => {
+      if (!uid) return null;
+      const resolved = resolveUserObject(uid, contextUsers);
+      if (resolved) return resolved;
+      if (typeof uid === 'object') {
+        return {
+          id: uid.id || uid._id || 'member',
+          name: uid.name || uid.email || 'Member',
+          role: uid.role || 'Member',
+          avatar: uid.avatar,
+        };
+      }
+      const str = String(uid).trim();
+      if (!str) return null;
+      return {
+        id: str,
+        name: str.includes('@') ? str.split('@')[0] : str.length > 20 ? 'Attendee' : str,
+        role: 'Member',
+      };
+    })
     .filter(Boolean);
 
   // Deduplicate by canonical user ID / name
@@ -193,4 +233,59 @@ export function AvatarGroup({ userIds = [], max = 3, size = 'sm' }) {
     </div>
   );
 }
+
+/**
+ * Checks whether a given user is the designated assignee of a task.
+ * Supports ID, _id, email, full name, and resolved directory lookups.
+ */
+export const isTaskAssignee = (task, currentUser, contextUsers = []) => {
+  if (!task || !currentUser) return false;
+  const currentId = String(currentUser.id || currentUser._id || '').toLowerCase();
+  const currentEmail = String(currentUser.email || '').toLowerCase();
+  const currentName = String(currentUser.name || '').trim().toLowerCase();
+
+  // 1. Direct object inspection if task.assignedTo is populated
+  if (typeof task.assignedTo === 'object' && task.assignedTo !== null) {
+    const aId = String(task.assignedTo.id || task.assignedTo._id || '').toLowerCase();
+    const aEmail = String(task.assignedTo.email || '').toLowerCase();
+    const aName = String(task.assignedTo.name || '').trim().toLowerCase();
+    if (
+      (currentId && aId === currentId) ||
+      (currentEmail && aEmail === currentEmail) ||
+      (currentName && aName === currentName)
+    ) {
+      return true;
+    }
+  }
+
+  // 2. Direct string matching (ID, email, name)
+  const assigned = String(task.assignedTo || '').trim().toLowerCase();
+  if (
+    assigned &&
+    ((currentId && assigned === currentId) ||
+      (currentEmail && assigned === currentEmail) ||
+      (currentName && assigned === currentName))
+  ) {
+    return true;
+  }
+
+  // 3. Resolve through active user directory
+  if (task.assignedTo && Array.isArray(contextUsers) && contextUsers.length > 0) {
+    const resolved = resolveUserObject(task.assignedTo, contextUsers);
+    if (resolved) {
+      const rId = String(resolved.id || resolved._id || '').toLowerCase();
+      const rEmail = String(resolved.email || '').toLowerCase();
+      const rName = String(resolved.name || '').trim().toLowerCase();
+      if (
+        (currentId && rId === currentId) ||
+        (currentEmail && rEmail === currentEmail) ||
+        (currentName && rName === currentName)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
 

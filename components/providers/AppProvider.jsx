@@ -20,6 +20,7 @@ import { getUrlParam, setUrlParam, removeUrlParam } from '@/hooks/useUrlState';
 import { api } from '@/lib/api';
 import { subscribeToRealtimeEvent } from '@/lib/socket';
 import { showConfirm, showSuccess, showError } from '@/lib/swal';
+import { isTaskAssignee, resolveUserObject } from '@/components/common/UserAvatar';
 
 const AppContext = createContext(null);
 
@@ -266,7 +267,7 @@ export function AppProvider({ children }) {
           if (Array.isArray(dbTasks) && dbTasks.length > 0) {
             setTasks(dbTasks);
           }
-          if (Array.isArray(dbMeetings) && dbMeetings.length > 0) {
+          if (Array.isArray(dbMeetings)) {
             setMeetings(dbMeetings);
           }
           if (Array.isArray(dbDeps) && dbDeps.length > 0) {
@@ -284,10 +285,12 @@ export function AppProvider({ children }) {
                   u.id === prev.id ||
                   u._id === prev.id ||
                   u._id === prev._id ||
-                  u.email === prev.email ||
+                  (u.email && prev.email && u.email.toLowerCase() === prev.email.toLowerCase()) ||
                   (u.name && prev.name && u.name.toLowerCase() === prev.name.toLowerCase())
               );
-              return match || dbUsers[0];
+              const merged = match ? { ...prev, ...match } : prev;
+              try { localStorage.setItem('pulsepm_current_user', JSON.stringify(merged)); } catch (e) {}
+              return merged;
             });
           }
           if (Array.isArray(dbTemplates) && dbTemplates.length > 0) {
@@ -419,6 +422,19 @@ export function AppProvider({ children }) {
         setUsers((prev) =>
           prev.map((u) => (u.id === updatedUser.id || u._id === updatedUser._id ? { ...u, ...updatedUser } : u))
         );
+        setCurrentUser((prev) => {
+          if (!prev) return prev;
+          if (
+            prev.id === updatedUser.id ||
+            prev._id === updatedUser._id ||
+            (prev.email && updatedUser.email && prev.email.toLowerCase() === updatedUser.email.toLowerCase())
+          ) {
+            const merged = { ...prev, ...updatedUser };
+            try { localStorage.setItem('pulsepm_current_user', JSON.stringify(merged)); } catch (e) {}
+            return merged;
+          }
+          return prev;
+        });
       });
 
       const unsubUserDeleted = subscribeToRealtimeEvent('user_deleted', ({ id }) => {
@@ -1054,6 +1070,19 @@ export function AppProvider({ children }) {
   };
 
   const handleUpdateTaskStatus = async (taskId, newStatus) => {
+    const targetTask = tasks.find((t) => t.id === taskId || t._id === taskId || t.code === taskId);
+    if (targetTask && currentUser) {
+      if (!isTaskAssignee(targetTask, currentUser, users)) {
+        const assigneeObj = resolveUserObject(targetTask.assignedTo, users);
+        const assigneeName = assigneeObj?.name || 'the assigned member';
+        showError(
+          'Access Denied',
+          `Only the assigned member (${assigneeName}) can change the status of this task.`
+        );
+        return;
+      }
+    }
+
     try {
       await api.tasks.updateStatus(taskId, newStatus);
     } catch (err) {
@@ -1095,6 +1124,19 @@ export function AppProvider({ children }) {
   };
 
   const handleUpdateTask = async (taskId, updates) => {
+    const targetTask = tasks.find((t) => t.id === taskId || t._id === taskId || t.code === taskId);
+    if (targetTask && currentUser && updates.status !== undefined && updates.status !== targetTask.status) {
+      if (!isTaskAssignee(targetTask, currentUser, users)) {
+        const assigneeObj = resolveUserObject(targetTask.assignedTo, users);
+        const assigneeName = assigneeObj?.name || 'the assigned member';
+        showError(
+          'Access Denied',
+          `Only the assigned member (${assigneeName}) can change the status of this task.`
+        );
+        return;
+      }
+    }
+
     try {
       if (api.tasks && api.tasks.update) {
         await api.tasks.update(taskId, updates);
@@ -1160,6 +1202,15 @@ export function AppProvider({ children }) {
   const toggleTaskComplete = (taskId) => {
     const task = tasks.find((t) => t.id === taskId || t._id === taskId || t.code === taskId);
     if (!task) return;
+    if (currentUser && !isTaskAssignee(task, currentUser, users)) {
+      const assigneeObj = resolveUserObject(task.assignedTo, users);
+      const assigneeName = assigneeObj?.name || 'the assigned member';
+      showError(
+        'Access Denied',
+        `Only the assigned member (${assigneeName}) can change the status of this task.`
+      );
+      return;
+    }
     const targetId = task.id || task._id || taskId;
 
     if (isCompletedStatus(task.status)) {
@@ -1197,26 +1248,34 @@ export function AppProvider({ children }) {
 
   const handleApproveMeeting = async (meetingId, comments = '') => {
     const updated = await api.meetings.approve(meetingId, comments, currentUser?.name);
-    setMeetings((prev) =>
-      prev.map((m) =>
-        m.id === meetingId || m._id === meetingId ? updated : m
-      )
-    );
+    if (updated) {
+      setMeetings((prev) =>
+        prev.map((m) =>
+          m.id === meetingId || m._id === meetingId || m.id === updated.id || m._id === updated.id
+            ? { ...m, ...updated, status: 'Approved' }
+            : m
+        )
+      );
+    }
     return updated;
   };
 
   const handleDeclineMeeting = async (meetingId, comments = '') => {
     const updated = await api.meetings.decline(meetingId, comments, currentUser?.name);
-    setMeetings((prev) =>
-      prev.map((m) =>
-        m.id === meetingId || m._id === meetingId ? updated : m
-      )
-    );
+    if (updated) {
+      setMeetings((prev) =>
+        prev.map((m) =>
+          m.id === meetingId || m._id === meetingId || m.id === updated.id || m._id === updated.id
+            ? { ...m, ...updated, status: 'Declined' }
+            : m
+        )
+      );
+    }
     return updated;
   };
 
-  const handleRescheduleMeeting = async (meetingId, date, time, comments = '', duration = null) => {
-    const updated = await api.meetings.reschedule(meetingId, date, time, comments, currentUser?.name, duration);
+  const handleRescheduleMeeting = async (meetingId, date, time, comments = '', duration = null, approverId = null) => {
+    const updated = await api.meetings.reschedule(meetingId, date, time, comments, currentUser?.name, duration, approverId);
     setMeetings((prev) =>
       prev.map((m) =>
         m.id === meetingId || m._id === meetingId ? updated : m
@@ -1235,9 +1294,16 @@ export function AppProvider({ children }) {
     return updated;
   };
 
-  const handleDeleteMeeting = async (meetingId) => {
-    await api.meetings.delete(meetingId);
-    setMeetings((prev) => prev.filter((m) => m.id !== meetingId && m._id !== meetingId));
+  const handleDeleteMeeting = async (meetingId, permanent = false) => {
+    const res = await api.meetings.delete(meetingId, permanent);
+    if (res?.archived && res?.meeting) {
+      setMeetings((prev) =>
+        prev.map((m) => (m.id === meetingId || m._id === meetingId ? res.meeting : m))
+      );
+    } else {
+      setMeetings((prev) => prev.filter((m) => m.id !== meetingId && m._id !== meetingId));
+    }
+    return res;
   };
 
   const handleAddMeetingComment = async (meetingId, text) => {
@@ -1424,8 +1490,17 @@ export function AppProvider({ children }) {
     setUsers((prev) =>
       prev.map((u) => (u.id === targetId || u._id === targetId ? { ...u, ...updatedUser } : u))
     );
-    if (currentUser.id === targetId || currentUser._id === targetId) {
-      setCurrentUser((prev) => ({ ...prev, ...updatedUser }));
+    const isSelf =
+      currentUser.id === targetId ||
+      currentUser._id === targetId ||
+      (currentUser.email && updatedUser.email && currentUser.email.toLowerCase() === updatedUser.email.toLowerCase());
+
+    if (isSelf) {
+      setCurrentUser((prev) => {
+        const merged = { ...prev, ...updatedUser };
+        try { localStorage.setItem('pulsepm_current_user', JSON.stringify(merged)); } catch (e) {}
+        return merged;
+      });
     }
     showSuccess('User Updated', `${updatedUser.name} details saved.`);
     try {
@@ -1499,7 +1574,7 @@ export function AppProvider({ children }) {
 
   const hasPermission = (user, permissionKey) => {
     if (!user) return false;
-    const uid = user.id;
+    const uid = user.id || (user._id ? String(user._id) : '');
 
     // 1. Check user-specific custom override
     if (userOverrides[uid] && userOverrides[uid][permissionKey] !== undefined) {
@@ -1525,7 +1600,7 @@ export function AppProvider({ children }) {
 
   const getUserPermissionStatus = (user, permissionKey) => {
     if (!user) return { allowed: false, isOverridden: false, type: 'inherited' };
-    const uid = user.id;
+    const uid = user.id || (user._id ? String(user._id) : '');
     const hasOverride = userOverrides[uid] && userOverrides[uid][permissionKey] !== undefined;
 
     if (hasOverride) {
@@ -1882,8 +1957,12 @@ export function AppProvider({ children }) {
     handleDeleteTask,
     handleScheduleMeeting,
     handleUpdateMeeting,
+    handleApproveMeeting,
+    handleDeclineMeeting,
+    handleRescheduleMeeting,
     handleRestoreMeeting,
     handleDeleteMeeting,
+    handleAddMeetingComment,
     handleAddDependency,
     handleUpdateDependencyStatus,
     handleAddLink,

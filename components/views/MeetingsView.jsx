@@ -59,6 +59,7 @@ export function MeetingsView({
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [rescheduleTime, setRescheduleTime] = useState('11:00');
   const [rescheduleDuration, setRescheduleDuration] = useState('45 mins');
+  const [rescheduleApproverId, setRescheduleApproverId] = useState('');
   const [rescheduleNote, setRescheduleNote] = useState('');
 
   const activeProjects = (projects || []).filter(
@@ -101,35 +102,64 @@ export function MeetingsView({
   };
 
   const matchesCurrentUser = (value) => {
-    const currentId = String(currentUser?.id || currentUser?._id || '');
-    const currentEmail = String(currentUser?.email || '').toLowerCase();
-    const target = String(value || '');
-    return Boolean(target) && (target === currentId || target.toLowerCase() === currentEmail);
+    if (!value || !currentUser) return false;
+    const currentId = String(currentUser.id || currentUser._id || '').toLowerCase();
+    const currentEmail = String(currentUser.email || '').toLowerCase();
+    const currentName = String(currentUser.name || '').trim().toLowerCase();
+    if (typeof value === 'object') {
+      const valId = String(value.id || value._id || '').toLowerCase();
+      const valEmail = String(value.email || '').toLowerCase();
+      const valName = String(value.name || '').trim().toLowerCase();
+      return (
+        Boolean(valId && valId === currentId) ||
+        Boolean(valEmail && valEmail === currentEmail) ||
+        Boolean(valName && currentName && valName === currentName)
+      );
+    }
+    const target = String(value).trim().toLowerCase();
+    return (
+      Boolean(target) &&
+      (target === currentId ||
+        target === currentEmail ||
+        (currentName && target === currentName))
+    );
   };
 
-  // Helper: check user visibility governance
+  // Helper: check user visibility governance (Creator, Approver, or Attendee ONLY)
   const isMeetingVisibleToUser = (m) => {
-    if (!currentUser) return true;
-    const currentId = currentUser.id || currentUser._id;
-    const currentEmail = currentUser.email;
+    if (!currentUser) return false;
+    const isCreator =
+      matchesCurrentUser(m.requestedBy) ||
+      matchesCurrentUser(m.requestedByEmail) ||
+      matchesCurrentUser(m.requestedByName);
+    const isApprover =
+      matchesCurrentUser(m.approverId) ||
+      matchesCurrentUser(m.approverEmail) ||
+      matchesCurrentUser(m.approverName);
 
-    const isCreator = matchesCurrentUser(m.requestedBy);
-    const isApprover = matchesCurrentUser(m.approverId);
-    const isAdmin = currentUser.role === 'Super Admin' || currentUser.role === 'Admin';
-
-    // Approved syncs are visible to assigned participants + creator + approver + admins
-    if (isApprovedMeeting(m.status)) {
-      const attendeeIds = [...(m.participants || []), ...(m.participantIds || [])];
-      const isAttendee = attendeeIds.some((id) => id === currentId || id === currentEmail);
-      return isCreator || isApprover || isAdmin || isAttendee;
+    // Archived / Concluded meetings: visible ONLY to Creator & Approver (STRICTLY HIDDEN from attendees & outsiders)
+    if (isMeetingArchived(m)) {
+      return isCreator || isApprover;
     }
 
-    // Pending Approval, Declined, or Rescheduled syncs are visible ONLY to creator, approver, and admins
-    return isCreator || isApprover || isAdmin;
+    const attendeeIds = [
+      ...(m.participants || []),
+      ...(m.participantIds || []),
+      ...(m.optionalMembers || []),
+      ...(m.optionalMemberIds || [])
+    ];
+    const isAttendee = attendeeIds.some((id) => matchesCurrentUser(id));
+
+    // Approved syncs are visible ONLY to assigned attendees + creator + approver (OUTSIDERS CANNOT SEE)
+    if (isApprovedMeeting(m.status)) {
+      return isCreator || isApprover || isAttendee;
+    }
+
+    // Pending Approval, Declined, or Rescheduled syncs are visible ONLY to creator and approver (NOT to attendees yet, NOT to outsiders)
+    return isCreator || isApprover;
   };
 
   // Helper: ONLY approved meetings whose time has passed (or explicitly archived) are archived!
-  // Non-approved meetings NEVER go to Archive!
   const isMeetingArchived = (m) => {
     if (m.isArchived === true || m.status === 'Archived') return true;
     if (!isApprovedMeeting(m.status)) return false;
@@ -139,18 +169,22 @@ export function MeetingsView({
   // Segregate visible meetings by lifecycle
   const visibleMeetings = (meetings || []).filter(isMeetingVisibleToUser);
 
-  // Tab 1: ONLY approved & upcoming meetings
+  // Tab 1: ONLY approved & upcoming meetings (visible to attendees, creator, approver)
   const activeUpcomingMeetings = visibleMeetings.filter(
     (m) => isApprovedMeeting(m.status) && !isMeetingArchived(m)
   );
 
-  // Tab 2: All unapproved meetings awaiting action (Pending, Requested, Rescheduled, Declined)
+  // Tab 2: Unapproved meetings awaiting action (Pending, Requested, Rescheduled, Declined) - visible ONLY to Creator & Approver
   const pendingApprovalMeetings = visibleMeetings.filter(
     (m) => !isApprovedMeeting(m.status) && !isMeetingArchived(m)
   );
 
-  // Tab 3: ONLY approved past or archived meetings
-  const archivedMeetings = visibleMeetings.filter((m) => isMeetingArchived(m));
+  // Tab 3: Concluded or archived meetings - visible ONLY to Creator & Approver (STRICTLY HIDDEN from attendees!)
+  const archivedMeetings = visibleMeetings.filter(
+    (m) =>
+      isMeetingArchived(m) &&
+      (matchesCurrentUser(m.requestedBy) || matchesCurrentUser(m.approverId))
+  );
 
   // Determine current tab list
   let currentTabMeetings = activeUpcomingMeetings;
@@ -219,6 +253,7 @@ export function MeetingsView({
     setRescheduleDate(m.date || new Date().toISOString().split('T')[0]);
     setRescheduleTime(m.time || '11:00');
     setRescheduleDuration(m.duration || '45 mins');
+    setRescheduleApproverId(m.approverId || '');
     setRescheduleNote('');
   };
 
@@ -227,6 +262,11 @@ export function MeetingsView({
     e.preventDefault();
     if (!rescheduleTarget) return;
 
+    if (!rescheduleApproverId) {
+      showError('Approver required', 'Please select an active designated approver for the rescheduled sync.');
+      return;
+    }
+
     const targetId = rescheduleTarget.id || rescheduleTarget._id;
     try {
       await handleRescheduleMeeting(
@@ -234,7 +274,8 @@ export function MeetingsView({
         rescheduleDate,
         rescheduleTime,
         rescheduleNote,
-        rescheduleDuration
+        rescheduleDuration,
+        rescheduleApproverId
       );
       showSuccess(
         'Meeting Rescheduled',
@@ -248,6 +289,14 @@ export function MeetingsView({
 
   // Restore Action (from Archive)
   const onRestore = async (m) => {
+    const isCreator = matchesCurrentUser(m.requestedBy);
+    const isApprover = matchesCurrentUser(m.approverId);
+    const isAdmin = currentUser?.role === 'Super Admin' || currentUser?.role === 'Admin';
+    if (!isCreator && !isApprover && !isAdmin) {
+      showError('Permission Denied', 'Only the creator, approver, or an admin can restore this meeting.');
+      return;
+    }
+
     const targetId = m.id || m._id;
     const isPast = isMeetingPast(m);
 
@@ -272,17 +321,39 @@ export function MeetingsView({
   };
 
   const onDelete = async (m) => {
-    const confirmed = await showConfirm({
-      title: 'Delete meeting?',
-      text: `Delete “${m.title}”? This cannot be undone.`,
-      confirmButtonText: 'Delete meeting',
-    });
-    if (!confirmed) return;
-    try {
-      await handleDeleteMeeting(m.id || m._id);
-      showSuccess('Meeting deleted', `“${m.title}” was deleted.`);
-    } catch (error) {
-      showError('Meeting not deleted', error.message || 'Unable to delete this meeting.');
+    const isCreator = matchesCurrentUser(m.requestedBy);
+    if (!isCreator) {
+      showError('Permission Denied', 'Only the meeting creator can delete this meeting.');
+      return;
+    }
+
+    const isArchived = isMeetingArchived(m);
+    if (!isArchived) {
+      const confirmed = await showConfirm({
+        title: 'Move to Archive?',
+        text: `Delete “${m.title}” from upcoming? It will move to Archive and be visible only to Creator and Approver.`,
+        confirmButtonText: 'Archive Meeting',
+      });
+      if (!confirmed) return;
+      try {
+        await handleDeleteMeeting(m.id || m._id, false);
+        showSuccess('Meeting Archived', `“${m.title}” moved to Archive. Visible to Creator & Approver only.`);
+      } catch (error) {
+        showError('Action Failed', error.message || 'Unable to archive this meeting.');
+      }
+    } else {
+      const confirmed = await showConfirm({
+        title: 'Permanently Delete?',
+        text: `Permanently delete “${m.title}” from Archive? This cannot be undone.`,
+        confirmButtonText: 'Delete Permanently',
+      });
+      if (!confirmed) return;
+      try {
+        await handleDeleteMeeting(m.id || m._id, true);
+        showSuccess('Meeting Deleted', `“${m.title}” was permanently deleted.`);
+      } catch (error) {
+        showError('Delete Failed', error.message || 'Unable to delete this meeting.');
+      }
     }
   };
 
@@ -449,10 +520,10 @@ export function MeetingsView({
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400 dark:text-slate-500">
                     {activeTab === 'archive'
-                      ? 'No meetings in the Archive tab.'
+                      ? 'No archived syncs. Concluded and archived meetings are visible only to the Creator and Approver.'
                       : activeTab === 'pending'
-                      ? 'No syncs currently awaiting approval.'
-                      : 'No upcoming meetings found matching the selected filters.'}
+                      ? 'No meetings awaiting approval or review.'
+                      : 'No approved upcoming meetings scheduled matching the selected filters.'}
                   </td>
                 </tr>
               ) : (
@@ -472,6 +543,8 @@ export function MeetingsView({
 
                   const isCreator = matchesCurrentUser(m.requestedBy);
                   const isApprover = matchesCurrentUser(m.approverId);
+                  const attendeeIds = [...(m.participants || []), ...(m.participantIds || [])];
+                  const isAttendee = attendeeIds.some((id) => matchesCurrentUser(id));
                   const isAdmin =
                     currentUser?.role === 'Super Admin' || currentUser?.role === 'Admin';
                   const commentsCount = (m.comments || []).length;
@@ -545,18 +618,23 @@ export function MeetingsView({
 
                         {/* Attendees */}
                         <td className="py-3 px-3 whitespace-nowrap">
-                          <div className="flex items-center gap-1">
-                            <AvatarGroup
-                              userIds={m.participants || m.participantIds || []}
-                              max={3}
-                              size="xs"
-                            />
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <AvatarGroup
+                                userIds={m.participants || m.participantIds || []}
+                                max={3}
+                                size="xs"
+                              />
+                              <span className="text-[10px] font-mono font-medium text-slate-600 dark:text-slate-400">
+                                {(m.participants || m.participantIds || []).length} { (m.participants || m.participantIds || []).length === 1 ? 'attendee' : 'attendees' }
+                              </span>
+                            </div>
                             {m.status === 'Pending Approval' && (
                               <span
-                                className="text-[9px] text-amber-600 dark:text-amber-400 font-medium ml-1"
+                                className="text-[9px] text-amber-600 dark:text-amber-400 font-medium"
                                 title="Will be visible to attendees once approved"
                               >
-                                (Pending approval)
+                                (Hidden from attendees until approved)
                               </span>
                             )}
                           </div>
@@ -584,8 +662,8 @@ export function MeetingsView({
                         {/* Actions & Video Room */}
                         <td className="py-3 px-3 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                            {/* Concluded meetings can only be restored or rescheduled by their creator. */}
-                            {activeTab === 'archive' && isCreator && (
+                            {/* Archive tab actions: for Creator, Approver, and Admin */}
+                            {activeTab === 'archive' && (isCreator || isApprover || isAdmin) && (
                               <>
                                 <button
                                   type="button"
@@ -605,12 +683,23 @@ export function MeetingsView({
                                   <RotateCcw className="w-2.5 h-2.5" />
                                   Restore
                                 </button>
+                                {isCreator && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onDelete(m)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 rounded font-semibold text-[10px] cursor-pointer transition-colors"
+                                    title="Permanently delete meeting from database"
+                                  >
+                                    <Trash2 className="w-2.5 h-2.5" />
+                                    Delete
+                                  </button>
+                                )}
                               </>
                             )}
 
-                            {/* In Active/Pending Tabs: Approver Controls */}
+                            {/* In Pending Tab: Approver Controls (Approve & Decline with reason) */}
                             {activeTab !== 'archive' &&
-                              isApprover &&
+                              (isApprover || isAdmin) &&
                               (m.status === 'Pending Approval' ||
                                 m.status === 'Rescheduled' ||
                                 m.status === 'Requested') && (
@@ -619,6 +708,7 @@ export function MeetingsView({
                                     type="button"
                                     onClick={() => onApprove(m)}
                                     className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold text-[10px] shadow-xs cursor-pointer transition-colors"
+                                    title="Accept & approve meeting"
                                   >
                                     <Check className="w-2.5 h-2.5" />
                                     Approve
@@ -627,6 +717,7 @@ export function MeetingsView({
                                     type="button"
                                     onClick={() => onDecline(m)}
                                     className="inline-flex items-center gap-1 px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded font-bold text-[10px] shadow-xs cursor-pointer transition-colors"
+                                    title="Deny with reason"
                                   >
                                     <X className="w-2.5 h-2.5" />
                                     Decline
@@ -634,60 +725,63 @@ export function MeetingsView({
                                 </>
                               )}
 
-                            {/* The creator and designated approver can edit; only the creator may reschedule. */}
-                            {activeTab !== 'archive' && (isCreator || isApprover) && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleOpenEditMeeting && handleOpenEditMeeting(m)
-                                  }
-                                  className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded font-semibold text-[10px] cursor-pointer transition-colors"
-                                  title="Modify meeting details"
-                                >
-                                  <Edit3 className="w-2.5 h-2.5 text-slate-500" />
-                                  Edit
-                                </button>
-                                {isCreator && (
-                                  <button
-                                    type="button"
-                                    onClick={() => openRescheduleModal(m)}
-                                    className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded font-semibold text-[10px] cursor-pointer transition-colors"
-                                    title="Reschedule to new date/time"
-                                  >
-                                    <Clock className="w-2.5 h-2.5 text-slate-500" />
-                                    Reschedule
-                                  </button>
-                                )}
-                              </>
-                            )}
-
-                            {isCreator && (
-                              <button
-                                type="button"
-                                onClick={() => onDelete(m)}
-                                className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 rounded font-semibold text-[10px] cursor-pointer transition-colors"
-                                title="Delete meeting"
-                              >
-                                <Trash2 className="w-2.5 h-2.5" />
-                                Delete
-                              </button>
-                            )}
-
-                            {/* Join Video Room (Only if Approved or user is creator/approver) */}
-                            {m.meetUrl && (m.status === 'Approved' || isCreator || isApprover || isAdmin) && (
+                            {/* Join Video Room: Available to all authorized members (Attendees, Creator, Approver) when approved */}
+                            {activeTab !== 'archive' && m.meetUrl && (isApprovedMeeting(m.status) || isCreator || isApprover || isAdmin) && (
                               <a
                                 href={m.meetUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 rounded font-bold text-[10px] transition-colors"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold text-[10px] shadow-xs transition-colors"
+                                title="Join meeting video room"
                               >
                                 <Video className="w-3 h-3" />
                                 Join
                               </a>
                             )}
+
+                            {/* Edit: Creator, Approver, and Attendees can edit */}
+                            {activeTab !== 'archive' && (isCreator || isApprover || isAttendee || isAdmin) && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleOpenEditMeeting && handleOpenEditMeeting(m)
+                                }
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded font-semibold text-[10px] cursor-pointer transition-colors"
+                                title="Modify meeting details"
+                              >
+                                <Edit3 className="w-2.5 h-2.5 text-slate-500" />
+                                Edit
+                              </button>
+                            )}
+
+                            {/* Reschedule: Creator, Approver, and Attendees can reschedule */}
+                            {activeTab !== 'archive' && (isCreator || isAttendee || isApprover || isAdmin) && (
+                              <button
+                                type="button"
+                                onClick={() => openRescheduleModal(m)}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded font-semibold text-[10px] cursor-pointer transition-colors"
+                                title="Reschedule meeting date/time"
+                              >
+                                <Clock className="w-2.5 h-2.5 text-slate-500" />
+                                Reschedule
+                              </button>
+                            )}
+
+                            {/* Delete: ONLY Creator can delete */}
+                            {activeTab !== 'archive' && isCreator && (
+                              <button
+                                type="button"
+                                onClick={() => onDelete(m)}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 rounded font-semibold text-[10px] cursor-pointer transition-colors"
+                                title="Delete and move meeting to Archive (visible to Creator & Approver only)"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                                Delete
+                              </button>
+                            )}
                           </div>
                         </td>
+
                       </tr>
 
                       {/* Comments Drawer */}
@@ -856,6 +950,40 @@ export function MeetingsView({
                     className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Designated Approver <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  required
+                  value={rescheduleApproverId}
+                  onChange={(e) => setRescheduleApproverId(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500 font-medium"
+                >
+                  <option value="">-- Select Designated Approver --</option>
+                  {(users || [])
+                    .filter((u) => u.status !== 'Inactive' && u.status !== 'Disabled')
+                    .map((u) => {
+                      const uid = u.id || u._id;
+                      const isHost =
+                        rescheduleTarget &&
+                        (String(uid) === String(rescheduleTarget.requestedBy) ||
+                          String(uid) === String(rescheduleTarget.creatorId) ||
+                          (rescheduleTarget.requestedByEmail &&
+                            u.email &&
+                            rescheduleTarget.requestedByEmail.toLowerCase() === u.email.toLowerCase()));
+                      return (
+                        <option key={uid} value={uid}>
+                          {u.name} ({u.role || 'Member'}){isHost ? ' — Host (Self)' : ''}
+                        </option>
+                      );
+                    })}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  Host can also be the approver him/herself.
+                </p>
               </div>
 
               <div>

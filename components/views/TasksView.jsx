@@ -17,10 +17,11 @@ import {
   Circle
 } from 'lucide-react';
 import { StatusBadge, PriorityBadge, StatusSelect } from '@/components/common/Badges';
-import { UserAvatar, resolveUserObject } from '@/components/common/UserAvatar';
+import { UserAvatar, resolveUserObject, isTaskAssignee } from '@/components/common/UserAvatar';
 import { KanbanBoardView } from '@/components/views/KanbanBoardView';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { useUrlParam } from '@/hooks/useUrlState';
+import { showError } from '@/lib/swal';
 
 export function TasksView({
   tasks,
@@ -171,6 +172,7 @@ export function TasksView({
     const assignee = resolveUserObject(task.assignedTo, users) || (users && users[0]) || { name: 'Unassigned', role: 'Member' };
 
     const isCompleted = isCompletedStatus ? isCompletedStatus(task.status) : (task.status === 'Completed');
+    const isAssignee = isTaskAssignee(task, currentUser, users);
 
     return (
       <React.Fragment key={task.id}>
@@ -201,14 +203,31 @@ export function TasksView({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!isAssignee) {
+                    showError(
+                      'Access Denied',
+                      `Only the assigned member (${assignee.name}) can change the status of this task.`
+                    );
+                    return;
+                  }
                   if (toggleTaskComplete) {
                     toggleTaskComplete(task.id);
                   } else {
                     onUpdateTaskStatus(task.id, isCompleted ? 'In Progress' : 'Completed');
                   }
                 }}
-                className="p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0"
-                title={isCompleted ? 'Mark as Incomplete' : 'Mark as Completed (Triggers Strikethrough)'}
+                className={`p-0.5 rounded-full transition-colors shrink-0 ${
+                  isAssignee
+                    ? 'hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
+                    : 'opacity-40 cursor-not-allowed'
+                }`}
+                title={
+                  !isAssignee
+                    ? `Only assigned member (${assignee.name}) can change task status`
+                    : isCompleted
+                    ? 'Mark as Incomplete'
+                    : 'Mark as Completed (Triggers Strikethrough)'
+                }
               >
                 {isCompleted ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 hover:text-emerald-600 transition-transform active:scale-90" />
@@ -263,9 +282,20 @@ export function TasksView({
           <td className="py-2.5 px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
             <StatusSelect
               value={task.status}
-              onChange={(newStatus) => onUpdateTaskStatus(task.id, newStatus)}
+              onChange={(newStatus) => {
+                if (!isAssignee) {
+                  showError(
+                    'Access Denied',
+                    `Only the assigned member (${assignee.name}) can change the status of this task.`
+                  );
+                  return;
+                }
+                onUpdateTaskStatus(task.id, newStatus);
+              }}
               options={taskStatusesList}
               size="xs"
+              disabled={!isAssignee}
+              title={!isAssignee ? `Only assigned member (${assignee.name}) can change task status` : undefined}
             />
           </td>
 

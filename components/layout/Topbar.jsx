@@ -17,14 +17,15 @@ import {
   Moon,
   Camera,
   Shield,
-  Settings,
   Sparkles,
   UserCheck,
-  Layers
+  Layers,
+  KeyRound
 } from 'lucide-react';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { RoleBadge } from '@/components/common/Badges';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { ChangePasswordModal } from '@/components/modals/ChangePasswordModal';
 
 export function Topbar({
   selectedProject,
@@ -58,6 +59,7 @@ export function Topbar({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   const userMenuRef = useRef(null);
   const createMenuRef = useRef(null);
@@ -402,6 +404,22 @@ export function Topbar({
                   </div>
                 </button>
 
+                {/* Change Password */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    setIsChangePasswordOpen(true);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200 flex items-center gap-2.5 transition-colors"
+                >
+                  <KeyRound className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                  <div>
+                    <div className="font-semibold">Change Password</div>
+                    <div className="text-[10px] text-slate-400">Update your security credentials</div>
+                  </div>
+                </button>
+
                 {/* 1-Click Dark/Light Mode toggle */}
                 <button
                   type="button"
@@ -450,6 +468,13 @@ export function Topbar({
           )}
         </div>
       </div>
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+        currentUser={currentUser}
+      />
     </header>
   );
 }

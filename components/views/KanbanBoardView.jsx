@@ -14,8 +14,9 @@ import {
   CircleDot
 } from 'lucide-react';
 import { PriorityBadge } from '@/components/common/Badges';
-import { UserAvatar, resolveUserObject } from '@/components/common/UserAvatar';
+import { UserAvatar, resolveUserObject, isTaskAssignee } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { showError } from '@/lib/swal';
 
 const COLUMNS = [
   {
@@ -67,15 +68,24 @@ export function KanbanBoardView({
   onSelectTask,
   onUpdateTaskStatus
 }) {
-  const { isCompletedStatus } = useAppContext();
+  const { isCompletedStatus, currentUser } = useAppContext();
   const columnOrder = ['Not Started', 'In Progress', 'Review', 'Blocked', 'Completed'];
 
-  const moveTask = (taskId, direction, currentStatus) => {
+  const moveTask = (task, direction, currentStatus) => {
+    const isAssignee = isTaskAssignee(task, currentUser, users);
+    if (!isAssignee) {
+      const assignee = resolveUserObject(task.assigneeId || task.assignedTo, users);
+      showError(
+        'Access Denied',
+        `Only the assigned member (${assignee?.name || 'assignee'}) can change the status of this task.`
+      );
+      return;
+    }
     const currentIndex = columnOrder.indexOf(currentStatus);
     if (currentIndex === -1) return;
     const nextIndex = currentIndex + direction;
     if (nextIndex >= 0 && nextIndex < columnOrder.length) {
-      onUpdateTaskStatus(taskId, columnOrder[nextIndex]);
+      onUpdateTaskStatus(task.id, columnOrder[nextIndex]);
     }
   };
 
@@ -116,6 +126,7 @@ export function KanbanBoardView({
                   const isCompleted = isCompletedStatus ? isCompletedStatus(t.status) : t.status === 'Completed';
                   const completedSubtasks = subtasks.filter(s => isCompletedStatus ? isCompletedStatus(s.status) : s.status === 'Completed').length;
                   const progressPct = subtasks.length > 0 ? Math.round((completedSubtasks / subtasks.length) * 100) : 0;
+                  const isAssignee = isTaskAssignee(t, currentUser, users);
 
                   return (
                     <div
@@ -207,10 +218,16 @@ export function KanbanBoardView({
                       >
                         <button
                           type="button"
-                          disabled={col.id === 'Not Started'}
-                          onClick={() => moveTask(t.id, -1, t.status)}
-                          className="px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1 transition-colors"
-                          title="Move to previous column"
+                          disabled={!isAssignee || col.id === 'Not Started'}
+                          onClick={() => moveTask(t, -1, t.status)}
+                          className={`px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1 transition-colors ${
+                            !isAssignee ? 'opacity-30 cursor-not-allowed' : ''
+                          }`}
+                          title={
+                            !isAssignee
+                              ? `Only assigned member (${assignee?.name || 'assignee'}) can move task`
+                              : 'Move to previous column'
+                          }
                         >
                           <ChevronLeft className="w-3 h-3" />
                           <span>Prev</span>
@@ -218,10 +235,16 @@ export function KanbanBoardView({
 
                         <button
                           type="button"
-                          disabled={col.id === 'Completed'}
-                          onClick={() => moveTask(t.id, 1, t.status)}
-                          className="px-2.5 py-1 bg-brand-light/30 hover:bg-brand-light/50 text-brand border border-brand/30 rounded-lg text-[10px] font-semibold disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1 transition-colors ml-auto"
-                          title="Advance to next column"
+                          disabled={!isAssignee || col.id === 'Completed'}
+                          onClick={() => moveTask(t, 1, t.status)}
+                          className={`px-2.5 py-1 bg-brand-light/30 hover:bg-brand-light/50 text-brand border border-brand/30 rounded-lg text-[10px] font-semibold disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1 transition-colors ml-auto ${
+                            !isAssignee ? 'opacity-30 cursor-not-allowed' : ''
+                          }`}
+                          title={
+                            !isAssignee
+                              ? `Only assigned member (${assignee?.name || 'assignee'}) can move task`
+                              : 'Advance to next column'
+                          }
                         >
                           <span>Next</span>
                           <ChevronRight className="w-3 h-3" />

@@ -26,7 +26,9 @@ export function ScheduleMeetingModal({
   );
   const activeUsers = (users || []).filter((user) => user && user.status !== 'Inactive' && user.status !== 'Disabled');
   const currentUserId = currentUser?.id || currentUser?._id || '';
-  const eligibleApprovers = activeUsers.filter((user) => (user.id || user._id) !== currentUserId);
+
+  const [creatorId, setCreatorId] = useState(currentUserId);
+  const eligibleApprovers = activeUsers;
 
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(getLocalToday);
@@ -44,10 +46,12 @@ export function ScheduleMeetingModal({
   const [meetUrl, setMeetUrl] = useState('');
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [attendeeSearch, setAttendeeSearch] = useState('');
 
   // Populate form if meetingToEdit is provided or reset
   useEffect(() => {
     if (meetingToEdit) {
+      setCreatorId(meetingToEdit.requestedBy || currentUserId);
       setTitle(meetingToEdit.title || '');
       setDate(meetingToEdit.date || getLocalToday());
       setTime(meetingToEdit.time || '11:00');
@@ -67,6 +71,7 @@ export function ScheduleMeetingModal({
       );
       setMeetUrl(meetingToEdit.meetUrl || '');
     } else {
+      setCreatorId(currentUserId);
       setTitle('');
       setDate(getLocalToday());
       setTime('11:00');
@@ -76,8 +81,8 @@ export function ScheduleMeetingModal({
       setRelatedTaskId('');
       setDescription('');
       const defaultApprover =
-        eligibleApprovers.find((u) => /admin|manager|approver/i.test(u.role || ''))?.id ||
-        eligibleApprovers.find((u) => /admin|manager|approver/i.test(u.role || ''))?._id ||
+        activeUsers.filter(u => (u.id || u._id) !== currentUserId).find((u) => /admin|manager|approver/i.test(u.role || ''))?.id ||
+        activeUsers.filter(u => (u.id || u._id) !== currentUserId).find((u) => /admin|manager|approver/i.test(u.role || ''))?._id ||
         '';
       setApproverId(defaultApprover);
       setParticipants([currentUser?.id || currentUser?._id].filter(Boolean));
@@ -85,6 +90,7 @@ export function ScheduleMeetingModal({
       setMeetUrl('');
     }
     setFormError('');
+    setAttendeeSearch('');
   }, [meetingToEdit, isOpen, currentUser, users, projects]);
 
   if (!isOpen) return null;
@@ -92,20 +98,35 @@ export function ScheduleMeetingModal({
   const projectTasks = tasks.filter((t) => t.projectId === projectId);
 
   const isParticipantSelected = (u) => {
-    const ids = [u.id, u._id, u.email].filter(Boolean);
-    return participants.some((pId) => ids.includes(pId));
+    const ids = [u.id, u._id, u.email].filter(Boolean).map(String);
+    return participants.some((pId) => ids.includes(String(pId)));
   };
 
   const toggleParticipant = (u) => {
     const mainId = u.id || u._id || u.email;
     if (isParticipantSelected(u)) {
       setParticipants((prev) =>
-        prev.filter((id) => id !== u.id && id !== u._id && id !== u.email)
+        prev.filter((id) => String(id) !== String(u.id) && String(id) !== String(u._id) && String(id) !== String(u.email))
       );
     } else {
       setParticipants((prev) => [...prev, mainId]);
     }
   };
+
+  const selectAllAttendees = () => {
+    const allIds = activeUsers.map(u => u.id || u._id).filter(Boolean);
+    setParticipants(allIds);
+  };
+
+  const clearAllAttendees = () => {
+    setParticipants([]);
+  };
+
+  const filteredUsers = activeUsers.filter(u => {
+    if (!attendeeSearch.trim()) return true;
+    const q = attendeeSearch.toLowerCase();
+    return (u.name || '').toLowerCase().includes(q) || (u.role || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+  });
 
   const invitedCount = activeUsers.filter(isParticipantSelected).length;
 
@@ -135,6 +156,7 @@ export function ScheduleMeetingModal({
       if (meetingToEdit) {
         const updates = {
           title: title.trim(),
+          requestedBy: creatorId,
           approverId,
           participants,
           participantIds: participants,
@@ -153,6 +175,7 @@ export function ScheduleMeetingModal({
       } else {
         const newMeeting = {
           title: title.trim(),
+          requestedBy: creatorId,
           approverId,
           participants,
           participantIds: participants,
@@ -331,64 +354,159 @@ export function ScheduleMeetingModal({
             </div>
           </div>
 
-          {/* Approver Designation */}
-          <div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Designated Approver <span className="text-rose-500">*</span>
-            </label>
-            <select
-              value={approverId}
-              onChange={(e) => setApproverId(e.target.value)}
-              required
-              className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600 font-medium"
-            >
-              <option value="">Select Approver</option>
-              {eligibleApprovers.map((u) => (
-                <option key={u.id || u._id} value={u.id || u._id}>
-                  {u.name} ({u.role})
-                </option>
-              ))}
-            </select>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Only the creator and this approver can see the meeting until it is approved.
-            </p>
+          {/* User Role Hierarchy Badge */}
+          <div className="hidden items-center justify-between p-2 rounded-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-[11px]">
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Meeting Governance Hierarchy:</span>
+            <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold">
+              <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
+                1. Creator
+              </span>
+              <span className="text-slate-400">&gt;</span>
+              <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                2. Approver
+              </span>
+              <span className="text-slate-400">&gt;</span>
+              <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                3. Attendee
+              </span>
+            </div>
           </div>
 
-          {/* Attendees / Participants Multi-Select */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="font-semibold text-slate-700 dark:text-slate-300">
-                Attendees / Participants ({invitedCount} selected)
+          {/* Creator and Approver in 2 columns */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* 1. Creator */}
+            <div>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Creator (Host) <span className="text-rose-500">*</span>
               </label>
-              <span className="text-[10px] text-slate-500">Visible to them after approval</span>
+              <select
+                value={creatorId}
+                onChange={(e) => setCreatorId(e.target.value)}
+                required
+                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600 font-medium"
+              >
+                {activeUsers.map((u) => {
+                  const uid = u.id || u._id;
+                  const isCurrent = String(uid) === String(currentUserId);
+                  return (
+                    <option key={uid} value={uid}>
+                      {u.name} ({u.role}){isCurrent ? ' — You' : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Has Edit, Delete &amp; Reschedule on dashboard.
+              </p>
             </div>
-            <div className="max-h-32 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-sm p-2 grid grid-cols-2 gap-1.5 bg-slate-50/50 dark:bg-slate-800/50">
-              {activeUsers.map((u) => {
-                const isSelected = isParticipantSelected(u);
-                return (
-                  <label
-                    key={u.id || u._id}
-                    className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors text-[11px] ${
-                      isSelected
-                        ? 'bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-700'
-                        : 'hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleParticipant(u)}
-                      className="sr-only"
-                    />
-                    <UserAvatar user={u} size="xs" />
-                    <div className="truncate flex-1">
-                      <p className="font-medium text-slate-800 dark:text-slate-200 truncate">{u.name}</p>
-                      <p className="text-[9px] text-slate-400 truncate">{u.role}</p>
-                    </div>
-                  </label>
-                );
-              })}
+
+            {/* 2. Approver */}
+            <div>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Designated Approver <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={approverId}
+                onChange={(e) => setApproverId(e.target.value)}
+                required
+                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600 font-medium"
+              >
+                <option value="">Select Approver</option>
+                {eligibleApprovers.map((u) => {
+                  const uid = u.id || u._id;
+                  const isHost = String(uid) === String(creatorId);
+                  return (
+                    <option key={uid} value={uid}>
+                      {u.name} ({u.role}){isHost ? ' — Host (Self)' : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Host can also be the approver. Can Edit, Approve, or Decline with reason.
+              </p>
             </div>
+          </div>
+
+          {/* 3. Attendees / Participants Multi-Select */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+              <div className="flex items-center gap-1.5">
+                <label className="font-semibold text-slate-700 dark:text-slate-300">
+                  Attendees (Users)
+                </label>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                  {invitedCount} selected
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={selectAllAttendees}
+                  className="text-[10px] text-brand hover:underline font-semibold cursor-pointer"
+                >
+                  Select All
+                </button>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
+                <button
+                  type="button"
+                  onClick={clearAllAttendees}
+                  className="text-[10px] text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 cursor-pointer"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {/* Attendee search filter */}
+            <div className="mb-1.5">
+              <input
+                type="text"
+                value={attendeeSearch}
+                onChange={(e) => setAttendeeSearch(e.target.value)}
+                placeholder="Search users to add as attendee..."
+                className="w-full px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded-sm text-[11px] text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-600"
+              />
+            </div>
+
+            <div className="max-h-36 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-sm p-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-slate-50/50 dark:bg-slate-800/50">
+              {filteredUsers.length === 0 ? (
+                <div className="col-span-2 py-3 text-center text-slate-400 text-[11px]">
+                  No users found matching “{attendeeSearch}”
+                </div>
+              ) : (
+                filteredUsers.map((u) => {
+                  const isSelected = isParticipantSelected(u);
+                  return (
+                    <label
+                      key={u.id || u._id}
+                      className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors text-[11px] ${isSelected
+                          ? 'bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-700'
+                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent'
+                        }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleParticipant(u)}
+                        className="sr-only"
+                      />
+                      <UserAvatar user={u} size="xs" />
+                      <div className="truncate flex-1">
+                        <p className="font-medium text-slate-800 dark:text-slate-200 truncate">{u.name}</p>
+                        <p className="text-[9px] text-slate-400 truncate">{u.role}</p>
+                      </div>
+                      {isSelected && (
+                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      )}
+                    </label>
+                  );
+                })
+              )}
+            </div>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+              Visible to attendees after approval. Attendees can click Join, Edit, Delete, or Reschedule.
+            </p>
           </div>
 
           {/* Description */}

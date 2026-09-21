@@ -117,7 +117,8 @@ export function StatusSelect({
   size = 'xs',
   disabled = false,
   direction = 'auto',
-  className = ''
+  className = '',
+  title
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0, bottom: 'auto' });
@@ -244,6 +245,7 @@ export function StatusSelect({
       <button
         ref={buttonRef}
         type="button"
+        title={title}
         disabled={disabled}
         onClick={handleToggle}
         className={`inline-flex items-center justify-between gap-1.5 font-semibold rounded-full border whitespace-nowrap shadow-2xs transition-all duration-150 cursor-pointer hover:shadow-xs hover:brightness-95 active:scale-95 ${sizeClass} ${currentStyle.style} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}

@@ -20,8 +20,9 @@ import {
   Circle
 } from 'lucide-react';
 import { StatusBadge, PriorityBadge, StatusSelect } from '@/components/common/Badges';
-import { UserAvatar, resolveUserObject } from '@/components/common/UserAvatar';
+import { UserAvatar, resolveUserObject, isTaskAssignee } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { showError } from '@/lib/swal';
 
 export function TaskDetailDrawer({
   isOpen,
@@ -36,7 +37,7 @@ export function TaskDetailDrawer({
   onEditTask,
   onSelectTask
 }) {
-  const { isCompletedStatus, getTaskStatuses, toggleTaskComplete, handleUpdateTask } = useAppContext();
+  const { isCompletedStatus, getTaskStatuses, toggleTaskComplete, handleUpdateTask, currentUser } = useAppContext();
   const [commentText, setCommentText] = useState('');
   const [comments, setComments] = useState([
     {
@@ -62,6 +63,7 @@ export function TaskDetailDrawer({
   if (!isOpen || !task) return null;
 
   const isTaskCompleted = isCompletedStatus ? isCompletedStatus(task.status) : (task.status === 'Completed');
+  const isAssignee = isTaskAssignee(task, currentUser, users);
 
   const project = (projects || []).find((p) => p.id === task.projectId || p._id === task.projectId || p.code === task.projectId) || { code: 'PRJ', name: 'Project' };
   const assignee = resolveUserObject(task.assignedTo, users) || { name: 'Unassigned', role: 'Member' };
@@ -191,11 +193,28 @@ export function TaskDetailDrawer({
               <button
                 type="button"
                 onClick={() => {
+                  if (!isAssignee) {
+                    showError(
+                      'Access Denied',
+                      `Only the assigned member (${assignee.name}) can change the status of this task.`
+                    );
+                    return;
+                  }
                   if (toggleTaskComplete) toggleTaskComplete(task.id);
                   else onUpdateTaskStatus(task.id, isTaskCompleted ? 'In Progress' : 'Completed');
                 }}
-                className="mt-1 p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0"
-                title={isTaskCompleted ? "Mark as Incomplete" : "Mark as Completed"}
+                className={`mt-1 p-0.5 rounded-full transition-colors shrink-0 ${
+                  isAssignee
+                    ? 'hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
+                    : 'opacity-40 cursor-not-allowed'
+                }`}
+                title={
+                  !isAssignee
+                    ? `Only assigned member (${assignee.name}) can change task status`
+                    : isTaskCompleted
+                    ? 'Mark as Incomplete'
+                    : 'Mark as Completed'
+                }
               >
                 {isTaskCompleted ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 hover:text-emerald-600 transition-transform active:scale-95" />
@@ -233,9 +252,20 @@ export function TaskDetailDrawer({
                 <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-1">Status</span>
                 <StatusSelect
                   value={task.status}
-                  onChange={(newStatus) => onUpdateTaskStatus(task.id, newStatus)}
+                  onChange={(newStatus) => {
+                    if (!isAssignee) {
+                      showError(
+                        'Access Denied',
+                        `Only the assigned member (${assignee.name}) can change the status of this task.`
+                      );
+                      return;
+                    }
+                    onUpdateTaskStatus(task.id, newStatus);
+                  }}
                   options={taskStatusesList}
                   size="sm"
+                  disabled={!isAssignee}
+                  title={!isAssignee ? `Only assigned member (${assignee.name}) can change task status` : undefined}
                 />
               </div>
 

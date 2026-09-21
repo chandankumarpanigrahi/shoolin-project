@@ -22,7 +22,10 @@ import {
   UserX,
   KeyRound,
   FileText,
-  Trash2
+  Trash2,
+  Video,
+  CheckSquare,
+  FolderGit2
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { UserAvatar } from '@/components/common/UserAvatar';
@@ -55,6 +58,10 @@ export function ActivityLogView() {
       const data = await api.sessions.getAll();
       if (Array.isArray(data)) {
         setSessions(data);
+        const curr = data.find((s) => s.isCurrent);
+        if (curr && curr.sessionId && typeof window !== 'undefined') {
+          localStorage.setItem('pulsepm_session_id', curr.sessionId);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch sessions:', err);
@@ -89,13 +96,23 @@ export function ActivityLogView() {
   // Terminate a single session
   const handleTerminateSession = async (session) => {
     const targetId = session.id || session._id || session.sessionId;
-    const isSelf = session.sessionId === currentSessionId;
+    const isSelf = Boolean(
+      session.isCurrent ||
+      (currentSessionId && session.sessionId === currentSessionId) ||
+      (currentUser?.email && session.userEmail?.toLowerCase() === currentUser.email?.toLowerCase() && session.status === 'Active')
+    );
+
+    if (isSelf) {
+      showError(
+        'Protected Active Session',
+        'You are currently using this session. You cannot terminate your active session from this panel. To log out, click your profile and select "Sign Out".'
+      );
+      return;
+    }
 
     const confirmed = await showConfirm({
-      title: isSelf ? 'Terminate Your Current Session?' : `Terminate Session for ${session.userName}?`,
-      text: isSelf
-        ? 'You will be logged out of this browser immediately.'
-        : `This will immediately revoke ${session.userName}'s access on ${session.device}.`,
+      title: `Terminate Session for ${session.userName}?`,
+      text: `This will immediately revoke ${session.userName}'s access on ${session.device} and kick them out.`,
       confirmButtonText: 'Yes, Terminate Session',
       confirmButtonColor: '#e11d48',
     });
@@ -512,20 +529,32 @@ export function ActivityLogView() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
                     {filteredSessions.map((session) => {
-                      const isCurrent = session.sessionId === currentSessionId;
+                      const isCurrent = Boolean(
+                        session.isCurrent ||
+                        (currentSessionId && session.sessionId === currentSessionId) ||
+                        (currentUser?.email && session.userEmail?.toLowerCase() === currentUser.email?.toLowerCase() && session.status === 'Active')
+                      );
                       return (
-                        <tr key={session.id || session._id || session.sessionId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                        <tr
+                          key={session.id || session._id || session.sessionId}
+                          className={`transition-colors ${
+                            isCurrent
+                              ? 'bg-brand/5 dark:bg-brand/10 border-l-4 border-brand'
+                              : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
+                          }`}
+                        >
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-2.5">
                               <UserAvatar user={{ name: session.userName, avatar: session.avatar }} size="sm" />
                               <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-bold text-slate-900 dark:text-white truncate">
                                     {session.userName}
                                   </span>
                                   {isCurrent && (
-                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-brand/10 text-brand border border-brand/20 uppercase">
-                                      You
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 uppercase tracking-wider shadow-xs">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                      Current Session (Under Use By You)
                                     </span>
                                   )}
                                 </div>
@@ -590,12 +619,20 @@ export function ActivityLogView() {
                           </td>
 
                           <td className="py-3.5 px-4 text-right">
-                            {session.status === 'Active' ? (
+                            {isCurrent ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/80 rounded-lg cursor-not-allowed border border-slate-200 dark:border-slate-700/80 shadow-2xs"
+                                title="Current active session cannot be terminated. Use Sign Out from your profile menu."
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                                <span>Current (Protected)</span>
+                              </span>
+                            ) : session.status === 'Active' ? (
                               <button
                                 type="button"
                                 onClick={() => handleTerminateSession(session)}
                                 className="px-2.5 py-1 text-xs font-bold text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 dark:border-rose-800 rounded-lg transition-all cursor-pointer shadow-xs"
-                                title="Revoke session"
+                                title="Revoke session immediately"
                               >
                                 Terminate
                               </button>
@@ -635,14 +672,14 @@ export function ActivityLogView() {
             </div>
 
             <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
-              {['ALL', 'AUTH', 'SESSION', 'USER_MGMT', 'SECURITY', 'PROJECTS'].map((mod) => (
+              {['ALL', 'AUTH', 'SESSION', 'SECURITY', 'USER_MGMT', 'PROJECTS', 'TASKS', 'MEETINGS', 'RBAC'].map((mod) => (
                 <button
                   key={mod}
                   type="button"
                   onClick={() => setAuditModuleFilter(mod)}
                   className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${auditModuleFilter === mod
                     ? 'bg-brand text-white shadow-xs font-bold'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                     }`}
                 >
                   {mod}
@@ -692,6 +729,10 @@ export function ActivityLogView() {
                       const isAuth = log.module === 'AUTH';
                       const isSession = log.module === 'SESSION';
                       const isSecurity = log.module === 'SECURITY';
+                      const isMeeting = log.module === 'MEETINGS';
+                      const isTask = log.module === 'TASKS';
+                      const isProject = log.module === 'PROJECTS';
+                      const isUser = log.module === 'USER_MGMT';
 
                       return (
                         <tr key={log.id || log._id || Math.random()} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
@@ -701,8 +742,18 @@ export function ActivityLogView() {
                                 <KeyRound className="w-3.5 h-3.5 text-indigo-500" />
                               ) : isSession ? (
                                 <Laptop className="w-3.5 h-3.5 text-rose-500" />
+                              ) : isSecurity ? (
+                                <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+                              ) : isMeeting ? (
+                                <Video className="w-3.5 h-3.5 text-violet-500" />
+                              ) : isTask ? (
+                                <CheckSquare className="w-3.5 h-3.5 text-teal-500" />
+                              ) : isProject ? (
+                                <FolderGit2 className="w-3.5 h-3.5 text-blue-500" />
+                              ) : isUser ? (
+                                <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
                               ) : (
-                                <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                                <Activity className="w-3.5 h-3.5 text-slate-500" />
                               )}
                               <span>{log.action}</span>
                             </span>
