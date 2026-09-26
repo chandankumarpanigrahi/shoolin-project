@@ -9,6 +9,8 @@ export const USERS = [
     department: "Executive & Tech Lead",
     avatar: "https://mrchamp-old.netlify.app/assets/link_share/logo.png",
     phone: "+1 (555) 234-5678",
+    dob: "1990-06-15",
+    dateOfBirth: "1990-06-15",
     status: "Active",
     lastActive: "Just now"
   },
@@ -21,6 +23,8 @@ export const USERS = [
     department: "UI/UX & Web Dev",
     avatar: "https://avatars.githubusercontent.com/u/91644974?v=4",
     phone: "8339869602",
+    dob: "1996-08-20",
+    dateOfBirth: "1996-08-20",
     status: "Active",
     lastActive: "Just now"
   },
@@ -33,6 +37,8 @@ export const USERS = [
     department: "Tech & Innovations",
     avatar: "https://i.pravatar.cc/150?img=47",
     phone: "+1 (555) 000-0000",
+    dob: "1998-11-12",
+    dateOfBirth: "1998-11-12",
     status: "Active",
     lastActive: "Just now"
   }

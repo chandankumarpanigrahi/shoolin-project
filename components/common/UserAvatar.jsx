@@ -84,72 +84,81 @@ export const resolveUserObject = (targetKey, contextUsers = []) => {
   return null;
 };
 
-export function UserAvatar({ userId, user, size = 'md', showName = false, showRole = false }) {
+export function UserAvatar({ userId, user, size = 'md', showName = false, showRole = false, className = '' }) {
   let contextUsers = [];
   try {
     const ctx = useAppContext();
     if (ctx && ctx.users) contextUsers = ctx.users;
-  } catch (e) {}
+  } catch (e) { }
 
   const target = user || userId;
-  const foundUser = resolveUserObject(target, contextUsers);
+  const isUnassigned = !target || (typeof target === 'string' && !target.trim());
+  const foundUser = isUnassigned ? null : resolveUserObject(target, contextUsers);
 
-  const displayName = foundUser?.name || 'User';
-  const avatarUrl = foundUser?.avatar || getFallbackAvatar(displayName);
+  const displayName = isUnassigned ? 'Unassigned' : (foundUser?.name || 'User');
+  const avatarUrl = isUnassigned ? null : (foundUser?.avatar || getFallbackAvatar(displayName));
 
   const sizeStyles = {
     xs: 'w-5 h-5 text-[10px]',
     sm: 'w-6 h-6 text-xs',
     md: 'w-7 h-7 text-xs',
     lg: 'w-9 h-9 text-sm',
-    xl: 'w-11 h-11 text-base',
+    xl: 'w-16 h-16 text-base',
   };
 
-  const initials = displayName
+  const initials = isUnassigned ? '—' : (displayName
     .split(' ')
     .filter(Boolean)
     .map((n) => n[0])
     .slice(0, 2)
     .join('')
-    .toUpperCase() || 'U';
+    .toUpperCase() || 'U');
 
-  const tooltipTitle = `${displayName} (${foundUser?.role || 'Member'})`;
+  const tooltipTitle = isUnassigned ? 'Unassigned (None)' : `${displayName} (${foundUser?.role || 'Member'})`;
+
+  const avatarCircle = (
+    <div
+      title={tooltipTitle}
+      style={{ borderRadius: '50%' }}
+      className={`relative inline-flex items-center justify-center shrink-0 rounded-full font-semibold overflow-hidden border border-slate-200/80 dark:border-slate-700/80 ${isUnassigned
+        ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-dashed border-slate-300 dark:border-slate-600'
+        : 'bg-brand-light/40 dark:bg-slate-800 text-brand dark:text-slate-200 cursor-pointer'
+        } ${sizeStyles[size] || sizeStyles.md} ${className}`}
+    >
+      {avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={avatarUrl}
+          alt={displayName}
+          title={tooltipTitle}
+          style={{ borderRadius: '50%' }}
+          className="w-full h-full object-cover rounded-full"
+          loading="lazy"
+          onError={(e) => {
+            e.currentTarget.src = getFallbackAvatar(displayName);
+          }}
+        />
+      ) : (
+        <span title={tooltipTitle}>{initials}</span>
+      )}
+    </div>
+  );
+
+  if (!showName && !showRole) {
+    return avatarCircle;
+  }
 
   return (
-    <div className="inline-flex items-center gap-2 max-w-full">
-      <div
-        title={tooltipTitle}
-        style={{ borderRadius: '50%' }}
-        className={`relative inline-flex items-center justify-center shrink-0 rounded-full font-semibold overflow-hidden border border-slate-200/80 dark:border-slate-700/80 bg-brand-light/40 dark:bg-slate-800 text-brand dark:text-slate-200 cursor-pointer ${
-          sizeStyles[size] || sizeStyles.md
-        }`}
-      >
-        {avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={avatarUrl}
-            alt={displayName}
-            title={tooltipTitle}
-            style={{ borderRadius: '50%' }}
-            className="w-full h-full object-cover rounded-full"
-            loading="lazy"
-            onError={(e) => {
-              e.currentTarget.src = getFallbackAvatar(displayName);
-            }}
-          />
-        ) : (
-          <span title={tooltipTitle}>{initials}</span>
-        )}
-      </div>
-
+    <div className={`inline-flex items-center gap-2 max-w-full ${className}`}>
+      {avatarCircle}
       {showName && (
         <div className="min-w-0 flex flex-col text-left leading-tight">
-          <span className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate" title={tooltipTitle}>
+          <span className={`text-xs font-medium truncate ${isUnassigned ? 'text-slate-400 dark:text-slate-500 italic' : 'text-slate-800 dark:text-slate-200'}`} title={tooltipTitle}>
             {displayName}
           </span>
           {showRole && (
             <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-              {foundUser?.role || 'Member'}
+              {isUnassigned ? 'None' : (foundUser?.role || 'Member')}
             </span>
           )}
         </div>
@@ -163,7 +172,7 @@ export function AvatarGroup({ userIds = [], max = 3, size = 'sm' }) {
   try {
     const ctx = useAppContext();
     if (ctx && ctx.users) contextUsers = ctx.users;
-  } catch (e) {}
+  } catch (e) { }
 
   const rawMembers = (userIds || [])
     .map((uid) => {
@@ -222,9 +231,8 @@ export function AvatarGroup({ userIds = [], max = 3, size = 'sm' }) {
       {remainder > 0 && (
         <div
           style={{ borderRadius: '50%' }}
-          className={`flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700 text-[10px] ring-1 ring-white dark:ring-slate-900 shrink-0 ${
-            size === 'xs' ? 'w-5 h-5' : 'w-6 h-6'
-          }`}
+          className={`flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700 text-[10px] ring-1 ring-white dark:ring-slate-900 shrink-0 ${size === 'xs' ? 'w-5 h-5' : 'w-6 h-6'
+            }`}
           title={`${remainder} more members: ${validMembers.slice(max).map(m => m.name).join(', ')}`}
         >
           +{remainder}
@@ -240,6 +248,16 @@ export function AvatarGroup({ userIds = [], max = 3, size = 'sm' }) {
  */
 export const isTaskAssignee = (task, currentUser, contextUsers = []) => {
   if (!task || !currentUser) return false;
+
+  // Admin / Super Admin override check
+  const role = String(currentUser.role || '').toLowerCase();
+  if (role.includes('admin') || role === 'super admin') return true;
+
+  // If task is unassigned (no-one assigned as default), anyone can claim/assign/edit status/move
+  if (!task.assignedTo || (typeof task.assignedTo === 'string' && !task.assignedTo.trim())) {
+    return true;
+  }
+
   const currentId = String(currentUser.id || currentUser._id || '').toLowerCase();
   const currentEmail = String(currentUser.email || '').toLowerCase();
   const currentName = String(currentUser.name || '').trim().toLowerCase();

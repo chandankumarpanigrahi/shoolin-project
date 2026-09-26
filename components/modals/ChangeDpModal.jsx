@@ -98,8 +98,8 @@ export function ChangeDpModal({ isOpen, onClose, currentUser, onUpdateAvatar }) 
         <div className="p-5 space-y-5">
           {/* Live Preview */}
           <div className="flex items-center gap-4 p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 rounded-sm">
-            <div className="relative">
-              <UserAvatar user={previewUser} size="xl" />
+            <div className="relative w-16 h-16 shrink-0">
+              <UserAvatar user={previewUser} size="xl" className="w-full h-full" />
               <div className="absolute -bottom-1 -right-1 p-1 bg-brand text-white rounded-full shadow-sm">
                 <Check className="w-2.5 h-2.5" />
               </div>

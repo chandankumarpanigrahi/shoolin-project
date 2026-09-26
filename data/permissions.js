@@ -44,7 +44,8 @@ export const PERMISSION_MODULES = [
   { id: "kpi", name: "KPI Analytics & Telemetry", icon: "BarChart3", desc: "Throughput metrics, team velocity, and financial exports" },
   { id: "templates", name: "Project Templates", icon: "Layers", desc: "Reusable one-time & recurring project templates" },
   { id: "masters", name: "Master Setup Configuration", icon: "Database", desc: "Directory users, roles, statuses, brands, and departments" },
-  { id: "access_control", name: "Access Control & RBAC Governance", icon: "ShieldCheck", desc: "Tit-to-bit user permission overrides and role matrix" }
+  { id: "access_control", name: "Access Control & RBAC Governance", icon: "ShieldCheck", desc: "Tit-to-bit user permission overrides and role matrix" },
+  { id: "settings", name: "Settings & Preferences", icon: "Settings", desc: "Workspace tenant configuration, notifications, display density, and security safeguards" }
 ];
 
 export const GRANULAR_PERMISSIONS = [
@@ -123,6 +124,14 @@ export const GRANULAR_PERMISSIONS = [
     risk: "Standard",
     defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": false }
   },
+  {
+    id: "projects.view_deleted",
+    moduleId: "projects",
+    name: "View Deleted Projects Tab",
+    description: "Access and view the Deleted / Soft-deleted projects tab on the Projects page",
+    risk: "Standard",
+    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": false, "User": false }
+  },
 
   // 3. Tasks
   {
@@ -196,26 +205,34 @@ export const GRANULAR_PERMISSIONS = [
   {
     id: "meetings.view",
     moduleId: "meetings",
-    name: "View Meeting Schedule",
+    name: "View Meetings Schedule",
     description: "Browse upcoming sprint syncs, agendas, and calendar",
     risk: "Low",
     defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": true }
   },
   {
-    id: "meetings.schedule",
+    id: "meetings.create",
     moduleId: "meetings",
-    name: "Schedule Meeting Syncs",
-    description: "Book new calendar slots and create Google Meet sessions",
+    name: "Create Meetings",
+    description: "Book new calendar slots and add video room links",
     risk: "Low",
     defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": true }
   },
   {
-    id: "meetings.cancel",
+    id: "meetings.edit",
     moduleId: "meetings",
-    name: "Cancel / Delete Meetings",
+    name: "Edit Meetings",
+    description: "Modify meeting agenda, duration, or reschedule time slots",
+    risk: "Standard",
+    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": true }
+  },
+  {
+    id: "meetings.delete",
+    moduleId: "meetings",
+    name: "Cancel & Delete Meetings",
     description: "Cancel booked sync meetings or delete from calendar",
     risk: "Standard",
-    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": false }
+    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": true }
   },
 
   // 6. Dependencies
@@ -370,6 +387,88 @@ export const GRANULAR_PERMISSIONS = [
     moduleId: "access_control",
     name: "Reset System Governance",
     description: "Restore entire organization permissions back to factory defaults",
+    risk: "High",
+    defaultRoles: { "Super Admin": true, "Admin": false, "Manager / TL": false, "User": false }
+  },
+
+  // 12. Settings & Preferences
+  {
+    id: "settings.view",
+    moduleId: "settings",
+    name: "Access Settings Hub",
+    description: "Access the settings & preferences center and general interface tools",
+    risk: "Low",
+    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": true }
+  },
+  {
+    id: "settings.profile.edit",
+    moduleId: "settings",
+    name: "Edit Personal Profile Details",
+    description: "Update account display name, email, and phone number (avatar/DP photo updates are open to all users)",
+    risk: "Low",
+    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": true }
+  },
+  {
+    id: "settings.workspace.view",
+    moduleId: "settings",
+    name: "View Workspace Parameters",
+    description: "Inspect tenant organization profile, numbering scheme, and tenant limits",
+    risk: "Standard",
+    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": false }
+  },
+  {
+    id: "settings.workspace.edit",
+    moduleId: "settings",
+    name: "Manage Workspace Configuration",
+    description: "Modify organization name, task prefix, fiscal year, and tenant limits",
+    risk: "High",
+    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": false, "User": false }
+  },
+  {
+    id: "settings.notifications.view",
+    moduleId: "settings",
+    name: "View Notification Rules Matrix",
+    description: "Review operational trigger matrix, delivery channels, and quiet hours",
+    risk: "Low",
+    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": true }
+  },
+  {
+    id: "settings.notifications.edit",
+    moduleId: "settings",
+    name: "Manage Notification Rules & Timing",
+    description: "Configure push/in-app/email triggers, schedule timing, and quiet hours",
+    risk: "Standard",
+    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": true }
+  },
+  {
+    id: "settings.display.view",
+    moduleId: "settings",
+    name: "View Interface Display & Density",
+    description: "Inspect interface density settings, pagination rows, and animations",
+    risk: "Low",
+    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": true }
+  },
+  {
+    id: "settings.display.edit",
+    moduleId: "settings",
+    name: "Modify Display Density & Layout",
+    description: "Switch layout density, default sidebar collapse, and micro-animations",
+    risk: "Low",
+    defaultRoles: { "Super Admin": true, "Admin": true, "Manager / TL": true, "User": true }
+  },
+  {
+    id: "settings.security.view",
+    moduleId: "settings",
+    name: "View Security Safeguards",
+    description: "Review active session policies, MFA configuration, and security audits (Super Admin by default)",
+    risk: "Standard",
+    defaultRoles: { "Super Admin": true, "Admin": false, "Manager / TL": false, "User": false }
+  },
+  {
+    id: "settings.security.edit",
+    moduleId: "settings",
+    name: "Manage Security, Passwords & Backups",
+    description: "Export full workspace dataset to JSON or reset local caches (Super Admin by default; password change is open to all)",
     risk: "High",
     defaultRoles: { "Super Admin": true, "Admin": false, "Manager / TL": false, "User": false }
   }

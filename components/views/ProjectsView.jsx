@@ -39,7 +39,9 @@ export function ProjectsView({
   onRestoreProject
 }) {
   const { can, handleOpenEditProject, isCompletedStatus, isProjectAccessibleToUser, currentUser } = useAppContext();
-  const [activeTab, setActiveTab] = useUrlParam('tab', 'active'); // 'active' | 'deleted'
+  const [rawActiveTab, setActiveTab] = useUrlParam('tab', 'active'); // 'active' | 'deleted'
+  const canViewDeleted = can('projects.view_deleted');
+  const activeTab = (rawActiveTab === 'deleted' && !canViewDeleted) ? 'active' : rawActiveTab;
   const [viewMode, setViewMode] = useUrlParam('view', 'table'); // 'table' | 'grid'
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
@@ -256,27 +258,29 @@ export function ProjectsView({
           </span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('deleted')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold border-b-2 transition-all ${
-            activeTab === 'deleted'
-              ? 'border-rose-600 text-rose-600 bg-white dark:bg-slate-900 rounded-t-sm shadow-2xs'
-              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40'
-          }`}
-        >
-          <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-          <span>Deleted Projects</span>
-          <span
-            className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+        {canViewDeleted && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('deleted')}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold border-b-2 transition-all ${
               activeTab === 'deleted'
-                ? 'bg-rose-600 text-white font-bold'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                ? 'border-rose-600 text-rose-600 bg-white dark:bg-slate-900 rounded-t-sm shadow-2xs'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40'
             }`}
           >
-            {deletedProjectsList.length}
-          </span>
-        </button>
+            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+            <span>Deleted Projects</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                activeTab === 'deleted'
+                  ? 'bg-rose-600 text-white font-bold'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              {deletedProjectsList.length}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Filter and Search Bar */}

@@ -26,6 +26,7 @@ import { UserAvatar } from '@/components/common/UserAvatar';
 import { RoleBadge } from '@/components/common/Badges';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { ChangePasswordModal } from '@/components/modals/ChangePasswordModal';
+import { formatDate } from '@/lib/dateUtils';
 
 export function Topbar({
   selectedProject,
@@ -98,8 +99,6 @@ export function Topbar({
 
     if (pathname === '/' || pathname === '/dashboard') {
       list.push({ label: 'Dashboard', href: '/dashboard' });
-    } else if (pathname === '/my-focus') {
-      list.push({ label: 'My Focus', href: '/my-focus' });
     } else if (pathname === '/projects') {
       list.push({ label: 'Projects', href: '/projects' });
     } else if (pathname.startsWith('/project/')) {
@@ -328,7 +327,7 @@ export function Topbar({
                           {n.title}
                         </span>
                         <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
-                          {n.createdAt ? new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Now'}
+                          {n.createdAt ? `${formatDate(n.createdAt)} ${new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Now'}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-snug">{n.detail}</p>

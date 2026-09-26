@@ -7,7 +7,6 @@ import {
   FolderGit2,
   Briefcase,
   CheckSquare,
-  Target,
   CalendarRange,
   Video,
   GitBranch,
@@ -62,18 +61,15 @@ export function Sidebar({
 
   const navItems = [
     { id: 'dashboard', href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'my-focus', href: '/my-focus', label: 'My Focus', icon: Target, badge: 'Focus' },
     { id: 'projects', href: '/projects', label: 'Projects', icon: Briefcase, count: projects.length },
-    { id: 'roadmap', href: '/roadmap', label: 'Roadmap', icon: CalendarRange, badge: 'Q3-Q4' },
     { id: 'tasks', href: '/tasks', label: 'Tasks', icon: CheckSquare, count: tasks.length },
+    { id: 'roadmap', href: '/roadmap', label: 'Roadmap', icon: CalendarRange, badge: 'Q3-Q4' },
     { id: 'meetings', href: '/meetings', label: 'Meetings', icon: Video, badge: meetings.length ? `${meetings.length}` : undefined },
-    { id: 'dependencies', href: '/dependencies', label: 'Dependencies', icon: GitBranch, badge: dependencies.length ? `${dependencies.length}` : undefined },
-    { id: 'links', href: '/links', label: 'Links', icon: Link2 },
     { id: 'kpi', href: '/kpi', label: 'KPI Dashboard', icon: BarChart3, perm: 'kpi.view' },
     { id: 'templates', href: '/templates', label: 'Project Templates', icon: Layers, perm: 'templates.view' },
     { id: 'masters', href: '/masters', label: 'Masters Setup', icon: Database, badge: 'Masters', perm: 'masters.access' },
     { id: 'activity-log', href: '/activity-log', label: 'Activity Log', icon: ShieldCheck, badge: 'SuperAdmin', perm: 'masters.access' },
-    { id: 'settings', href: '/settings', label: 'Settings', icon: Settings },
+    { id: 'settings', href: '/settings', label: 'Settings', icon: Settings, perm: 'settings.view' },
   ];
 
   const handleNavClick = (item) => {

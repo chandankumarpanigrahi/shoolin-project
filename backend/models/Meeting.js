@@ -12,6 +12,8 @@ const meetingSchema = new mongoose.Schema(
     participants: [{ type: String }],
     optionalMemberIds: [{ type: String }],
     optionalMembers: [{ type: String }],
+    locationType: { type: String, default: 'Online', enum: ['Online', 'Offline'] },
+    locationAddress: { type: String, default: '' },
     meetUrl: { type: String, default: '' }, // Direct Google Meet / Teams / Zoom link
     date: { type: String, required: true, index: true },
     time: { type: String, default: '10:00' },
@@ -20,10 +22,12 @@ const meetingSchema = new mongoose.Schema(
     projectId: { type: String, index: true },
     relatedTaskId: { type: String },
     description: { type: String, default: '' },
-    status: { type: String, default: 'Pending Approval', index: true }, // 'Pending Approval' | 'Approved' | 'Declined' | 'Rescheduled' | 'Archived'
+    status: { type: String, default: 'Pending Approval', index: true }, // 'Pending Approval' | 'Approved' | 'Declined' | 'Rescheduled' | 'Cancelled' | 'Archived'
     isArchived: { type: Boolean, default: false, index: true },
     archivedAt: { type: Date, default: null },
     approvedAt: { type: Date, default: null },
+    cancelReason: { type: String, default: '' },
+    cancelledAt: { type: Date, default: null },
     rescheduleCount: { type: Number, default: 0 },
     comments: [
       {

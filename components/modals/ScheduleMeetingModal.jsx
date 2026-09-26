@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Video, Calendar, Clock, Link as LinkIcon, Plus, Check, Flag } from 'lucide-react';
+import { X, Video, Calendar, Clock, Link as LinkIcon, MapPin, Plus, Check, Lock, AlertCircle } from 'lucide-react';
 import { UserAvatar } from '@/components/common/UserAvatar';
+import { formatDate } from '@/lib/dateUtils';
 
 const getLocalToday = () => {
   const now = new Date();
@@ -16,6 +17,7 @@ export function ScheduleMeetingModal({
   projects = [],
   tasks = [],
   users = [],
+  meetings = [],
   currentUser,
   meetingToEdit = null,
   onScheduleMeeting,
@@ -24,43 +26,41 @@ export function ScheduleMeetingModal({
   const activeProjects = (projects || []).filter(
     (p) => p && !p.isDeleted && p.status !== 'Deleted'
   );
-  const activeUsers = (users || []).filter((user) => user && user.status !== 'Inactive' && user.status !== 'Disabled');
+  const activeUsers = (users || []).filter(
+    (user) => user && user.status !== 'Inactive' && user.status !== 'Disabled'
+  );
   const currentUserId = currentUser?.id || currentUser?._id || '';
-
-  const [creatorId, setCreatorId] = useState(currentUserId);
-  const eligibleApprovers = activeUsers;
 
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(getLocalToday);
   const [time, setTime] = useState('11:00');
   const [duration, setDuration] = useState('45 mins');
   const [priority, setPriority] = useState('Medium');
-  const [projectId, setProjectId] = useState(activeProjects[0]?.id || '');
+  const [meetUrl, setMeetUrl] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [relatedTaskId, setRelatedTaskId] = useState('');
   const [description, setDescription] = useState('');
-  const [approverId, setApproverId] = useState('');
-  const [participants, setParticipants] = useState(() => [
-    currentUser?.id || currentUser?._id,
-  ].filter(Boolean));
+  const [participants, setParticipants] = useState(() =>
+    [currentUser?.id || currentUser?._id].filter(Boolean)
+  );
   const [optionalMembers, setOptionalMembers] = useState([]);
-  const [meetUrl, setMeetUrl] = useState('');
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [attendeeSearch, setAttendeeSearch] = useState('');
+  const [allowConflict, setAllowConflict] = useState(false);
 
   // Populate form if meetingToEdit is provided or reset
   useEffect(() => {
     if (meetingToEdit) {
-      setCreatorId(meetingToEdit.requestedBy || currentUserId);
       setTitle(meetingToEdit.title || '');
       setDate(meetingToEdit.date || getLocalToday());
       setTime(meetingToEdit.time || '11:00');
       setDuration(meetingToEdit.duration || '45 mins');
       setPriority(meetingToEdit.priority || 'Medium');
-      setProjectId(meetingToEdit.projectId || activeProjects[0]?.id || '');
+      setMeetUrl(meetingToEdit.meetUrl || '');
+      setProjectId(meetingToEdit.projectId || '');
       setRelatedTaskId(meetingToEdit.relatedTaskId || '');
       setDescription(meetingToEdit.description || '');
-      setApproverId(meetingToEdit.approverId || '');
       setParticipants(
         meetingToEdit.participants || meetingToEdit.participantIds || [
           currentUser?.id || currentUser?._id,
@@ -69,25 +69,18 @@ export function ScheduleMeetingModal({
       setOptionalMembers(
         meetingToEdit.optionalMembers || meetingToEdit.optionalMemberIds || []
       );
-      setMeetUrl(meetingToEdit.meetUrl || '');
     } else {
-      setCreatorId(currentUserId);
       setTitle('');
       setDate(getLocalToday());
       setTime('11:00');
       setDuration('45 mins');
       setPriority('Medium');
-      setProjectId(activeProjects[0]?.id || '');
+      setMeetUrl('');
+      setProjectId('');
       setRelatedTaskId('');
       setDescription('');
-      const defaultApprover =
-        activeUsers.filter(u => (u.id || u._id) !== currentUserId).find((u) => /admin|manager|approver/i.test(u.role || ''))?.id ||
-        activeUsers.filter(u => (u.id || u._id) !== currentUserId).find((u) => /admin|manager|approver/i.test(u.role || ''))?._id ||
-        '';
-      setApproverId(defaultApprover);
       setParticipants([currentUser?.id || currentUser?._id].filter(Boolean));
       setOptionalMembers([]);
-      setMeetUrl('');
     }
     setFormError('');
     setAttendeeSearch('');
@@ -95,18 +88,94 @@ export function ScheduleMeetingModal({
 
   if (!isOpen) return null;
 
-  const projectTasks = tasks.filter((t) => t.projectId === projectId);
+  const projectTasks = projectId
+    ? tasks.filter((t) => t.projectId === projectId || t.project === projectId)
+    : tasks;
+
+  // Time Interval Parser for Conflict Detection
+  const parseTimeInterval = (dStr, tStr, durStr = '45 mins') => {
+    if (!dStr || !tStr) return null;
+    const match = String(tStr).trim().match(/^(\d{1,2}):(\d{2})(?:\s*([ap]m))?$/i);
+    if (!match) return null;
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const amPm = match[3]?.toLowerCase();
+    if (hours > 23 || minutes > 59) return null;
+    if (amPm) {
+      if (hours > 12 || hours === 0) return null;
+      if (amPm === 'pm' && hours < 12) hours += 12;
+      if (amPm === 'am' && hours === 12) hours = 0;
+    }
+    const start = new Date(`${dStr}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`);
+    if (isNaN(start.getTime())) return null;
+    const durMinutes = parseInt(durStr, 10) || 45;
+    const end = new Date(start.getTime() + durMinutes * 60 * 1000);
+    return { start: start.getTime(), end: end.getTime() };
+  };
+
+  const hasIntervalOverlap = (intA, intB) => {
+    if (!intA || !intB) return false;
+    return intA.start < intB.end && intA.end > intB.start;
+  };
+
+  // Real-time conflict computation for all users
+  const currentInterval = parseTimeInterval(date, time, duration);
+  const editMeetingId = meetingToEdit?.id || meetingToEdit?._id;
+
+  const userConflictMap = {};
+  if (currentInterval) {
+    (meetings || []).forEach((m) => {
+      const mId = m.id || m._id;
+      if (editMeetingId && (String(mId) === String(editMeetingId))) return;
+      if (m.date !== date) return;
+      if (m.isArchived === true || m.status === 'Archived' || m.status === 'Cancelled' || m.status === 'Declined') return;
+
+      const mInterval = parseTimeInterval(m.date, m.time, m.duration);
+      if (!hasIntervalOverlap(currentInterval, mInterval)) return;
+
+      const mUserTokens = [
+        m.requestedBy,
+        m.requestedByEmail,
+        m.approverId,
+        m.approverEmail,
+        ...(m.participants || []),
+        ...(m.participantIds || []),
+        ...(m.optionalMembers || []),
+        ...(m.optionalMemberIds || []),
+      ].filter(Boolean).map((v) => String(v).toLowerCase());
+
+      activeUsers.forEach((u) => {
+        const uTokens = [u.id, u._id, u.email].filter(Boolean).map((v) => String(v).toLowerCase());
+        const isConflict = uTokens.some((tok) => mUserTokens.includes(tok));
+        if (isConflict) {
+          const uKey = String(u.id || u._id);
+          if (!userConflictMap[uKey]) userConflictMap[uKey] = [];
+          userConflictMap[uKey].push(m);
+        }
+      });
+    });
+  }
 
   const isParticipantSelected = (u) => {
     const ids = [u.id, u._id, u.email].filter(Boolean).map(String);
     return participants.some((pId) => ids.includes(String(pId)));
   };
 
+  // Selected attendees that currently have a conflict
+  const conflictingAttendees = activeUsers.filter(
+    (u) => isParticipantSelected(u) && userConflictMap[String(u.id || u._id)]?.length > 0
+  );
+
   const toggleParticipant = (u) => {
     const mainId = u.id || u._id || u.email;
     if (isParticipantSelected(u)) {
       setParticipants((prev) =>
-        prev.filter((id) => String(id) !== String(u.id) && String(id) !== String(u._id) && String(id) !== String(u.email))
+        prev.filter(
+          (id) =>
+            String(id) !== String(u.id) &&
+            String(id) !== String(u._id) &&
+            String(id) !== String(u.email)
+        )
       );
     } else {
       setParticipants((prev) => [...prev, mainId]);
@@ -114,7 +183,7 @@ export function ScheduleMeetingModal({
   };
 
   const selectAllAttendees = () => {
-    const allIds = activeUsers.map(u => u.id || u._id).filter(Boolean);
+    const allIds = activeUsers.map((u) => u.id || u._id).filter(Boolean);
     setParticipants(allIds);
   };
 
@@ -122,21 +191,17 @@ export function ScheduleMeetingModal({
     setParticipants([]);
   };
 
-  const filteredUsers = activeUsers.filter(u => {
+  const filteredUsers = activeUsers.filter((u) => {
     if (!attendeeSearch.trim()) return true;
     const q = attendeeSearch.toLowerCase();
-    return (u.name || '').toLowerCase().includes(q) || (u.role || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+    return (
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.role || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q)
+    );
   });
 
   const invitedCount = activeUsers.filter(isParticipantSelected).length;
-
-  const toggleOptionalMember = (userId) => {
-    if (optionalMembers.includes(userId)) {
-      setOptionalMembers(optionalMembers.filter((id) => id !== userId));
-    } else {
-      setOptionalMembers([...optionalMembers, userId]);
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -145,8 +210,13 @@ export function ScheduleMeetingModal({
       setFormError('Enter a meeting title.');
       return;
     }
-    if (!approverId) {
-      setFormError('Select a designated approver.');
+
+    // Check attendee schedule conflicts
+    if (conflictingAttendees.length > 0 && !allowConflict) {
+      const names = conflictingAttendees.map((u) => u.name).join(', ');
+      setFormError(
+        `Schedule conflict detected for: ${names}. Please choose another time or check "Acknowledge conflict and proceed anyway" below.`
+      );
       return;
     }
 
@@ -156,39 +226,48 @@ export function ScheduleMeetingModal({
       if (meetingToEdit) {
         const updates = {
           title: title.trim(),
-          requestedBy: creatorId,
-          approverId,
+          requestedBy: meetingToEdit.requestedBy || currentUserId,
+          approverId: '',
           participants,
           participantIds: participants,
           optionalMembers,
           optionalMemberIds: optionalMembers,
-          meetUrl: meetUrl.trim() || '',
+          locationType: 'Online',
+          meetUrl: meetUrl.trim(),
           date,
           time,
           duration,
           priority,
-          projectId,
+          projectId: projectId || null,
           relatedTaskId: relatedTaskId || null,
           description: description.trim() || 'No agenda provided.',
+          status: meetingToEdit.status === 'Cancelled' ? 'Scheduled' : (meetingToEdit.status || 'Scheduled'),
+          allowConflict,
         };
         await onUpdateMeeting?.(meetingToEdit.id || meetingToEdit._id, updates);
       } else {
         const newMeeting = {
           title: title.trim(),
-          requestedBy: creatorId,
-          approverId,
+          requestedBy: currentUserId,
+          requestedByName: currentUser?.name || currentUser?.email || 'User',
+          requestedByEmail: currentUser?.email || '',
+          approverId: '',
+          approverName: '',
           participants,
           participantIds: participants,
           optionalMembers,
           optionalMemberIds: optionalMembers,
-          meetUrl: meetUrl.trim() || '',
+          locationType: 'Online',
+          meetUrl: meetUrl.trim(),
           date,
           time,
           duration,
           priority,
-          projectId,
+          projectId: projectId || null,
           relatedTaskId: relatedTaskId || null,
           description: description.trim() || 'No agenda provided.',
+          status: 'Scheduled',
+          allowConflict,
         };
         await onScheduleMeeting?.(newMeeting);
       }
@@ -207,7 +286,7 @@ export function ScheduleMeetingModal({
       }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150"
     >
-      <div className="w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-sm shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100 animate-in zoom-in-95 duration-100">
+      <div className="w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100 animate-in zoom-in-95 duration-100">
         {/* Header */}
         <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/60 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -219,7 +298,7 @@ export function ScheduleMeetingModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-sm transition-colors"
+            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -227,10 +306,20 @@ export function ScheduleMeetingModal({
 
         <form onSubmit={handleSubmit} className="p-5 space-y-3.5 text-xs">
           {formError && (
-            <div className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
               {formError}
             </div>
           )}
+
+          {meetingToEdit && (
+            <div className="rounded-md border border-sky-200 bg-sky-50 dark:border-sky-900/60 dark:bg-sky-950/40 p-2.5 flex items-center gap-2 text-sky-800 dark:text-sky-300 text-[11px]">
+              <AlertCircle className="w-4 h-4 text-sky-600 shrink-0" />
+              <span>
+                <strong>Editing Meeting:</strong> Changes will be updated immediately for all participating attendees.
+              </span>
+            </div>
+          )}
+
           {/* Meeting Title */}
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -242,20 +331,22 @@ export function ScheduleMeetingModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Architecture Sprint Calibration & UI Review"
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-sm text-xs font-medium focus:outline-none focus:border-indigo-600 text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-medium focus:outline-none focus:border-emerald-600 text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400"
             />
           </div>
 
           {/* Date, Time, Duration, Priority Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Date</label>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Date {date ? `(${formatDate(date)})` : ''}
+              </label>
               <input
                 type="date"
                 required
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600"
+                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-emerald-600"
               />
             </div>
 
@@ -266,7 +357,7 @@ export function ScheduleMeetingModal({
                 required
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
-                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600"
+                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-emerald-600"
               />
             </div>
 
@@ -275,7 +366,7 @@ export function ScheduleMeetingModal({
               <select
                 value={duration}
                 onChange={(e) => setDuration(e.target.value)}
-                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600"
+                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-emerald-600"
               >
                 <option value="15 mins">15 mins</option>
                 <option value="30 mins">30 mins</option>
@@ -290,7 +381,7 @@ export function ScheduleMeetingModal({
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
-                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600"
+                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-emerald-600"
               >
                 <option value="Low">Low</option>
                 <option value="Medium">Medium</option>
@@ -300,16 +391,38 @@ export function ScheduleMeetingModal({
             </div>
           </div>
 
-          {/* Project & Related Task Links */}
+          {/* Video Meeting Link (Optional) */}
+          <div>
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+              <span>Google Meet / Teams Video Room Link <span className="text-slate-400 font-normal">(Optional)</span></span>
+            </label>
+            <div className="relative">
+              <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+              <input
+                type="url"
+                value={meetUrl}
+                onChange={(e) => setMeetUrl(e.target.value)}
+                placeholder="https://meet.google.com/abc-defg-hij (optional)"
+                className="w-full pl-8 pr-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 font-mono"
+              />
+            </div>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+              Add a video conference link now or later. Attendees can click &ldquo;Join Meeting&rdquo; directly from their dashboard or meetings list.
+            </p>
+          </div>
+
+          {/* Project & Related Task Links (Optional) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Project</label>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Project <span className="text-slate-400 font-normal">(Optional)</span>
+              </label>
               <select
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
-                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600"
+                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-emerald-600"
               >
-                <option value="">No Project Linked</option>
+                <option value="">No Project Linked (General Meeting)</option>
                 {activeProjects.map((p) => (
                   <option key={p.id || p._id} value={p.id || p._id}>
                     {p.code} - {p.name}
@@ -320,12 +433,12 @@ export function ScheduleMeetingModal({
 
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Related Task / Milestone
+                Related Task / Milestone <span className="text-slate-400 font-normal">(Optional)</span>
               </label>
               <select
                 value={relatedTaskId}
                 onChange={(e) => setRelatedTaskId(e.target.value)}
-                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600"
+                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-emerald-600"
               >
                 <option value="">None (General Meeting)</option>
                 {projectTasks.map((t) => (
@@ -337,103 +450,12 @@ export function ScheduleMeetingModal({
             </div>
           </div>
 
-          {/* Video Room Link */}
-          <div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Google Meet / Video Link
-            </label>
-            <div className="relative">
-              <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-              <input
-                type="url"
-                value={meetUrl}
-                onChange={(e) => setMeetUrl(e.target.value)}
-                placeholder="https://meet.google.com/abc-defg-hij"
-                className="w-full pl-8 pr-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-600"
-              />
-            </div>
-          </div>
-
-          {/* User Role Hierarchy Badge */}
-          <div className="hidden items-center justify-between p-2 rounded-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-[11px]">
-            <span className="font-semibold text-slate-700 dark:text-slate-300">Meeting Governance Hierarchy:</span>
-            <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold">
-              <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
-                1. Creator
-              </span>
-              <span className="text-slate-400">&gt;</span>
-              <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                2. Approver
-              </span>
-              <span className="text-slate-400">&gt;</span>
-              <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                3. Attendee
-              </span>
-            </div>
-          </div>
-
-          {/* Creator and Approver in 2 columns */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* 1. Creator */}
-            <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Creator (Host) <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={creatorId}
-                onChange={(e) => setCreatorId(e.target.value)}
-                required
-                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600 font-medium"
-              >
-                {activeUsers.map((u) => {
-                  const uid = u.id || u._id;
-                  const isCurrent = String(uid) === String(currentUserId);
-                  return (
-                    <option key={uid} value={uid}>
-                      {u.name} ({u.role}){isCurrent ? ' — You' : ''}
-                    </option>
-                  );
-                })}
-              </select>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Has Edit, Delete &amp; Reschedule on dashboard.
-              </p>
-            </div>
-
-            {/* 2. Approver */}
-            <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Designated Approver <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={approverId}
-                onChange={(e) => setApproverId(e.target.value)}
-                required
-                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-600 font-medium"
-              >
-                <option value="">Select Approver</option>
-                {eligibleApprovers.map((u) => {
-                  const uid = u.id || u._id;
-                  const isHost = String(uid) === String(creatorId);
-                  return (
-                    <option key={uid} value={uid}>
-                      {u.name} ({u.role}){isHost ? ' — Host (Self)' : ''}
-                    </option>
-                  );
-                })}
-              </select>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Host can also be the approver. Can Edit, Approve, or Decline with reason.
-              </p>
-            </div>
-          </div>
-
-          {/* 3. Attendees / Participants Multi-Select */}
+          {/* Attendees / Participants Multi-Select (List design rows with checkboxes) */}
           <div>
             <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
               <div className="flex items-center gap-1.5">
                 <label className="font-semibold text-slate-700 dark:text-slate-300">
-                  Attendees (Users)
+                  Select Attendees
                 </label>
                 <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                   {invitedCount} selected
@@ -443,7 +465,7 @@ export function ScheduleMeetingModal({
                 <button
                   type="button"
                   onClick={selectAllAttendees}
-                  className="text-[10px] text-brand hover:underline font-semibold cursor-pointer"
+                  className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline font-semibold cursor-pointer"
                 >
                   Select All
                 </button>
@@ -458,58 +480,107 @@ export function ScheduleMeetingModal({
               </div>
             </div>
 
-            {/* Attendee search filter */}
+            {/* Conflict Warning Banner */}
+            {conflictingAttendees.length > 0 && (
+              <div className="mb-2 p-2.5 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/60 text-[11px] text-amber-900 dark:text-amber-200 space-y-1.5 animate-in fade-in duration-150">
+                <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Attendee Schedule Conflict ({conflictingAttendees.length} user{conflictingAttendees.length > 1 ? 's' : ''}):</span>
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 text-[10px] pl-1">
+                  {conflictingAttendees.map((u) => {
+                    const cMeeting = userConflictMap[String(u.id || u._id)]?.[0];
+                    return (
+                      <li key={u.id || u._id}>
+                        <strong>{u.name}</strong> is in &ldquo;{cMeeting?.title || 'Another Meeting'}&rdquo; at {cMeeting?.time} ({cMeeting?.duration || '45 mins'})
+                      </li>
+                    );
+                  })}
+                </ul>
+                <label className="flex items-center gap-2 pt-1 text-[10px] font-semibold text-amber-900 dark:text-amber-200 cursor-pointer border-t border-amber-200 dark:border-amber-800/80">
+                  <input
+                    type="checkbox"
+                    checked={allowConflict}
+                    onChange={(e) => setAllowConflict(e.target.checked)}
+                    className="rounded text-amber-600 focus:ring-amber-500 w-3.5 h-3.5"
+                  />
+                  <span>Acknowledge conflict and proceed anyway</span>
+                </label>
+              </div>
+            )}
+
             <div className="mb-1.5">
               <input
                 type="text"
                 value={attendeeSearch}
                 onChange={(e) => setAttendeeSearch(e.target.value)}
-                placeholder="Search users to add as attendee..."
-                className="w-full px-2.5 py-1 border border-slate-200 dark:border-slate-700 rounded-sm text-[11px] text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-600"
+                placeholder="Search users by name, role, or email..."
+                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600"
               />
             </div>
 
-            <div className="max-h-36 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-sm p-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-slate-50/50 dark:bg-slate-800/50">
+            {/* Vertical List Design Rows with Checkboxes */}
+            <div className="max-h-52 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 shadow-2xs">
               {filteredUsers.length === 0 ? (
-                <div className="col-span-2 py-3 text-center text-slate-400 text-[11px]">
+                <div className="py-6 text-center text-slate-400 text-xs">
                   No users found matching “{attendeeSearch}”
                 </div>
               ) : (
                 filteredUsers.map((u) => {
+                  const uid = u.id || u._id;
                   const isSelected = isParticipantSelected(u);
+                  const userConflicts = userConflictMap[String(uid)];
+                  const hasConflict = userConflicts && userConflicts.length > 0;
+                  const isCurrent = String(uid) === String(currentUserId);
                   return (
                     <label
-                      key={u.id || u._id}
-                      className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors text-[11px] ${isSelected
-                          ? 'bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-700'
-                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent'
-                        }`}
+                      key={uid}
+                      className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
+                        isSelected
+                          ? hasConflict
+                            ? 'bg-amber-50/70 dark:bg-amber-950/30'
+                            : 'bg-emerald-50/50 dark:bg-emerald-950/30'
+                          : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                      }`}
                     >
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleParticipant(u)}
-                        className="sr-only"
+                        className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500 shrink-0 cursor-pointer"
                       />
-                      <UserAvatar user={u} size="xs" />
-                      <div className="truncate flex-1">
-                        <p className="font-medium text-slate-800 dark:text-slate-200 truncate">{u.name}</p>
-                        <p className="text-[9px] text-slate-400 truncate">{u.role}</p>
+                      <UserAvatar user={u} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">
+                            {u.name}
+                            {isCurrent && <span className="ml-1 text-[10px] text-slate-400 font-normal">(You)</span>}
+                          </p>
+                          {hasConflict && (
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shrink-0"
+                              title={`Busy: "${userConflicts[0]?.title}" at ${userConflicts[0]?.time}`}
+                            >
+                              Busy / Conflict
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                          <span>{u.role || 'Member'}</span>
+                          {u.email && <span>• {u.email}</span>}
+                        </div>
                       </div>
-                      {isSelected && (
-                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      )}
                     </label>
                   );
                 })
               )}
             </div>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-              Visible to attendees after approval. Attendees can click Join, Edit, Delete, or Reschedule.
+              All selected attendees will immediately have access to this meeting and its video link.
             </p>
           </div>
 
-          {/* Description */}
+          {/* Agenda & Description */}
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Agenda & Objectives
@@ -519,7 +590,7 @@ export function ScheduleMeetingModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="List agenda points, deliverables to review, or calibration goals..."
-              className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-600"
+              className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600"
             />
           </div>
 
@@ -527,17 +598,17 @@ export function ScheduleMeetingModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium rounded-sm transition-colors"
+              className="px-3 py-1.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium rounded-md transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSaving}
-              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold rounded-sm transition-colors flex items-center gap-1.5 shadow-sm"
+              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold rounded-md transition-colors flex items-center gap-1.5 shadow-sm"
             >
               {meetingToEdit ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-              {isSaving ? 'Saving...' : meetingToEdit ? 'Save Changes' : 'Schedule Meeting'}
+              {isSaving ? 'Saving...' : meetingToEdit ? 'Update Meeting' : 'Schedule Meeting'}
             </button>
           </div>
         </form>

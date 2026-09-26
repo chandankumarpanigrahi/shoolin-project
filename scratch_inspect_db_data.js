@@ -31,7 +31,7 @@ async function run() {
   const meetings = await db.collection('meetings').find({}).toArray();
   console.log('\n=== MEETINGS (' + meetings.length + ') ===');
   meetings.forEach(m => {
-    console.log(`- "${m.title}" | Status: ${m.status} | ApproverId: ${m.approverId || 'NONE'} | Host: ${m.requestedBy}`);
+    console.log(JSON.stringify(m, null, 2));
   });
 
   process.exit(0);

@@ -22,6 +22,7 @@ import { KanbanBoardView } from '@/components/views/KanbanBoardView';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { useUrlParam } from '@/hooks/useUrlState';
 import { showError } from '@/lib/swal';
+import { formatDate } from '@/lib/dateUtils';
 
 export function TasksView({
   tasks,
@@ -113,7 +114,7 @@ export function TasksView({
   const rootTasks = filteredTasks.filter(t => !t.parentId || !tasks.some(p => p.id === t.parentId));
 
   const exportToCSV = () => {
-    const headers = ['Task Code', 'Title', 'Project', 'Assignee', 'Priority', 'Status', 'Target Date'];
+    const headers = ['Task Code', 'Title', 'Project', 'Assignee', 'Priority', 'Status', 'Date From', 'Date To'];
     const rows = filteredTasks.map(t => {
       const project = projects.find(p => p.id === t.projectId)?.name || '';
       const assignee = users.find(u => u.id === t.assignedTo)?.name || '';
@@ -124,7 +125,8 @@ export function TasksView({
         `"${assignee}"`,
         `"${t.priority || 'Medium'}"`,
         `"${t.status || 'Not Started'}"`,
-        `"${t.targetDate || ''}"`
+        `"${formatDate(t.startDate || t.fromDate, '')}"`,
+        `"${formatDate(t.dueDate || t.toDate || t.targetDate || t.endDate, '')}"`
       ].join(',');
     });
     const csvContent = [headers.join(','), ...rows].join('\n');
@@ -143,16 +145,23 @@ export function TasksView({
     if (!quickTitle.trim()) return;
     const targetProject = projects.find(p => p.id === quickProjectId) || projects[0];
     const projectTaskCount = tasks.filter(t => t.projectId === targetProject.id).length + 1;
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const dueIso = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
     const newTask = {
       id: 'task-' + Date.now(),
       code: `${targetProject.code}.${projectTaskCount}`,
       title: quickTitle.trim(),
       projectId: targetProject.id,
-      assignedTo: users[0]?.id || users[0]?._id || '',
+      assignedTo: '',
       status: 'Not Started',
       priority: quickPriority,
-      createdDate: new Date().toISOString().slice(0, 10),
-      targetDate: '2026-10-15',
+      startDate: todayIso,
+      fromDate: todayIso,
+      dueDate: dueIso,
+      targetDate: dueIso,
+      endDate: dueIso,
+      toDate: dueIso,
+      createdDate: todayIso,
       level: 0,
       description: 'Quick added deliverable.',
       parentId: null
@@ -169,7 +178,8 @@ export function TasksView({
     const hasChildren = children.length > 0;
     const isExpanded = !!expandedTasks[task.id];
     const project = projects.find(p => p.id === task.projectId) || { code: "PRJ", name: "Project" };
-    const assignee = resolveUserObject(task.assignedTo, users) || (users && users[0]) || { name: 'Unassigned', role: 'Member' };
+    const assignee = task.assignedTo ? resolveUserObject(task.assignedTo, users) : null;
+    const assigneeDisplayName = assignee ? assignee.name : 'Unassigned';
 
     const isCompleted = isCompletedStatus ? isCompletedStatus(task.status) : (task.status === 'Completed');
     const isAssignee = isTaskAssignee(task, currentUser, users);
@@ -206,7 +216,7 @@ export function TasksView({
                   if (!isAssignee) {
                     showError(
                       'Access Denied',
-                      `Only the assigned member (${assignee.name}) can change the status of this task.`
+                      `Only the assigned member (${assigneeDisplayName}) can change the status of this task.`
                     );
                     return;
                   }
@@ -223,7 +233,7 @@ export function TasksView({
                 }`}
                 title={
                   !isAssignee
-                    ? `Only assigned member (${assignee.name}) can change task status`
+                    ? `Only assigned member (${assigneeDisplayName}) can change task status`
                     : isCompleted
                     ? 'Mark as Incomplete'
                     : 'Mark as Completed (Triggers Strikethrough)'
@@ -266,9 +276,9 @@ export function TasksView({
           {/* Assignee */}
           <td className="py-2.5 px-3 whitespace-nowrap">
             <div className="flex items-center gap-1.5">
-              <UserAvatar user={assignee} size="xs" />
-              <span className="text-slate-700 dark:text-slate-300 font-medium" title={`${assignee.name} (${assignee.role || 'Member'})`}>
-                {assignee.name}
+              <UserAvatar user={task.assignedTo} size="xs" />
+              <span className={`text-slate-700 dark:text-slate-300 font-medium ${!assignee ? 'italic text-slate-400' : ''}`} title={`${assigneeDisplayName} (${assignee?.role || 'Member'})`}>
+                {assigneeDisplayName}
               </span>
             </div>
           </td>
@@ -286,7 +296,7 @@ export function TasksView({
                 if (!isAssignee) {
                   showError(
                     'Access Denied',
-                    `Only the assigned member (${assignee.name}) can change the status of this task.`
+                    `Only the assigned member (${assigneeDisplayName}) can change the status of this task.`
                   );
                   return;
                 }
@@ -299,9 +309,18 @@ export function TasksView({
             />
           </td>
 
-          {/* Target Date */}
-          <td className="py-2.5 px-3 whitespace-nowrap font-mono text-slate-500 dark:text-slate-400 text-[11px]">
-            {task.targetDate}
+          {/* Date From – Date To */}
+          <td className="py-2.5 px-3 whitespace-nowrap">
+            <div className="flex flex-col text-[11px] font-mono leading-tight">
+              <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1 font-semibold">
+                <span className="text-slate-400 font-normal">From:</span>
+                {formatDate(task.startDate || task.fromDate)}
+              </span>
+              <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1 font-semibold">
+                <span className="text-rose-500 font-normal">To:</span>
+                {formatDate(task.dueDate || task.toDate || task.targetDate || task.endDate)}
+              </span>
+            </div>
           </td>
 
           {/* Actions */}
@@ -521,7 +540,7 @@ export function TasksView({
                   <th className="py-3 px-3.5">Assignee</th>
                   <th className="py-3 px-3.5">Priority</th>
                   <th className="py-3 px-3.5">Status</th>
-                  <th className="py-3 px-3.5">Target Date</th>
+                  <th className="py-3 px-3.5">Timeline (From – To)</th>
                   <th className="py-3 px-3.5 text-right">Actions</th>
                 </tr>
               </thead>

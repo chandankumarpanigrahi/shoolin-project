@@ -35,7 +35,7 @@ export function getMaxTreeDepth(tree) {
   return max;
 }
 
-export function flattenTreeToTasks(tree, projectId, projectCode) {
+export function flattenTreeToTasks(tree, projectId, projectCode, defaultStart = '2026-09-15', defaultDue = '2026-10-30') {
   const result = [];
   function traverse(nodes, parentId = null, codePrefix = projectCode, level = 1) {
     nodes.forEach((node, index) => {
@@ -52,8 +52,12 @@ export function flattenTreeToTasks(tree, projectId, projectCode) {
         priority: node.priority || 'Medium',
         progress: 0,
         assigneeId: null,
-        startDate: '2026-09-15',
-        dueDate: '2026-10-30',
+        startDate: defaultStart,
+        fromDate: defaultStart,
+        dueDate: defaultDue,
+        endDate: defaultDue,
+        toDate: defaultDue,
+        targetDate: defaultDue,
         weight: 1,
         description: node.description || `Task generated from template: ${node.title}`,
         dependencies: [],

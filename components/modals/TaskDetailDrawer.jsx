@@ -23,6 +23,7 @@ import { StatusBadge, PriorityBadge, StatusSelect } from '@/components/common/Ba
 import { UserAvatar, resolveUserObject, isTaskAssignee } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { showError } from '@/lib/swal';
+import { formatDate } from '@/lib/dateUtils';
 
 export function TaskDetailDrawer({
   isOpen,
@@ -60,14 +61,10 @@ export function TaskDetailDrawer({
     ];
   }, [getTaskStatuses]);
 
-  if (!isOpen || !task) return null;
-
-  const isTaskCompleted = isCompletedStatus ? isCompletedStatus(task.status) : (task.status === 'Completed');
-  const isAssignee = isTaskAssignee(task, currentUser, users);
-
-  const project = (projects || []).find((p) => p.id === task.projectId || p._id === task.projectId || p.code === task.projectId) || { code: 'PRJ', name: 'Project' };
-  const assignee = resolveUserObject(task.assignedTo, users) || { name: 'Unassigned', role: 'Member' };
-  const creator = resolveUserObject(task.createdBy, users) || { name: 'Project Creator' };
+  const project = React.useMemo(() => {
+    if (!task) return null;
+    return (projects || []).find((p) => p.id === task.projectId || p._id === task.projectId || p.code === task.projectId) || { code: 'PRJ', name: 'Project' };
+  }, [projects, task]);
 
   const projectSquadUsers = React.useMemo(() => {
     if (!project) return users || [];
@@ -91,6 +88,15 @@ export function TaskDetailDrawer({
     }
     return resolved.length > 0 ? resolved : (users || []);
   }, [project, users]);
+
+  if (!isOpen || !task) return null;
+
+  const isTaskCompleted = isCompletedStatus ? isCompletedStatus(task.status) : (task.status === 'Completed');
+  const isAssignee = isTaskAssignee(task, currentUser, users);
+
+  const assignee = task.assignedTo ? resolveUserObject(task.assignedTo, users) : null;
+  const assigneeDisplayName = assignee ? assignee.name : 'Unassigned';
+  const creator = resolveUserObject(task.createdBy, users) || { name: 'Project Creator' };
 
   // Find parent task
   const parent = task.parentId ? allTasks.find(t => t.id === task.parentId) : null;
@@ -196,7 +202,7 @@ export function TaskDetailDrawer({
                   if (!isAssignee) {
                     showError(
                       'Access Denied',
-                      `Only the assigned member (${assignee.name}) can change the status of this task.`
+                      `Only the assigned member (${assigneeDisplayName}) can change the status of this task.`
                     );
                     return;
                   }
@@ -210,7 +216,7 @@ export function TaskDetailDrawer({
                 }`}
                 title={
                   !isAssignee
-                    ? `Only assigned member (${assignee.name}) can change task status`
+                    ? `Only assigned member (${assigneeDisplayName}) can change task status`
                     : isTaskCompleted
                     ? 'Mark as Incomplete'
                     : 'Mark as Completed'
@@ -228,6 +234,10 @@ export function TaskDetailDrawer({
                   value={task.title}
                   onChange={(e) => {
                     const val = e.target.value;
+                    if (!isAssignee) {
+                      showError('Access Denied', `Only the assigned member (${assigneeDisplayName}) can edit this task.`);
+                      return;
+                    }
                     if (handleUpdateTask) handleUpdateTask(task.id, { title: val });
                   }}
                   placeholder="Task Title..."
@@ -246,7 +256,7 @@ export function TaskDetailDrawer({
               </div>
             </div>
 
-            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
               {/* Status Select */}
               <div>
                 <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-1">Status</span>
@@ -256,7 +266,7 @@ export function TaskDetailDrawer({
                     if (!isAssignee) {
                       showError(
                         'Access Denied',
-                        `Only the assigned member (${assignee.name}) can change the status of this task.`
+                        `Only the assigned member (${assigneeDisplayName}) can change the status of this task.`
                       );
                       return;
                     }
@@ -265,7 +275,7 @@ export function TaskDetailDrawer({
                   options={taskStatusesList}
                   size="sm"
                   disabled={!isAssignee}
-                  title={!isAssignee ? `Only assigned member (${assignee.name}) can change task status` : undefined}
+                  title={!isAssignee ? `Only assigned member (${assigneeDisplayName}) can change task status` : undefined}
                 />
               </div>
 
@@ -275,6 +285,10 @@ export function TaskDetailDrawer({
                 <select
                   value={task.priority || 'Medium'}
                   onChange={(e) => {
+                    if (!isAssignee) {
+                      showError('Access Denied', `Only the assigned member (${assigneeDisplayName}) can edit priority.`);
+                      return;
+                    }
                     if (handleUpdateTask) handleUpdateTask(task.id || task._id, { priority: e.target.value });
                   }}
                   className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-brand"
@@ -294,10 +308,19 @@ export function TaskDetailDrawer({
                 <select
                   value={task.assignedTo || ''}
                   onChange={(e) => {
-                    if (handleUpdateTask) handleUpdateTask(task.id || task._id, { assignedTo: e.target.value });
+                    const newAssigneeVal = e.target.value;
+                    if (!isAssignee) {
+                      showError(
+                        'Access Denied',
+                        `Only the assigned member (${assigneeDisplayName}) can reassign this task.`
+                      );
+                      return;
+                    }
+                    if (handleUpdateTask) handleUpdateTask(task.id || task._id, { assignedTo: newAssigneeVal });
                   }}
                   className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-brand"
                 >
+                  <option value="">Unassigned (None)</option>
                   <optgroup label="Project Squad Members">
                     {projectSquadUsers.map((u) => (
                       <option key={u.id || u._id} value={u.id || u._id}>
@@ -318,15 +341,46 @@ export function TaskDetailDrawer({
                   )}
                 </select>
               </div>
+            </div>
 
-              {/* Target Date */}
+            {/* Date From and Date To */}
+            <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-2.5 bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700 rounded-sm">
               <div>
-                <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 mb-1">Target Date</span>
+                <span className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-brand" />
+                  Date From (Start Date) {task.startDate || task.fromDate ? `(${formatDate(task.startDate || task.fromDate)})` : ''}
+                </span>
                 <input
                   type="date"
-                  value={task.targetDate || ''}
+                  value={task.startDate || task.fromDate || ''}
                   onChange={(e) => {
-                    if (handleUpdateTask) handleUpdateTask(task.id || task._id, { targetDate: e.target.value });
+                    const val = e.target.value;
+                    if (!isAssignee) {
+                      showError('Access Denied', `Only the assigned member (${assigneeDisplayName}) can change timeline dates.`);
+                      return;
+                    }
+                    if (handleUpdateTask) handleUpdateTask(task.id || task._id, { startDate: val, fromDate: val });
+                  }}
+                  className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <span className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-rose-500" />
+                  Date To (Deadline) {task.dueDate || task.toDate || task.targetDate || task.endDate ? `(${formatDate(task.dueDate || task.toDate || task.targetDate || task.endDate)})` : ''}
+                </span>
+                <input
+                  type="date"
+                  value={task.dueDate || task.toDate || task.targetDate || task.endDate || ''}
+                  min={task.startDate || task.fromDate || undefined}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!isAssignee) {
+                      showError('Access Denied', `Only the assigned member (${assigneeDisplayName}) can change timeline dates.`);
+                      return;
+                    }
+                    if (handleUpdateTask) handleUpdateTask(task.id || task._id, { dueDate: val, targetDate: val, endDate: val, toDate: val });
                   }}
                   className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:border-brand"
                 />
@@ -474,7 +528,7 @@ export function TaskDetailDrawer({
 
         {/* Footer Meta */}
         <div className="h-11 px-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 shrink-0">
-          <span>Created on {task.createdDate} by {creator.name}</span>
+          <span>Created on {formatDate(task.createdDate || task.createdAt)} by {creator.name}</span>
           <span>Hierarchy Depth: Level {task.level || 0}</span>
         </div>
       </div>

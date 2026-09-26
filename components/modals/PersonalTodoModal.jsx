@@ -16,7 +16,9 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { PriorityBadge, StatusBadge } from '@/components/common/Badges';
+import { isTaskAssignee } from '@/components/common/UserAvatar';
 import Link from 'next/link';
+import { formatDate } from '@/lib/dateUtils';
 
 const CATEGORY_STYLES = {
   Focus: {
@@ -61,7 +63,9 @@ export function PersonalTodoModal({ isOpen, onClose }) {
     togglePersonalTodo,
     deletePersonalTodo,
     tasks,
-    projects
+    projects,
+    users,
+    handleSelectTask
   } = useAppContext();
 
   const [isRendered, setIsRendered] = useState(isOpen);
@@ -121,7 +125,7 @@ export function PersonalTodoModal({ isOpen, onClose }) {
   const pendingCount = personalTodos.filter((t) => !t.completed).length;
 
   // Project tasks assigned to current user
-  const assignedTasks = tasks.filter((t) => t.assigneeId === currentUser?.id);
+  const assignedTasks = (tasks || []).filter((t) => isTaskAssignee(t, currentUser, users));
 
   return (
     <div
@@ -360,11 +364,18 @@ export function PersonalTodoModal({ isOpen, onClose }) {
               </div>
             ) : (
               assignedTasks.map((t) => {
-                const project = projects.find((p) => p.id === t.projectId);
+                const project = (projects || []).find((p) => p.id === t.projectId || p._id === t.projectId || p.code === t.projectId);
                 return (
                   <div
-                    key={t.id}
-                    className="p-3.5 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl hover:border-brand transition-all shadow-2xs flex items-center justify-between gap-3"
+                    key={t.id || t._id}
+                    onClick={() => {
+                      if (handleSelectTask) {
+                        handleSelectTask(t);
+                        handleClose();
+                      }
+                    }}
+                    className="p-3.5 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl hover:border-brand transition-all shadow-2xs flex items-center justify-between gap-3 cursor-pointer group"
+                    title="Click to view task details"
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -372,16 +383,16 @@ export function PersonalTodoModal({ isOpen, onClose }) {
                           {t.code}
                         </span>
                         <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 truncate">
-                          {project?.name}
+                          {project?.name || 'Project'}
                         </span>
                       </div>
-                      <p className="font-semibold text-slate-900 dark:text-slate-100 text-xs truncate">
+                      <p className="font-semibold text-slate-900 dark:text-slate-100 text-xs truncate group-hover:text-brand transition-colors">
                         {t.title}
                       </p>
                       <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400">
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1 font-mono">
                           <Calendar className="w-3.5 h-3.5" />
-                          Due {t.targetDate || t.dueDate}
+                          {t.startDate || t.fromDate ? `${formatDate(t.startDate || t.fromDate)} → ` : ''}{formatDate(t.dueDate || t.toDate || t.targetDate || t.endDate, 'No Date')}
                         </span>
                       </div>
                     </div>

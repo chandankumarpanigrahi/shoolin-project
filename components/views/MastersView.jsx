@@ -33,7 +33,8 @@ import {
   CircleDot,
   Clock,
   Flame,
-  ListTodo
+  ListTodo,
+  Calendar
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { showConfirm } from '@/lib/swal';
@@ -41,6 +42,7 @@ import { UserAvatar } from '@/components/common/UserAvatar';
 import { RoleBadge } from '@/components/common/Badges';
 import { AccessControlView } from '@/components/views/AccessControlView';
 import { useUrlTab } from '@/hooks/useUrlState';
+import { formatDate } from '@/lib/dateUtils';
 import { INITIAL_PERMISSIONS } from '@/data/permissions';
 import {
   BEHAVIOR_PRESETS,
@@ -115,10 +117,31 @@ export function MastersView() {
     handleToggleUserStatus,
     masterStatuses,
     saveMasterStatuses,
+    handleAddMasterStatus,
+    handleUpdateMasterStatus,
+    handleDeleteMasterStatus,
+    masterBrands,
+    saveMasterBrands,
+    handleAddMasterBrand,
+    handleUpdateMasterBrand,
+    handleDeleteMasterBrand,
+    masterDepartments,
+    saveMasterDepartments,
+    handleAddMasterDepartment,
+    handleUpdateMasterDepartment,
+    handleDeleteMasterDepartment,
     blueprintCategories,
     handleAddBlueprintCategory,
     handleUpdateBlueprintCategory,
     handleDeleteBlueprintCategory,
+    masterLinkCategories,
+    handleAddLinkCategory,
+    handleUpdateLinkCategory,
+    handleDeleteLinkCategory,
+    rolesList: contextRolesList,
+    handleAddRole,
+    handleUpdateRole,
+    handleDeleteRole: contextHandleDeleteRole,
     templates
   } = useAppContext();
 
@@ -148,6 +171,7 @@ export function MastersView() {
     role: 'User',
     department: 'Executive Operations',
     phone: '',
+    dob: '',
     status: 'Active',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
     isDepartmentLead: false
@@ -235,6 +259,7 @@ export function MastersView() {
   // =========================================================================
   const [brandSearch, setBrandSearch] = useState('');
   const [brandsList, setBrandsList] = useState(() => {
+    if (masterBrands && masterBrands.length > 0) return masterBrands;
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('pulsepm_master_brands_v2');
       if (saved) {
@@ -243,11 +268,18 @@ export function MastersView() {
     }
     return [
       { id: 'br-1', code: 'PMV', name: 'PMV Maritime', color: '#2563EB', status: 'Active', desc: 'Shipping fleet & logistics' },
-      { id: 'br-2', code: 'FPD', name: 'FreshPod App', color: '#059669', status: 'Active', desc: 'Produce delivery mobile application' },
-      { id: 'br-3', code: 'LGS', name: 'Lagos Logistics', color: '#D97706', status: 'Active', desc: 'Freight forwarding depot operations' },
-      { id: 'br-4', code: 'INT', name: 'Internal Org', color: '#9333EA', status: 'Active', desc: 'Internal engineering & HR operations' },
+      { id: 'br-2', code: 'FPD', name: 'Captain\'s Cafe', color: '#452700', status: 'Active', desc: 'Produce delivery mobile application' },
+      { id: 'br-3', code: 'LMA', name: 'Lagos Maritime Academy', color: '#FF6500', status: 'Active', desc: 'Lagos Maritime Institute in Nigeria' },
+      { id: 'br-4', code: 'INT', name: 'Internal', color: '#9333EA', status: 'Active', desc: 'Internal engineering & HR operations' },
+      { id: 'br-5', code: 'SOMS', name: 'School of Maritime Studies', color: '#2563EB', status: 'Active', desc: 'Maritime Institute' },
     ];
   });
+
+  React.useEffect(() => {
+    if (masterBrands && masterBrands.length > 0) {
+      setBrandsList(masterBrands);
+    }
+  }, [masterBrands]);
 
   const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
   const [editingBrand, setEditingBrand] = useState(null);
@@ -310,6 +342,7 @@ export function MastersView() {
   // =========================================================================
   const [depSearch, setDepSearch] = useState('');
   const [depsList, setDepsList] = useState(() => {
+    if (masterDepartments && masterDepartments.length > 0) return masterDepartments;
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('pulsepm_master_deps_v4');
       if (saved) {
@@ -325,6 +358,12 @@ export function MastersView() {
       { id: 'dep-6', code: 'QA-DEVOPS', name: 'QA & DevOps', status: 'Active' },
     ];
   });
+
+  React.useEffect(() => {
+    if (masterDepartments && masterDepartments.length > 0) {
+      setDepsList(masterDepartments);
+    }
+  }, [masterDepartments]);
 
   const [isDepModalOpen, setIsDepModalOpen] = useState(false);
   const [editingDep, setEditingDep] = useState(null);
@@ -349,6 +388,7 @@ export function MastersView() {
 
   const saveBrands = (items) => {
     setBrandsList(items);
+    if (saveMasterBrands) saveMasterBrands(items);
     if (typeof window !== 'undefined') localStorage.setItem('pulsepm_master_brands_v2', JSON.stringify(items));
   };
 
@@ -359,6 +399,7 @@ export function MastersView() {
 
   const saveDeps = (items) => {
     setDepsList(items);
+    if (saveMasterDepartments) saveMasterDepartments(items);
     if (typeof window !== 'undefined') localStorage.setItem('pulsepm_master_deps_v2', JSON.stringify(items));
   };
 
@@ -438,6 +479,8 @@ export function MastersView() {
         role: userForm.role,
         department: userForm.department,
         phone: userForm.phone.trim(),
+        dob: userForm.dob || '',
+        dateOfBirth: userForm.dob || '',
         status: userForm.status,
         avatar: userForm.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80'
       };
@@ -450,6 +493,8 @@ export function MastersView() {
         role: userForm.role,
         department: userForm.department,
         phone: userForm.phone.trim() || '+1 (555) 000-0000',
+        dob: userForm.dob || '',
+        dateOfBirth: userForm.dob || '',
         activeTasks: 0,
         projectsCount: 0,
         status: userForm.status,
@@ -470,23 +515,31 @@ export function MastersView() {
   // =========================================================================
   // ACTIONS: ROLES & PERMISSIONS
   // =========================================================================
-  const handleRoleSubmit = (e) => {
+  const handleRoleSubmit = async (e) => {
     e.preventDefault();
     if (!roleForm.name.trim()) return;
 
     if (editingRole) {
-      const updated = rolesList.map((r) => (r.id === editingRole.id ? { ...r, name: roleForm.name.trim(), desc: roleForm.desc.trim(), status: roleForm.status } : r));
-      saveRoles(updated);
+      const updates = { name: roleForm.name.trim(), desc: roleForm.desc.trim(), status: roleForm.status };
+      if (handleUpdateRole) {
+        await handleUpdateRole(editingRole.id || editingRole._id || editingRole.name, updates);
+      } else {
+        const updated = rolesList.map((r) => (r.id === editingRole.id ? { ...r, ...updates } : r));
+        saveRoles(updated);
+      }
     } else {
       const cleanName = roleForm.name.trim();
       const newRole = {
-        id: 'role-' + Date.now(),
         name: cleanName,
         status: roleForm.status,
         isSystem: false,
         desc: roleForm.desc.trim() || 'Custom operational role'
       };
-      saveRoles([...rolesList, newRole]);
+      if (handleAddRole) {
+        await handleAddRole(newRole);
+      } else {
+        saveRoles([...rolesList, { id: 'role-' + Date.now(), ...newRole }]);
+      }
 
       // Add to matrix
       const nextMatrix = permissionsMatrix.map((p) => ({
@@ -499,13 +552,17 @@ export function MastersView() {
     setEditingRole(null);
   };
 
-  const handleToggleRoleArchive = (role) => {
+  const handleToggleRoleArchive = async (role) => {
     if (role.isSystem) {
       alert('System primary roles cannot be deactivated.');
       return;
     }
     const nextStatus = role.status === 'Active' ? 'Deactivated' : 'Active';
-    saveRoles(rolesList.map((r) => (r.id === role.id ? { ...r, status: nextStatus } : r)));
+    if (handleUpdateRole) {
+      await handleUpdateRole(role.id || role._id || role.name, { ...role, status: nextStatus });
+    } else {
+      saveRoles(rolesList.map((r) => (r.id === role.id ? { ...r, status: nextStatus } : r)));
+    }
   };
 
   const handleDeleteRole = async (role) => {
@@ -518,7 +575,11 @@ export function MastersView() {
       confirmButtonText: 'Yes, Delete Role',
     });
     if (confirmed) {
-      saveRoles(rolesList.filter((r) => r.id !== role.id));
+      if (contextHandleDeleteRole) {
+        await contextHandleDeleteRole(role.id || role._id || role.name);
+      } else {
+        saveRoles(rolesList.filter((r) => r.id !== role.id));
+      }
     }
   };
 
@@ -542,30 +603,29 @@ export function MastersView() {
   // =========================================================================
   // ACTIONS: STATUSES
   // =========================================================================
-  const handleStatusSubmit = (e) => {
+  const handleStatusSubmit = async (e) => {
     e.preventDefault();
     if (!statusForm.name.trim()) return;
 
     if (editingStatus) {
-      const updated = statusesList.map((s) =>
-        s.id === editingStatus.id
-          ? {
-            ...s,
-            ...statusForm,
-            name: statusForm.name.trim(),
-            scope: statusForm.scope || 'Task',
-            behavior: statusForm.behavior || 'normal',
-            marksAsCompleted: Boolean(statusForm.marksAsCompleted),
-            color: statusForm.color || 'emerald',
-            icon: statusForm.icon || (statusForm.marksAsCompleted ? 'CheckCircle2' : 'CircleDot'),
-            desc: statusForm.desc.trim() || 'Custom lifecycle stage'
-          }
-          : s
-      );
-      saveStatuses(updated);
+      const updates = {
+        ...statusForm,
+        name: statusForm.name.trim(),
+        scope: statusForm.scope || 'Task',
+        behavior: statusForm.behavior || 'normal',
+        marksAsCompleted: Boolean(statusForm.marksAsCompleted),
+        color: statusForm.color || 'emerald',
+        icon: statusForm.icon || (statusForm.marksAsCompleted ? 'CheckCircle2' : 'CircleDot'),
+        desc: statusForm.desc.trim() || 'Custom lifecycle stage'
+      };
+      if (handleUpdateMasterStatus) {
+        await handleUpdateMasterStatus(editingStatus.id || editingStatus._id || editingStatus.name, updates);
+      } else {
+        const updated = statusesList.map((s) => (s.id === editingStatus.id ? { ...s, ...updates } : s));
+        saveStatuses(updated);
+      }
     } else {
       const newStatus = {
-        id: 'st-' + Date.now(),
         name: statusForm.name.trim(),
         scope: statusForm.scope || 'Task',
         behavior: statusForm.behavior || 'normal',
@@ -575,31 +635,38 @@ export function MastersView() {
         status: statusForm.status || 'Active',
         desc: statusForm.desc.trim() || 'Custom lifecycle stage'
       };
-      saveStatuses([...statusesList, newStatus]);
+      if (handleAddMasterStatus) {
+        await handleAddMasterStatus(newStatus);
+      } else {
+        saveStatuses([...statusesList, { id: 'st-' + Date.now(), ...newStatus }]);
+      }
     }
     setIsStatusModalOpen(false);
     setEditingStatus(null);
   };
 
-  const handleToggleStatusStrikethrough = (st) => {
+  const handleToggleStatusStrikethrough = async (st) => {
     const nextVal = !Boolean(st.marksAsCompleted);
-    const updated = statusesList.map((s) => {
-      if (s.id === st.id) {
-        return {
-          ...s,
-          marksAsCompleted: nextVal,
-          behavior: nextVal ? 'completed' : (s.behavior === 'completed' ? 'normal' : s.behavior),
-          icon: nextVal ? 'CheckCircle2' : (s.icon === 'CheckCircle2' ? 'CircleDot' : s.icon)
-        };
-      }
-      return s;
-    });
-    saveStatuses(updated);
+    const updates = {
+      marksAsCompleted: nextVal,
+      behavior: nextVal ? 'completed' : (st.behavior === 'completed' ? 'normal' : st.behavior),
+      icon: nextVal ? 'CheckCircle2' : (st.icon === 'CheckCircle2' ? 'CircleDot' : st.icon)
+    };
+    if (handleUpdateMasterStatus) {
+      await handleUpdateMasterStatus(st.id || st._id || st.name, { ...st, ...updates });
+    } else {
+      const updated = statusesList.map((s) => (s.id === st.id ? { ...s, ...updates } : s));
+      saveStatuses(updated);
+    }
   };
 
-  const handleToggleStatusArchive = (st) => {
+  const handleToggleStatusArchive = async (st) => {
     const nextStatus = st.status === 'Active' ? 'Deactivated' : st.status === 'Deactivated' ? 'Archived' : 'Active';
-    saveStatuses(statusesList.map((s) => (s.id === st.id ? { ...s, status: nextStatus } : s)));
+    if (handleUpdateMasterStatus) {
+      await handleUpdateMasterStatus(st.id || st._id || st.name, { ...st, status: nextStatus });
+    } else {
+      saveStatuses(statusesList.map((s) => (s.id === st.id ? { ...s, status: nextStatus } : s)));
+    }
   };
 
   const handleDeleteStatus = async (st) => {
@@ -608,38 +675,58 @@ export function MastersView() {
       confirmButtonText: 'Yes, Delete Status',
     });
     if (confirmed) {
-      saveStatuses(statusesList.filter((s) => s.id !== st.id));
+      if (handleDeleteMasterStatus) {
+        await handleDeleteMasterStatus(st.id || st._id || st.name);
+      } else {
+        saveStatuses(statusesList.filter((s) => s.id !== st.id));
+      }
     }
   };
 
   // =========================================================================
   // ACTIONS: BRANDS
   // =========================================================================
-  const handleBrandSubmit = (e) => {
+  const handleBrandSubmit = async (e) => {
     e.preventDefault();
     if (!brandForm.name.trim() || !brandForm.code.trim()) return;
 
     if (editingBrand) {
-      const updated = brandsList.map((b) => (b.id === editingBrand.id ? { ...b, ...brandForm, code: brandForm.code.toUpperCase().trim(), name: brandForm.name.trim() } : b));
-      saveBrands(updated);
+      const updates = {
+        ...brandForm,
+        code: brandForm.code.toUpperCase().trim(),
+        name: brandForm.name.trim()
+      };
+      if (handleUpdateMasterBrand) {
+        await handleUpdateMasterBrand(editingBrand.id || editingBrand._id || editingBrand.code, updates);
+      } else {
+        const updated = brandsList.map((b) => (b.id === editingBrand.id ? { ...b, ...updates } : b));
+        saveBrands(updated);
+      }
     } else {
       const newBrand = {
-        id: 'br-' + Date.now(),
         code: brandForm.code.toUpperCase().trim(),
         name: brandForm.name.trim(),
         color: brandForm.color,
         status: brandForm.status,
         desc: brandForm.desc.trim() || 'Master client folder'
       };
-      saveBrands([...brandsList, newBrand]);
+      if (handleAddMasterBrand) {
+        await handleAddMasterBrand(newBrand);
+      } else {
+        saveBrands([...brandsList, { id: 'br-' + Date.now(), ...newBrand }]);
+      }
     }
     setIsBrandModalOpen(false);
     setEditingBrand(null);
   };
 
-  const handleToggleBrandArchive = (b) => {
+  const handleToggleBrandArchive = async (b) => {
     const nextStatus = b.status === 'Active' ? 'Deactivated' : b.status === 'Deactivated' ? 'Archived' : 'Active';
-    saveBrands(brandsList.map((br) => (br.id === b.id ? { ...br, status: nextStatus } : br)));
+    if (handleUpdateMasterBrand) {
+      await handleUpdateMasterBrand(b.id || b._id || b.code, { ...b, status: nextStatus });
+    } else {
+      saveBrands(brandsList.map((br) => (br.id === b.id ? { ...br, status: nextStatus } : br)));
+    }
   };
 
   const handleDeleteBrand = async (b) => {
@@ -648,37 +735,53 @@ export function MastersView() {
       confirmButtonText: 'Yes, Delete Brand',
     });
     if (confirmed) {
-      saveBrands(brandsList.filter((br) => br.id !== b.id));
+      if (handleDeleteMasterBrand) {
+        await handleDeleteMasterBrand(b.id || b._id || b.code);
+      } else {
+        saveBrands(brandsList.filter((br) => br.id !== b.id));
+      }
     }
   };
 
   // =========================================================================
   // ACTIONS: LINK CATEGORIES
   // =========================================================================
-  const handleCatSubmit = (e) => {
+  const handleCatSubmit = async (e) => {
     e.preventDefault();
     if (!catForm.name.trim()) return;
 
     if (editingCat) {
-      const updated = catsList.map((c) => (c.id === editingCat.id ? { ...c, ...catForm, name: catForm.name.trim() } : c));
-      saveCats(updated);
+      const updates = { ...catForm, name: catForm.name.trim() };
+      if (handleUpdateLinkCategory) {
+        await handleUpdateLinkCategory(editingCat.id || editingCat._id || editingCat.name, updates);
+      } else {
+        const updated = catsList.map((c) => (c.id === editingCat.id ? { ...c, ...updates } : c));
+        saveCats(updated);
+      }
     } else {
       const newCat = {
-        id: 'cat-' + Date.now(),
         name: catForm.name.trim(),
         count: 0,
         status: catForm.status,
         desc: catForm.desc.trim() || 'Master link category'
       };
-      saveCats([...catsList, newCat]);
+      if (handleAddLinkCategory) {
+        await handleAddLinkCategory(newCat);
+      } else {
+        saveCats([...catsList, { id: 'cat-' + Date.now(), ...newCat }]);
+      }
     }
     setIsCatModalOpen(false);
     setEditingCat(null);
   };
 
-  const handleToggleCatArchive = (c) => {
+  const handleToggleCatArchive = async (c) => {
     const nextStatus = c.status === 'Active' ? 'Deactivated' : c.status === 'Deactivated' ? 'Archived' : 'Active';
-    saveCats(catsList.map((cat) => (cat.id === c.id ? { ...cat, status: nextStatus } : cat)));
+    if (handleUpdateLinkCategory) {
+      await handleUpdateLinkCategory(c.id || c._id || c.name, { ...c, status: nextStatus });
+    } else {
+      saveCats(catsList.map((cat) => (cat.id === c.id ? { ...cat, status: nextStatus } : cat)));
+    }
   };
 
   const handleDeleteCat = async (c) => {
@@ -687,7 +790,11 @@ export function MastersView() {
       confirmButtonText: 'Yes, Delete Category',
     });
     if (confirmed) {
-      saveCats(catsList.filter((cat) => cat.id !== c.id));
+      if (handleDeleteLinkCategory) {
+        await handleDeleteLinkCategory(c.id || c._id || c.name);
+      } else {
+        saveCats(catsList.filter((cat) => cat.id !== c.id));
+      }
     }
   };
 
@@ -747,7 +854,7 @@ export function MastersView() {
   };
 
   // =========================================================================
-  const handleDepSubmit = (e) => {
+  const handleDepSubmit = async (e) => {
     e.preventDefault();
     if (!depForm.name.trim() || !depForm.code.trim()) return;
 
@@ -756,12 +863,18 @@ export function MastersView() {
 
     if (editingDep) {
       const oldDepName = editingDep.name;
-      const updated = depsList.map((d) =>
-        d.id === editingDep.id
-          ? { ...d, ...depForm, code: depForm.code.toUpperCase().trim(), name: depName, lead: depLead }
-          : d
-      );
-      saveDeps(updated);
+      const updates = {
+        ...depForm,
+        code: depForm.code.toUpperCase().trim(),
+        name: depName,
+        lead: depLead
+      };
+      if (handleUpdateMasterDepartment) {
+        await handleUpdateMasterDepartment(editingDep.id || editingDep._id || editingDep.code, updates);
+      } else {
+        const updated = depsList.map((d) => (d.id === editingDep.id ? { ...d, ...updates } : d));
+        saveDeps(updated);
+      }
 
       // CASCADE SYNC: If department name changed, update all assigned users dynamically
       if (oldDepName && oldDepName !== depName) {
@@ -775,14 +888,17 @@ export function MastersView() {
       }
     } else {
       const newDep = {
-        id: 'dep-' + Date.now(),
         code: depForm.code.toUpperCase().trim(),
         name: depName,
         lead: depLead,
         members: 0,
         status: depForm.status
       };
-      saveDeps([...depsList, newDep]);
+      if (handleAddMasterDepartment) {
+        await handleAddMasterDepartment(newDep);
+      } else {
+        saveDeps([...depsList, { id: 'dep-' + Date.now(), ...newDep }]);
+      }
     }
 
     // If a registered user is chosen as lead, sync their department to this one
@@ -797,9 +913,13 @@ export function MastersView() {
     setEditingDep(null);
   };
 
-  const handleToggleDepArchive = (d) => {
+  const handleToggleDepArchive = async (d) => {
     const nextStatus = d.status === 'Active' ? 'Deactivated' : d.status === 'Deactivated' ? 'Archived' : 'Active';
-    saveDeps(depsList.map((dp) => (dp.id === d.id ? { ...dp, status: nextStatus } : dp)));
+    if (handleUpdateMasterDepartment) {
+      await handleUpdateMasterDepartment(d.id || d._id || d.code, { ...d, status: nextStatus });
+    } else {
+      saveDeps(depsList.map((dp) => (dp.id === d.id ? { ...dp, status: nextStatus } : dp)));
+    }
   };
 
   const handleDeleteDep = async (d) => {
@@ -808,7 +928,11 @@ export function MastersView() {
       confirmButtonText: 'Yes, Delete Department',
     });
     if (confirmed) {
-      saveDeps(depsList.filter((dp) => dp.id !== d.id));
+      if (handleDeleteMasterDepartment) {
+        await handleDeleteMasterDepartment(d.id || d._id || d.code);
+      } else {
+        saveDeps(depsList.filter((dp) => dp.id !== d.id));
+      }
     }
   };
 
@@ -1232,6 +1356,7 @@ export function MastersView() {
                     role: 'User',
                     department: depsList[0]?.name || 'Frontend Engineering',
                     phone: '',
+                    dob: '',
                     status: 'Active',
                     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
                     isDepartmentLead: false
@@ -1253,6 +1378,7 @@ export function MastersView() {
                   <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     <th className="py-3 px-4">User Member</th>
                     <th className="py-3 px-4">Email &amp; Phone</th>
+                    <th className="py-3 px-4">Date of Birth</th>
                     <th className="py-3 px-4">Department</th>
                     <th className="py-3 px-4">Access Role</th>
                     <th className="py-3 px-4">Status State</th>
@@ -1262,7 +1388,7 @@ export function MastersView() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400 font-medium">
+                      <td colSpan={7} className="py-8 text-center text-slate-400 font-medium">
                         No users found
                       </td>
                     </tr>
@@ -1297,6 +1423,19 @@ export function MastersView() {
                           </td>
 
                           <td className="py-3 px-4 whitespace-nowrap">
+                            {u.dob || u.dateOfBirth ? (
+                              <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-200 font-medium">
+                                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{formatDate(u.dob || u.dateOfBirth)}</span>
+                              </div>
+                            ) : (
+                              <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 font-mono text-[11px] font-semibold">
+                                NA
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4 whitespace-nowrap">
                             <span className="text-slate-800 dark:text-slate-200 font-semibold">{u.department}</span>
                           </td>
 
@@ -1321,6 +1460,7 @@ export function MastersView() {
                                     role: u.role || 'User',
                                     department: u.department || depsList[0]?.name || 'Executive Operations',
                                     phone: u.phone || '',
+                                    dob: u.dob || u.dateOfBirth || '',
                                     status: u.status || 'Active',
                                     avatar: u.avatar || ''
                                   });
@@ -2298,7 +2438,7 @@ export function MastersView() {
                   </label>
                   <input
                     type="text"
-                    placeholder="+1 (555) 000-0000"
+                    placeholder="+91 98765 43210"
                     value={userForm.phone}
                     onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand"
@@ -2307,18 +2447,30 @@ export function MastersView() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                    Account Status
+                    Date of Birth <span className="text-slate-400 font-normal">(Optional)</span>
                   </label>
-                  <select
-                    value={userForm.status}
-                    onChange={(e) => setUserForm({ ...userForm, status: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand font-medium"
-                  >
-                    <option value="Active">Active</option>
-                    <option value="Deactivated">Deactivated</option>
-                    <option value="Archived">Archived</option>
-                  </select>
+                  <input
+                    type="date"
+                    value={userForm.dob || ''}
+                    onChange={(e) => setUserForm({ ...userForm, dob: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand"
+                  />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  Account Status
+                </label>
+                <select
+                  value={userForm.status}
+                  onChange={(e) => setUserForm({ ...userForm, status: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand font-medium"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Deactivated">Deactivated</option>
+                  <option value="Archived">Archived</option>
+                </select>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">

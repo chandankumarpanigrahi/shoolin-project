@@ -14,7 +14,7 @@ import {
   LayoutDashboard,
   Briefcase,
   CheckSquare,
-  Target,
+  CalendarRange,
   BarChart3,
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
@@ -24,7 +24,7 @@ const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/projects', label: 'Projects', icon: Briefcase },
   { href: '/tasks', label: 'Tasks', icon: CheckSquare },
-  { href: '/my-focus', label: 'Focus', icon: Target },
+  { href: '/roadmap', label: 'Roadmap', icon: CalendarRange },
   { href: '/kpi', label: 'KPIs', icon: BarChart3, perm: 'kpi.view' },
 ];
 

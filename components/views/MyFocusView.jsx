@@ -19,6 +19,7 @@ import { StatusBadge, PriorityBadge } from '@/components/common/Badges';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { useUrlParam } from '@/hooks/useUrlState';
+import { formatDate } from '@/lib/dateUtils';
 
 export function MyFocusView({
   currentUser,
@@ -159,14 +160,14 @@ export function MyFocusView({
         <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
           <PriorityBadge priority={task.priority} />
           <StatusBadge status={task.status} />
-          {task.dueDate && (
+          {(task.dueDate || task.toDate || task.targetDate || task.endDate || task.startDate || task.fromDate) && (
             <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-xs flex items-center gap-1 ${
               isOverdue
                 ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 font-bold'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
             }`}>
               <Calendar className="w-3 h-3" />
-              {task.dueDate}
+              {task.startDate || task.fromDate ? `${formatDate(task.startDate || task.fromDate)} → ` : ''}{formatDate(task.dueDate || task.toDate || task.targetDate || task.endDate, 'No Date')}
             </span>
           )}
         </div>

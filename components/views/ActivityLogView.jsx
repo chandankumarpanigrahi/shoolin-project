@@ -32,6 +32,7 @@ import { UserAvatar } from '@/components/common/UserAvatar';
 import { RoleBadge } from '@/components/common/Badges';
 import { api } from '@/lib/api';
 import { showConfirm, showSuccess, showError } from '@/lib/swal';
+import { formatDate, formatDateTime } from '@/lib/dateUtils';
 
 export function ActivityLogView() {
   const { currentUser } = useAppContext();
@@ -98,8 +99,7 @@ export function ActivityLogView() {
     const targetId = session.id || session._id || session.sessionId;
     const isSelf = Boolean(
       session.isCurrent ||
-      (currentSessionId && session.sessionId === currentSessionId) ||
-      (currentUser?.email && session.userEmail?.toLowerCase() === currentUser.email?.toLowerCase() && session.status === 'Active')
+      (currentSessionId && (session.sessionId === currentSessionId || session.id === currentSessionId || session._id === currentSessionId))
     );
 
     if (isSelf) {
@@ -128,7 +128,7 @@ export function ActivityLogView() {
           'pulsepm_session_terminated_broadcast',
           JSON.stringify({ sessionId: session.sessionId || targetId, isSelf, timestamp: Date.now() })
         );
-      } catch (e) {}
+      } catch (e) { }
 
       // If user terminated their own active session, exit immediately
       if (isSelf) {
@@ -177,7 +177,7 @@ export function ActivityLogView() {
           'pulsepm_session_terminated_broadcast',
           JSON.stringify({ allOthers: true, exceptSessionId: currentSessionId, timestamp: Date.now() })
         );
-      } catch (e) {}
+      } catch (e) { }
 
       showSuccess('All Other Sessions Terminated', 'All other active member sessions have been invalidated.');
       loadSessions();
@@ -252,7 +252,7 @@ export function ActivityLogView() {
       `"${log.device || ''}"`,
       `"${log.target || ''}"`,
       `"${(log.details || '').replace(/"/g, '""')}"`,
-      `"${new Date(log.timestamp || log.createdAt).toLocaleString()}"`,
+      `"${formatDateTime(log.timestamp || log.createdAt)}"`,
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -531,17 +531,15 @@ export function ActivityLogView() {
                     {filteredSessions.map((session) => {
                       const isCurrent = Boolean(
                         session.isCurrent ||
-                        (currentSessionId && session.sessionId === currentSessionId) ||
-                        (currentUser?.email && session.userEmail?.toLowerCase() === currentUser.email?.toLowerCase() && session.status === 'Active')
+                        (currentSessionId && (session.sessionId === currentSessionId || session.id === currentSessionId || session._id === currentSessionId))
                       );
                       return (
                         <tr
                           key={session.id || session._id || session.sessionId}
-                          className={`transition-colors ${
-                            isCurrent
+                          className={`transition-colors ${isCurrent
                               ? 'bg-brand/5 dark:bg-brand/10 border-l-4 border-brand'
                               : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
-                          }`}
+                            }`}
                         >
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-2.5">
@@ -554,7 +552,7 @@ export function ActivityLogView() {
                                   {isCurrent && (
                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 uppercase tracking-wider shadow-xs">
                                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                      Current Session (Under Use By You)
+                                      Current Session
                                     </span>
                                   )}
                                 </div>
@@ -584,7 +582,7 @@ export function ActivityLogView() {
                           </td>
 
                           <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                            <div>{new Date(session.loginAt).toLocaleDateString()}</div>
+                            <div>{formatDate(session.loginAt)}</div>
                             <div className="text-[10px] text-slate-400">{new Date(session.loginAt).toLocaleTimeString()}</div>
                           </td>
 
@@ -783,7 +781,7 @@ export function ActivityLogView() {
                           </td>
 
                           <td className="py-3.5 px-4 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                            <div>{new Date(log.timestamp || log.createdAt).toLocaleDateString()}</div>
+                            <div>{formatDate(log.timestamp || log.createdAt)}</div>
                             <div className="text-[10px] text-slate-400">{new Date(log.timestamp || log.createdAt).toLocaleTimeString()}</div>
                           </td>
                         </tr>

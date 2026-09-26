@@ -11,7 +11,11 @@ const taskSchema = new mongoose.Schema(
     status: { type: String, default: 'Not Started', index: true },
     priority: { type: String, default: 'Medium' },
     targetDate: { type: String, index: true },
-    dueDate: { type: String },
+    dueDate: { type: String, index: true },
+    startDate: { type: String, index: true },
+    fromDate: { type: String },
+    endDate: { type: String },
+    toDate: { type: String },
     createdDate: { type: String },
     createdBy: { type: String },
     description: { type: String, default: '' },
@@ -22,5 +26,9 @@ const taskSchema = new mongoose.Schema(
 
 taskSchema.index({ projectId: 1, status: 1 });
 taskSchema.index({ assignedTo: 1, targetDate: 1 });
+
+if (mongoose.models.Task && !mongoose.models.Task.schema?.paths?.startDate) {
+  delete mongoose.models.Task;
+}
 
 export const Task = mongoose.models.Task || mongoose.model('Task', taskSchema);

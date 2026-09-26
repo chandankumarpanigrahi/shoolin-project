@@ -64,6 +64,8 @@ io.on('connection', (socket) => {
   });
 });
 
+import { RealtimeEvent } from './models/RealtimeEvent.js';
+
 // Broadcast helper
 export function broadcastRealtimeEvent(event, data, room = null) {
   if (room) {
@@ -71,6 +73,10 @@ export function broadcastRealtimeEvent(event, data, room = null) {
   } else {
     io.emit(event, data);
   }
+  try {
+    const entityId = data?.id || data?._id || 'global';
+    RealtimeEvent.create({ event, entityId: String(entityId), payload: data, createdAt: new Date() }).catch(() => {});
+  } catch (e) {}
 }
 
 import apiRoutes from './routes/api.routes.js';

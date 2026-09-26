@@ -330,30 +330,6 @@ export function AuthModal({ isOpen, onClose, onLoginAsUser }) {
               </button>
             </div>
           )}
-
-          {/* QUICK DEMO ROLE SWITCHER SHORTCUT */}
-          <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <span className="block text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2 text-center">
-              Quick Prototype Role Switcher
-            </span>
-            <div className="grid grid-cols-2 gap-1.5">
-              {dynamicUsers.slice(0, 6).map((u) => (
-                <button
-                  key={u.id || u._id}
-                  type="button"
-                  onClick={() => handleCompleteLogin(u)}
-                  className="text-left p-1.5 rounded-sm border border-slate-200 dark:border-slate-700 hover:border-brand hover:bg-brand-subtle transition-colors flex items-center gap-2 cursor-pointer"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={u.avatar} alt={u.name} className="w-6 h-6 rounded-sm object-cover" />
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate">{u.name}</p>
-                    <p className="text-[10px] text-brand font-medium truncate">{u.role}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     </div>

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { ProjectTypeBadge } from '@/components/common/Badges';
+import { formatDate } from '@/lib/dateUtils';
 
 export function TemplateWorkflowModal({
   isOpen,
@@ -73,8 +74,8 @@ export function TemplateWorkflowModal({
       progress: 0,
       status: "In Progress",
       priority: "High",
-      startDate,
-      targetDate,
+      defaultStartDate: startDate,
+      defaultDueDate: targetDate,
       description: currentTemplate.description || 'Sprint instantiated from template.',
       budget: currentTemplate.type === 'recurring' ? "$6,500/mo" : "$45,000",
       tasksCount: currentTemplate.tasksCount || 15,
@@ -324,7 +325,7 @@ export function TemplateWorkflowModal({
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">Target Completion Date</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">Target Completion Date {targetDate ? `(${formatDate(targetDate)})` : ''}</label>
                   <input
                     type="date"
                     value={targetDate}
@@ -377,7 +378,7 @@ export function TemplateWorkflowModal({
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <div><span className="text-slate-500 dark:text-slate-400">Client:</span> <strong className="text-slate-800 dark:text-slate-200">{client}</strong></div>
                   <div><span className="text-slate-500 dark:text-slate-400">Brand Tag:</span> <strong className="text-slate-800 dark:text-slate-200">{brand}</strong></div>
-                  <div><span className="text-slate-500 dark:text-slate-400">Target Date:</span> <strong className="text-slate-800 dark:text-slate-200">{targetDate}</strong></div>
+                  <div><span className="text-slate-500 dark:text-slate-400">Target Date:</span> <strong className="text-slate-800 dark:text-slate-200">{formatDate(targetDate)}</strong></div>
                   <div><span className="text-slate-500 dark:text-slate-400">Initial Tasks:</span> <strong className="text-slate-800 dark:text-slate-200">{currentTemplate.tasksCount} Tasks from template</strong></div>
                 </div>
 

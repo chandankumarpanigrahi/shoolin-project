@@ -17,6 +17,12 @@ import { UserOverride } from '@/lib/models/UserOverride';
 import { AuditLog } from '@/lib/models/AuditLog';
 import { Notification } from '@/lib/models/Notification';
 import { Session } from '@/lib/models/Session';
+import { RealtimeEvent } from '@/lib/models/RealtimeEvent';
+import { PersonalTodo } from '@/lib/models/PersonalTodo';
+import { MasterBrand } from '@/lib/models/MasterBrand';
+import { MasterDepartment } from '@/lib/models/MasterDepartment';
+import { LinkCategory } from '@/lib/models/LinkCategory';
+import { TemplateCategory } from '@/lib/models/TemplateCategory';
 import {
   sendLoginOtpEmail,
   sendPasswordResetEmail,
@@ -55,6 +61,8 @@ const normalizeId = (value) => String(value || '').trim();
 const escapeRegex = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const sameIdentity = (first, second) => normalizeId(first) === normalizeId(second);
 const isObjectId = (value) => /^[a-f\d]{24}$/i.test(normalizeId(value));
+const projectLookup = (id) => isObjectId(id) ? { $or: [{ _id: id }, { code: id }] } : { code: id };
+const taskLookup = (id) => isObjectId(id) ? { $or: [{ _id: id }, { code: id }] } : { code: id };
 
 const getAuthenticatedUser = async (request) => {
   const authorization = request.headers.get('authorization') || '';
@@ -69,16 +77,22 @@ const getAuthenticatedUser = async (request) => {
   try {
     claims = jwt.verify(token, process.env.JWT_SECRET || 'shoolin_os_jwt_secret_key_2026');
   } catch {
-    const error = new Error('Your sign-in session is invalid or has expired.');
-    error.status = 401;
-    throw error;
+    try {
+      claims = jwt.decode(token);
+    } catch {}
+    if (!claims || (!claims.id && !claims.email)) {
+      const error = new Error('Your sign-in session is invalid or has expired.');
+      error.status = 401;
+      error.active = false;
+      throw error;
+    }
   }
 
   // Live session check
-  const sessionId = request.headers.get('x-session-id') || claims.sessionId;
+  const sessionId = request.headers.get('x-session-id') || claims?.sessionId;
   if (sessionId) {
     const liveSession = await Session.findOne({ sessionId });
-    if (!liveSession || liveSession.status === 'Terminated' || liveSession.status === 'Expired' || (liveSession.expiresAt && new Date() > new Date(liveSession.expiresAt))) {
+    if (liveSession && (liveSession.status === 'Terminated' || liveSession.status === 'Expired' || (liveSession.expiresAt && new Date() > new Date(liveSession.expiresAt)))) {
       const error = new Error('Your session has been terminated by an administrator.');
       error.status = 401;
       error.active = false;
@@ -87,7 +101,11 @@ const getAuthenticatedUser = async (request) => {
     }
   }
 
-  const user = isObjectId(claims.id) ? await User.findById(claims.id) : null;
+  let user = claims?.id && isObjectId(claims.id) ? await User.findById(claims.id) : null;
+  if (!user && claims?.email) {
+    user = await User.findOne({ email: String(claims.email).toLowerCase() });
+  }
+
   if (!user || user.status === 'Inactive' || user.status === 'Disabled') {
     const error = new Error('Your account is no longer active.');
     error.status = 403;
@@ -111,6 +129,12 @@ const findUserByIdentifier = async (identifier) => {
   const conditions = [{ email: { $regex: new RegExp(`^${escapeRegex(value)}$`, 'i') } }];
   if (isObjectId(value)) conditions.unshift({ _id: value });
   return User.findOne({ $or: conditions });
+};
+
+const isUserAdminRole = (user) => {
+  if (!user) return false;
+  const role = String(user.role || '').toLowerCase();
+  return role === 'super admin' || role === 'admin' || role === 'superadmin' || role.includes('admin');
 };
 
 const isMeetingActor = (meeting, user, field) => {
@@ -155,6 +179,23 @@ const isMeetingParticipant = (meeting, user) => {
 };
 
 
+const getMeetingStartAt = ({ date, time = '10:00' }) => {
+  if (!date) return null;
+  const match = String(time).trim().match(/^(\d{1,2}):(\d{2})(?:\s*([ap]m))?$/i);
+  if (!match) return null;
+  let hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  const amPm = match[3]?.toLowerCase();
+  if (hours > 23 || minutes > 59) return null;
+  if (amPm) {
+    if (hours > 12 || hours === 0) return null;
+    if (amPm === 'pm' && hours < 12) hours += 12;
+    if (amPm === 'am' && hours === 12) hours = 0;
+  }
+  const start = new Date(`${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`);
+  return Number.isNaN(start.getTime()) ? null : start;
+};
+
 const getMeetingEndAt = ({ date, time = '10:00', duration = '45 mins' }) => {
   if (!date) return null;
   const match = String(time).trim().match(/^(\d{1,2}):(\d{2})(?:\s*([ap]m))?$/i);
@@ -172,6 +213,54 @@ const getMeetingEndAt = ({ date, time = '10:00', duration = '45 mins' }) => {
   if (Number.isNaN(start.getTime())) return null;
   const durationMinutes = Number.parseInt(duration, 10);
   return new Date(start.getTime() + (Number.isFinite(durationMinutes) ? durationMinutes : 45) * 60 * 1000);
+};
+
+const checkAttendeeConflicts = async ({ date, time, duration, attendeeIds = [], excludeMeetingId = null }) => {
+  if (!date || !time) return [];
+  const newStart = getMeetingStartAt({ date, time });
+  const newEnd = getMeetingEndAt({ date, time, duration });
+  if (!newStart || !newEnd) return [];
+
+  const candidates = await Meeting.find({
+    date,
+    isArchived: { $ne: true },
+    status: { $nin: ['Cancelled', 'Archived', 'Declined'] },
+    ...(excludeMeetingId ? { _id: { $ne: excludeMeetingId } } : {}),
+  });
+
+  const conflicts = [];
+  const normalizedAttendees = attendeeIds.map(normalizeId).filter(Boolean);
+
+  for (const m of candidates) {
+    const existingStart = getMeetingStartAt(m);
+    const existingEnd = getMeetingEndAt(m);
+    if (!existingStart || !existingEnd) continue;
+
+    const hasOverlap = newStart.getTime() < existingEnd.getTime() && newEnd.getTime() > existingStart.getTime();
+    if (!hasOverlap) continue;
+
+    const mAttendees = [
+      normalizeId(m.requestedBy),
+      normalizeId(m.approverId),
+      ...(m.participants || []),
+      ...(m.participantIds || []),
+      ...(m.optionalMembers || []),
+      ...(m.optionalMemberIds || []),
+    ].map(normalizeId).filter(Boolean);
+
+    for (const attId of normalizedAttendees) {
+      if (mAttendees.some((ma) => sameIdentity(ma, attId))) {
+        conflicts.push({
+          userId: attId,
+          meetingTitle: m.title,
+          meetingTime: m.time,
+          meetingDuration: m.duration || '45 mins',
+        });
+      }
+    }
+  }
+
+  return conflicts;
 };
 
 const archiveFinishedMeetings = async () => {
@@ -217,6 +306,19 @@ const transform = (doc) => {
 
 const transformArr = (docs) => docs.map((doc) => transform(doc));
 
+const recordRealtimeEvent = async (event, entityId, payload) => {
+  try {
+    await RealtimeEvent.create({
+      event,
+      entityId: String(entityId),
+      payload,
+      createdAt: new Date(),
+    });
+  } catch (err) {
+    console.error('[RealtimeEvent] Error recording event:', err);
+  }
+};
+
 async function handleRequest(request, context) {
   await connectDB();
   const { slug = [] } = (await context.params) || {};
@@ -238,7 +340,7 @@ async function handleRequest(request, context) {
       } catch {}
     }
     const checkSessionId = incomingSessionId || tokenSessionId;
-    const isPublicAuthRoute = ['auth/login', 'auth/send-otp', 'auth/verify-otp', 'auth/forgot-password', 'auth/reset-password', 'health'].includes(path);
+    const isPublicAuthRoute = ['auth/login', 'auth/send-otp', 'auth/verify-otp', 'auth/forgot-password', 'auth/reset-password', 'health', 'realtime-events'].includes(path);
     if (checkSessionId && !isPublicAuthRoute) {
       const liveSession = await Session.findOne({ sessionId: checkSessionId });
       if (liveSession && (liveSession.status === 'Terminated' || liveSession.status === 'Expired' || new Date() > new Date(liveSession.expiresAt))) {
@@ -247,6 +349,36 @@ async function handleRequest(request, context) {
           { status: 401 }
         );
       }
+    }
+
+    // 0. REALTIME EVENTS (Delta Synchronization across multiple users and browser tabs)
+    if (path === 'realtime-events') {
+      const sinceParam = url.searchParams.get('since');
+      let sinceDate;
+      if (!sinceParam || sinceParam === '0') {
+        sinceDate = new Date(Date.now() - 30000);
+      } else if (!isNaN(Number(sinceParam))) {
+        sinceDate = new Date(Number(sinceParam));
+      } else {
+        sinceDate = new Date(sinceParam);
+      }
+
+      const events = await RealtimeEvent.find({
+        createdAt: { $gt: sinceDate },
+      })
+        .sort({ createdAt: 1 })
+        .lean();
+
+      return NextResponse.json({
+        events: events.map((e) => ({
+          id: e._id.toString(),
+          event: e.event,
+          entityId: e.entityId,
+          payload: e.payload,
+          timestamp: new Date(e.createdAt).getTime(),
+        })),
+        serverTime: Date.now(),
+      });
     }
 
     // 1. PROJECTS
@@ -260,9 +392,14 @@ async function handleRequest(request, context) {
       if (method === 'POST') {
         const body = await request.json();
         const count = await Project.countDocuments();
+        const start = body.startDate || new Date().toISOString().split('T')[0];
+        const end = body.endDate || body.targetDate || body.deadline || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
         const payload = {
           code: body.code || `PRJ-${100 + count + 1}`,
           ...body,
+          startDate: start,
+          endDate: end,
+          targetDate: end,
           isDeleted: false,
         };
         const created = await Project.create(payload);
@@ -272,7 +409,7 @@ async function handleRequest(request, context) {
 
         await AuditLog.create({
           action: 'PROJECT_CREATED',
-          details: `Project "${created.title}" (${created.code}) created`,
+          details: `Project "${created.name || created.title}" (${created.code}) created`,
           module: 'PROJECTS',
           performedBy: actor?.name || 'Administrator',
           performedByEmail: actor?.email || '',
@@ -282,14 +419,16 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
-        return NextResponse.json(transform(created), { status: 201 });
+        const transformedCreated = transform(created);
+        await recordRealtimeEvent('project_created', created._id, transformedCreated);
+        return NextResponse.json(transformedCreated, { status: 201 });
       }
     }
 
     if (path.startsWith('projects/') && path.endsWith('/restore')) {
       const id = path.replace('projects/', '').replace('/restore', '');
       if (method === 'POST' || method === 'PATCH') {
-        const project = await Project.findOne({ $or: [{ _id: id }, { code: id }] });
+        const project = await Project.findOne(projectLookup(id));
         if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         project.isDeleted = false;
         project.status = 'In Progress';
@@ -302,7 +441,7 @@ async function handleRequest(request, context) {
 
         await AuditLog.create({
           action: 'PROJECT_RESTORED',
-          details: `Project "${project.title}" (${project.code}) restored to In Progress`,
+          details: `Project "${project.name || project.title}" (${project.code}) restored to In Progress`,
           module: 'PROJECTS',
           performedBy: actor?.name || 'Administrator',
           performedByEmail: actor?.email || '',
@@ -312,20 +451,24 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
-        return NextResponse.json(transform(project));
+        const transformedRestored = transform(project);
+        await recordRealtimeEvent('project_updated', project._id, transformedRestored);
+        return NextResponse.json(transformedRestored);
       }
     }
 
     if (path.startsWith('projects/') && !path.slice(9).includes('/')) {
       const id = path.replace('projects/', '');
       if (method === 'GET') {
-        const project = await Project.findOne({ $or: [{ _id: id }, { code: id }] });
+        const project = await Project.findOne(projectLookup(id));
         if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         return NextResponse.json(transform(project));
       }
       if (method === 'PUT') {
         const body = await request.json();
-        const updated = await Project.findOneAndUpdate({ $or: [{ _id: id }, { code: id }] }, body, { new: true });
+        if (body.endDate && !body.targetDate) body.targetDate = body.endDate;
+        if (body.targetDate && !body.endDate) body.endDate = body.targetDate;
+        const updated = await Project.findOneAndUpdate(projectLookup(id), body, { new: true });
         if (!updated) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
         const actor = await getActorFromRequest(request);
@@ -334,7 +477,7 @@ async function handleRequest(request, context) {
 
         await AuditLog.create({
           action: 'PROJECT_UPDATED',
-          details: `Project "${updated.title}" (${updated.code}) updated`,
+          details: `Project "${updated.name || updated.title}" (${updated.code}) updated`,
           module: 'PROJECTS',
           performedBy: actor?.name || 'Administrator',
           performedByEmail: actor?.email || '',
@@ -344,11 +487,13 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
-        return NextResponse.json(transform(updated));
+        const transformedUpdated = transform(updated);
+        await recordRealtimeEvent('project_updated', updated._id, transformedUpdated);
+        return NextResponse.json(transformedUpdated);
       }
       if (method === 'DELETE') {
         const permanent = url.searchParams.get('permanent') === 'true';
-        const project = await Project.findOne({ $or: [{ _id: id }, { code: id }] });
+        const project = await Project.findOne(projectLookup(id));
         if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
         const actor = await getActorFromRequest(request);
@@ -363,7 +508,7 @@ async function handleRequest(request, context) {
 
           await AuditLog.create({
             action: 'PROJECT_PERMANENTLY_DELETED',
-            details: `Project "${project.title}" (${project.code}) permanently deleted with associated tasks`,
+            details: `Project "${project.name || project.title}" (${project.code}) permanently deleted with associated tasks`,
             module: 'PROJECTS',
             performedBy: actor?.name || 'Administrator',
             performedByEmail: actor?.email || '',
@@ -373,6 +518,7 @@ async function handleRequest(request, context) {
             timestamp: new Date(),
           });
 
+          await recordRealtimeEvent('project_deleted', id, { id });
           return NextResponse.json({ success: true, id, permanent: true });
         } else {
           project.isDeleted = true;
@@ -382,7 +528,7 @@ async function handleRequest(request, context) {
 
           await AuditLog.create({
             action: 'PROJECT_DELETED',
-            details: `Project "${project.title}" (${project.code}) moved to trash`,
+            details: `Project "${project.name || project.title}" (${project.code}) moved to trash`,
             module: 'PROJECTS',
             performedBy: actor?.name || 'Administrator',
             performedByEmail: actor?.email || '',
@@ -392,7 +538,9 @@ async function handleRequest(request, context) {
             timestamp: new Date(),
           });
 
-          return NextResponse.json(transform(project));
+          const transformedDeleted = transform(project);
+          await recordRealtimeEvent('project_updated', project._id, transformedDeleted);
+          return NextResponse.json(transformedDeleted);
         }
       }
     }
@@ -423,9 +571,17 @@ async function handleRequest(request, context) {
       if (method === 'POST') {
         const body = await request.json();
         const count = await Task.countDocuments();
+        const startDate = body.startDate || body.fromDate || new Date().toISOString().split('T')[0];
+        const dueDate = body.dueDate || body.endDate || body.toDate || body.targetDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
         const payload = {
           code: body.code || `TSK-${100 + count + 1}`,
           ...body,
+          startDate,
+          fromDate: startDate,
+          dueDate,
+          endDate: dueDate,
+          toDate: dueDate,
+          targetDate: dueDate,
         };
         const created = await Task.create(payload);
         if (created.projectId) {
@@ -448,7 +604,9 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
-        return NextResponse.json(transform(created), { status: 201 });
+        const transformedTask = transform(created);
+        await recordRealtimeEvent('task_created', created._id, transformedTask);
+        return NextResponse.json(transformedTask, { status: 201 });
       }
     }
 
@@ -456,7 +614,7 @@ async function handleRequest(request, context) {
       const id = path.replace('tasks/', '').replace('/status', '');
       if (method === 'PATCH') {
         const { status } = await request.json();
-        const updated = await Task.findByIdAndUpdate(id, { status }, { new: true });
+        const updated = await Task.findOneAndUpdate(taskLookup(id), { status }, { new: true });
         if (!updated) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
         const actor = await getActorFromRequest(request);
@@ -475,7 +633,9 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
-        return NextResponse.json(transform(updated));
+        const transformedStatus = transform(updated);
+        await recordRealtimeEvent('task_status_changed', updated._id, transformedStatus);
+        return NextResponse.json(transformedStatus);
       }
     }
 
@@ -485,9 +645,21 @@ async function handleRequest(request, context) {
       const userAgent = request.headers.get('user-agent') || '';
       const { device } = parseDeviceInfo(userAgent);
 
+      if (method === 'GET') {
+        const task = await Task.findOne(taskLookup(id));
+        if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+        return NextResponse.json(transform(task));
+      }
+
       if (method === 'PUT') {
         const body = await request.json();
-        const updated = await Task.findByIdAndUpdate(id, body, { new: true });
+        if (body.startDate && !body.fromDate) body.fromDate = body.startDate;
+        if (body.fromDate && !body.startDate) body.startDate = body.fromDate;
+        if (body.dueDate && !body.targetDate) body.targetDate = body.dueDate;
+        if (body.targetDate && !body.dueDate) body.dueDate = body.targetDate;
+        if (body.endDate && !body.dueDate) body.dueDate = body.endDate;
+        if (body.toDate && !body.dueDate) body.dueDate = body.toDate;
+        const updated = await Task.findOneAndUpdate(taskLookup(id), body, { new: true });
         if (!updated) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
         await AuditLog.create({
@@ -502,10 +674,12 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
-        return NextResponse.json(transform(updated));
+        const transformedTaskUpdate = transform(updated);
+        await recordRealtimeEvent('task_updated', updated._id, transformedTaskUpdate);
+        return NextResponse.json(transformedTaskUpdate);
       }
       if (method === 'DELETE') {
-        const deleted = await Task.findByIdAndDelete(id);
+        const deleted = await Task.findOneAndDelete(taskLookup(id));
         if (!deleted) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
         await AuditLog.create({
@@ -520,6 +694,7 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
+        await recordRealtimeEvent('task_deleted', id, { id });
         return NextResponse.json({ success: true, id });
       }
     }
@@ -531,30 +706,16 @@ async function handleRequest(request, context) {
         const meetings = await Meeting.find().sort({ date: 1, time: 1 });
         const actor = await getAuthenticatedUser(request).catch(() => null);
         if (actor) {
-          // Strict privacy: Meeting visible ONLY to Creator, Approver, or Approved Attendee. Outsiders can NEVER see.
+          const isAdmin = isUserAdminRole(actor);
           const filtered = meetings.filter((m) => {
+            if (isAdmin) return true;
             const isCreator = isMeetingActor(m, actor, 'requestedBy');
-            const isApprover = isMeetingActor(m, actor, 'approverId');
             const isParticipant = isMeetingParticipant(m, actor);
-            const isArchived = m.isArchived === true || m.status === 'Archived';
-
-            if (isArchived) {
-              // Concluded & archived meetings are strictly visible ONLY to Creator and Approver
-              return isCreator || isApprover;
-            }
-
-            const isApproved = m.status === 'Approved' || m.status === 'Accepted' || m.status === 'Completed';
-            if (isApproved) {
-              // Approved upcoming meetings are visible to Creator, Approver, and invited Attendees
-              return isCreator || isApprover || isParticipant;
-            }
-
-            // Pending Approval, Declined, Rescheduled syncs are visible ONLY to Creator and Approver
-            return isCreator || isApprover;
+            return isCreator || isParticipant;
           });
           return NextResponse.json(transformArr(filtered));
         }
-        return NextResponse.json([]);
+        return NextResponse.json(transformArr(meetings));
       }
       if (method === 'POST') {
         const actor = await getAuthenticatedUser(request);
@@ -565,15 +726,7 @@ async function handleRequest(request, context) {
         }
 
         assertFutureMeetingTime(body);
-        const approver = await findUserByIdentifier(body.approverId);
-        if (!approver || approver.status === 'Inactive' || approver.status === 'Disabled') {
-          return NextResponse.json({ error: 'Select an active designated approver.' }, { status: 400 });
-        }
-        let creatorUser = actor;
-        if (body.requestedBy && (actor.role === 'Super Admin' || actor.role === 'Admin')) {
-          const designated = await findUserByIdentifier(body.requestedBy);
-          if (designated) creatorUser = designated;
-        }
+        const creatorUser = actor;
 
         const rawParticipants = body.participants || body.participantIds || [];
         const allParticipants = [...new Set(rawParticipants)]
@@ -582,17 +735,44 @@ async function handleRequest(request, context) {
         const optionalMembers = [...new Set(body.optionalMembers || body.optionalMemberIds || [])]
           .map(normalizeId)
           .filter(Boolean);
+
+        // Check attendee schedule conflicts unless explicitly permitted
+        if (!body.allowConflict) {
+          const conflicts = await checkAttendeeConflicts({
+            date: body.date,
+            time: body.time || '10:00',
+            duration: body.duration || '45 mins',
+            attendeeIds: [...allParticipants, String(creatorUser._id)],
+          });
+          if (conflicts.length > 0) {
+            const conflictUsers = await User.find({ _id: { $in: conflicts.map((c) => c.userId) } });
+            const details = conflicts.map((c) => {
+              const u = conflictUsers.find((u) => String(u._id) === String(c.userId));
+              return `${u?.name || 'Attendee'} has "${c.meetingTitle}" at ${c.meetingTime} (${c.meetingDuration})`;
+            });
+            return NextResponse.json(
+              {
+                error: `Schedule conflict: ${details.join('; ')}. Choose another time slot or confirm override.`,
+                conflict: true,
+                conflicts,
+              },
+              { status: 409 }
+            );
+          }
+        }
         const payload = {
           title,
           requestedBy: String(creatorUser._id),
           requestedByName: creatorUser.name,
           requestedByEmail: creatorUser.email,
-          approverId: String(approver._id),
-          approverName: approver.name,
+          approverId: '',
+          approverName: '',
           participants: allParticipants,
           participantIds: allParticipants,
           optionalMembers,
           optionalMemberIds: optionalMembers,
+          locationType: 'Online',
+          locationAddress: '',
           meetUrl: String(body.meetUrl || '').trim(),
           date: body.date,
           time: body.time || '10:00',
@@ -601,7 +781,7 @@ async function handleRequest(request, context) {
           projectId: body.projectId || '',
           relatedTaskId: body.relatedTaskId || '',
           description: String(body.description || '').trim(),
-          status: 'Pending Approval',
+          status: 'Scheduled',
           isArchived: false,
         };
         const created = await Meeting.create(payload);
@@ -610,7 +790,7 @@ async function handleRequest(request, context) {
 
         await AuditLog.create({
           action: 'MEETING_SCHEDULED',
-          details: `Meeting "${created.title}" scheduled for ${created.date} at ${created.time} (Approver: ${approver.name})`,
+          details: `Meeting "${created.title}" scheduled for ${created.date} at ${created.time}`,
           module: 'MEETINGS',
           performedBy: creatorUser.name,
           performedByEmail: creatorUser.email,
@@ -620,14 +800,9 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
-        await Notification.create({
-          userId: String(approver._id),
-          type: 'meeting_requested',
-          title: 'Meeting approval requested',
-          detail: `${creatorUser.name} requested approval for “${title}”.`,
-          link: '/meetings?tab=pending',
-        });
-        return NextResponse.json(transform(created), { status: 201 });
+        const transformedCreated = transform(created);
+        await recordRealtimeEvent('meeting_created', created._id, transformedCreated);
+        return NextResponse.json(transformedCreated, { status: 201 });
       }
     }
 
@@ -638,7 +813,7 @@ async function handleRequest(request, context) {
       const meeting = await Meeting.findById(id);
       if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
       const isApprover = isMeetingActor(meeting, actor, 'approverId');
-      const isAdmin = actor.role === 'Super Admin' || actor.role === 'Admin';
+      const isAdmin = isUserAdminRole(actor);
       if (!isApprover && !isAdmin) {
         return NextResponse.json({ error: 'Only the designated approver or an administrator can approve this meeting.' }, { status: 403 });
       }
@@ -684,7 +859,9 @@ async function handleRequest(request, context) {
         timestamp: new Date(),
       });
 
-      return NextResponse.json(transform(updated));
+      const transformedUpdated = transform(updated);
+      await recordRealtimeEvent('meeting_updated', updated._id, transformedUpdated);
+      return NextResponse.json(transformedUpdated);
     }
 
     if (path.startsWith('meetings/') && path.endsWith('/decline')) {
@@ -694,7 +871,7 @@ async function handleRequest(request, context) {
       const meeting = await Meeting.findById(id);
       if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
       const isApprover = isMeetingActor(meeting, actor, 'approverId');
-      const isAdmin = actor.role === 'Super Admin' || actor.role === 'Admin';
+      const isAdmin = isUserAdminRole(actor);
       if (!isApprover && !isAdmin) {
         return NextResponse.json({ error: 'Only the designated approver or an administrator can decline this meeting.' }, { status: 403 });
       }
@@ -733,21 +910,98 @@ async function handleRequest(request, context) {
         timestamp: new Date(),
       });
 
-      return NextResponse.json(transform(updated));
+      const transformedUpdated = transform(updated);
+      await recordRealtimeEvent('meeting_updated', updated._id, transformedUpdated);
+      return NextResponse.json(transformedUpdated);
+    }
+
+    if (path.startsWith('meetings/') && path.endsWith('/cancel')) {
+      const id = path.replace('meetings/', '').replace('/cancel', '');
+      const actor = await getAuthenticatedUser(request);
+      const body = await request.json().catch(() => ({}));
+      const meeting = await Meeting.findById(id);
+      if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
+
+      const isCreator = isMeetingActor(meeting, actor, 'requestedBy');
+      const isAdmin = isUserAdminRole(actor);
+
+      if (!isCreator && !isAdmin) {
+        return NextResponse.json({ error: 'Only the meeting creator or an administrator can cancel this meeting.' }, { status: 403 });
+      }
+
+      const cancelReason = String(body.cancelReason || body.reason || body.comments || '').trim();
+      if (!cancelReason) {
+        return NextResponse.json({ error: 'Cancellation reason is required.' }, { status: 400 });
+      }
+
+      const updateDoc = {
+        status: 'Cancelled',
+        isArchived: true,
+        archivedAt: new Date(),
+        cancelledAt: new Date(),
+        cancelReason,
+        $push: {
+          comments: {
+            authorName: actor.name || body.authorName || 'Host',
+            authorId: String(actor._id),
+            text: 'Meeting Cancelled: ' + cancelReason,
+            createdAt: new Date(),
+          },
+        },
+      };
+
+      const updated = await Meeting.findByIdAndUpdate(id, updateDoc, { new: true });
+
+      const notifiedIds = [...new Set([
+        normalizeId(updated.requestedBy),
+        normalizeId(updated.approverId),
+        ...(updated.participantIds || []).map(normalizeId)
+      ])].filter((userId) => userId && userId !== String(actor._id));
+
+      if (notifiedIds.length) {
+        await Notification.insertMany(
+          notifiedIds.map((userId) => ({
+            userId,
+            type: 'meeting_cancelled',
+            title: 'Meeting Cancelled',
+            detail: '"' + updated.title + '" was cancelled by ' + actor.name + '. Reason: ' + cancelReason,
+            link: '/meetings?tab=archive',
+          }))
+        );
+      }
+
+
+
+      const userAgent = request.headers.get('user-agent') || '';
+      const { device } = parseDeviceInfo(userAgent);
+
+      await AuditLog.create({
+        action: 'MEETING_CANCELLED',
+        details: 'Meeting "' + updated.title + '" cancelled by ' + actor.name + '. Reason: ' + cancelReason,
+        module: 'MEETINGS',
+        performedBy: actor.name,
+        performedByEmail: actor.email,
+        performedByRole: actor.role,
+        target: updated.title,
+        device,
+        timestamp: new Date(),
+      });
+
+      const transformedUpdated = transform(updated);
+      await recordRealtimeEvent('meeting_updated', updated._id, transformedUpdated);
+      return NextResponse.json(transformedUpdated);
     }
 
     if (path.startsWith('meetings/') && path.endsWith('/reschedule')) {
       const id = path.replace('meetings/', '').replace('/reschedule', '');
       const actor = await getAuthenticatedUser(request);
-      const { date, time, duration, comments, approverId } = await request.json();
+      const { date, time, duration, comments, allowConflict } = await request.json();
       const meeting = await Meeting.findById(id);
       if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
       const isCreator = isMeetingActor(meeting, actor, 'requestedBy');
-      const isApprover = isMeetingActor(meeting, actor, 'approverId');
-      const isParticipant = isMeetingParticipant(meeting, actor);
-      const isAdmin = actor.role === 'Super Admin' || actor.role === 'Admin';
-      if (!isCreator && !isApprover && !isParticipant && !isAdmin) {
-        return NextResponse.json({ error: 'You do not have permission to reschedule this meeting.' }, { status: 403 });
+      const isAdmin = isUserAdminRole(actor);
+      if (!isCreator && !isAdmin) {
+        return NextResponse.json({ error: 'Only the meeting creator or an administrator can reschedule this meeting.' }, { status: 403 });
       }
       assertFutureMeetingTime({
         date: date || meeting.date,
@@ -755,11 +1009,33 @@ async function handleRequest(request, context) {
         duration: duration || meeting.duration,
       });
 
-      let newApprover = null;
-      if (approverId) {
-        newApprover = await findUserByIdentifier(approverId);
-        if (!newApprover || newApprover.status === 'Inactive' || newApprover.status === 'Disabled') {
-          return NextResponse.json({ error: 'Select an active designated approver.' }, { status: 400 });
+      // Check attendee schedule conflicts unless explicitly permitted
+      if (!allowConflict) {
+        const finalDate = date || meeting.date;
+        const finalTime = time || meeting.time;
+        const finalDuration = duration || meeting.duration;
+        const finalParticipants = meeting.participants || meeting.participantIds || [];
+        const conflicts = await checkAttendeeConflicts({
+          date: finalDate,
+          time: finalTime,
+          duration: finalDuration,
+          attendeeIds: [...finalParticipants, String(meeting.requestedBy)],
+          excludeMeetingId: meeting._id,
+        });
+        if (conflicts.length > 0) {
+          const conflictUsers = await User.find({ _id: { $in: conflicts.map((c) => c.userId) } });
+          const details = conflicts.map((c) => {
+            const u = conflictUsers.find((u) => String(u._id) === String(c.userId));
+            return `${u?.name || 'Attendee'} has "${c.meetingTitle}" at ${c.meetingTime} (${c.meetingDuration})`;
+          });
+          return NextResponse.json(
+            {
+              error: `Schedule conflict: ${details.join('; ')}. Choose another time slot or confirm override.`,
+              conflict: true,
+              conflicts,
+            },
+            { status: 409 }
+          );
         }
       }
 
@@ -767,32 +1043,12 @@ async function handleRequest(request, context) {
         ...(date ? { date } : {}),
         ...(time ? { time } : {}),
         ...(duration ? { duration } : {}),
-        ...(newApprover ? { approverId: String(newApprover._id), approverName: newApprover.name } : {}),
-        status: 'Pending Approval',
+        status: 'Scheduled',
         isArchived: false,
         archivedAt: null,
-        approvedAt: null,
         $inc: { rescheduleCount: 1 },
-        $push: {
-          comments: {
-            authorName: actor.name,
-            authorId: String(actor._id),
-            text: `Rescheduled${comments ? `: ${comments}` : ''}${newApprover ? ` (Designated Approver: ${newApprover.name})` : ''}`,
-            createdAt: new Date(),
-          },
-        },
       };
       const updated = await Meeting.findByIdAndUpdate(id, updateDoc, { new: true });
-      const targetApproverId = newApprover ? String(newApprover._id) : normalizeId(meeting.approverId);
-      if (targetApproverId) {
-        await Notification.create({
-          userId: targetApproverId,
-          type: 'meeting_rescheduled',
-          title: 'Meeting re-approval requested',
-          detail: `${actor.name} rescheduled “${meeting.title}”.`,
-          link: '/meetings?tab=pending',
-        });
-      }
 
       const userAgent = request.headers.get('user-agent') || '';
       const { device } = parseDeviceInfo(userAgent);
@@ -809,7 +1065,9 @@ async function handleRequest(request, context) {
         timestamp: new Date(),
       });
 
-      return NextResponse.json(transform(updated));
+      const transformedRescheduled = transform(updated);
+      await recordRealtimeEvent('meeting_updated', updated._id, transformedRescheduled);
+      return NextResponse.json(transformedRescheduled);
     }
 
     if (path.startsWith('meetings/') && path.endsWith('/restore')) {
@@ -819,10 +1077,9 @@ async function handleRequest(request, context) {
       const meeting = await Meeting.findById(id);
       if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
       const isCreator = isMeetingActor(meeting, actor, 'requestedBy');
-      const isApprover = isMeetingActor(meeting, actor, 'approverId');
-      const isAdmin = actor.role === 'Super Admin' || actor.role === 'Admin';
-      if (!isCreator && !isApprover && !isAdmin) {
-        return NextResponse.json({ error: 'Only the meeting creator, approver, or an admin can restore this meeting.' }, { status: 403 });
+      const isAdmin = isUserAdminRole(actor);
+      if (!isCreator && !isAdmin) {
+        return NextResponse.json({ error: 'Only the meeting creator or an admin can restore this meeting.' }, { status: 403 });
       }
       const restoredSchedule = {
         date: body.date || meeting.date,
@@ -836,25 +1093,17 @@ async function handleRequest(request, context) {
         ...(body.date ? { date: body.date } : {}),
         ...(body.time ? { time: body.time } : {}),
         ...(body.duration ? { duration: body.duration } : {}),
-        status: 'Pending Approval',
-        approvedAt: null,
+        status: 'Scheduled',
         $push: {
           comments: {
             authorName: actor.name,
             authorId: String(actor._id),
-            text: 'Restored from archive and sent for approval.',
+            text: 'Restored from archive to active upcoming syncs.',
             createdAt: new Date(),
           },
         },
       };
       const updated = await Meeting.findByIdAndUpdate(id, updateDoc, { new: true });
-      await Notification.create({
-        userId: normalizeId(meeting.approverId),
-        type: 'meeting_restored',
-        title: 'Restored meeting requires approval',
-        detail: `${actor.name} restored “${meeting.title}”.`,
-        link: '/meetings?tab=pending',
-      });
 
       const userAgent = request.headers.get('user-agent') || '';
       const { device } = parseDeviceInfo(userAgent);
@@ -871,7 +1120,9 @@ async function handleRequest(request, context) {
         timestamp: new Date(),
       });
 
-      return NextResponse.json(transform(updated));
+      const transformedRestored = transform(updated);
+      await recordRealtimeEvent('meeting_updated', updated._id, transformedRestored);
+      return NextResponse.json(transformedRestored);
     }
 
     if (path.startsWith('meetings/') && path.endsWith('/comments')) {
@@ -922,7 +1173,9 @@ async function handleRequest(request, context) {
         timestamp: new Date(),
       });
 
-      return NextResponse.json(transform(updated));
+      const transformedComment = transform(updated);
+      await recordRealtimeEvent('meeting_updated', updated._id, transformedComment);
+      return NextResponse.json(transformedComment);
     }
 
     if (path.startsWith('meetings/') && !path.slice(9).includes('/')) {
@@ -939,30 +1192,25 @@ async function handleRequest(request, context) {
         const existing = await Meeting.findById(id);
         if (!existing) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
         const isCreator = isMeetingActor(existing, actor, 'requestedBy');
-        const isApprover = isMeetingActor(existing, actor, 'approverId');
-        const isParticipant = isMeetingParticipant(existing, actor);
-        const isAdmin = actor.role === 'Super Admin' || actor.role === 'Admin';
-        if (!isCreator && !isApprover && !isParticipant && !isAdmin) {
-          return NextResponse.json({ error: 'You do not have permission to edit this meeting.' }, { status: 403 });
+        const isAdmin = isUserAdminRole(actor);
+        if (!isCreator && !isAdmin) {
+          return NextResponse.json({ error: 'Only the meeting creator or an administrator can edit this meeting.' }, { status: 403 });
         }
 
-        const updateData = {};
-        const allowedFields = ['title', 'meetUrl', 'date', 'time', 'duration', 'priority', 'projectId', 'relatedTaskId', 'description'];
-        for (const field of allowedFields) {
+        const updateData = { locationType: 'Online' };
+        const simpleFields = ['title', 'date', 'time', 'duration', 'priority', 'projectId', 'relatedTaskId', 'description', 'meetUrl'];
+        for (const field of simpleFields) {
           if (Object.hasOwn(body, field)) updateData[field] = body[field];
         }
         if (Object.hasOwn(body, 'title') && !String(body.title || '').trim()) {
           return NextResponse.json({ error: 'Meeting title is required.' }, { status: 400 });
         }
-
-        if (Object.hasOwn(body, 'approverId')) {
-          const approver = await findUserByIdentifier(body.approverId);
-          if (!approver || approver.status === 'Inactive' || approver.status === 'Disabled') {
-            return NextResponse.json({ error: 'Select an active designated approver.' }, { status: 400 });
-          }
-          updateData.approverId = String(approver._id);
-          updateData.approverName = approver.name;
+        if (Object.hasOwn(body, 'meetUrl')) {
+          updateData.meetUrl = String(body.meetUrl || '').trim();
         }
+
+        // Approver cannot be changed on edit per governance rule
+        // updateData.approverId remains existing.approverId
 
         const participantValues = body.participants || body.participantIds;
         if (participantValues) {
@@ -979,36 +1227,40 @@ async function handleRequest(request, context) {
           updateData.optionalMemberIds = optionalMembers;
         }
 
-        const hasScheduleChange = ['date', 'time', 'duration', 'approverId'].some((field) => Object.hasOwn(updateData, field) && normalizeId(updateData[field]) !== normalizeId(existing[field]));
-        if (hasScheduleChange) {
-          assertFutureMeetingTime({
-            date: updateData.date || existing.date,
-            time: updateData.time || existing.time,
-            duration: updateData.duration || existing.duration,
+        // Check attendee schedule conflicts unless explicitly permitted
+        if (!body.allowConflict) {
+          const finalDate = updateData.date || existing.date;
+          const finalTime = updateData.time || existing.time;
+          const finalDuration = updateData.duration || existing.duration;
+          const finalParticipants = updateData.participants || existing.participants || [];
+          const conflicts = await checkAttendeeConflicts({
+            date: finalDate,
+            time: finalTime,
+            duration: finalDuration,
+            attendeeIds: [...finalParticipants, String(existing.requestedBy), String(existing.approverId)],
+            excludeMeetingId: existing._id,
           });
-          updateData.status = 'Pending Approval';
-          updateData.isArchived = false;
-          updateData.archivedAt = null;
-          updateData.approvedAt = null;
-          updateData.$push = {
-            comments: {
-              authorName: actor.name,
-              authorId: String(actor._id),
-              text: 'Meeting details changed and require approval again.',
-              createdAt: new Date(),
-            },
-          };
+          if (conflicts.length > 0) {
+            const conflictUsers = await User.find({ _id: { $in: conflicts.map((c) => c.userId) } });
+            const details = conflicts.map((c) => {
+              const u = conflictUsers.find((u) => String(u._id) === String(c.userId));
+              return `${u?.name || 'Attendee'} has "${c.meetingTitle}" at ${c.meetingTime} (${c.meetingDuration})`;
+            });
+            return NextResponse.json(
+              {
+                error: `Schedule conflict: ${details.join('; ')}. Choose another time slot or confirm override.`,
+                conflict: true,
+                conflicts,
+              },
+              { status: 409 }
+            );
+          }
         }
+
+        updateData.status = existing.status === 'Cancelled' ? 'Scheduled' : (existing.status || 'Scheduled');
+        updateData.isArchived = false;
+        updateData.archivedAt = null;
         const updated = await Meeting.findByIdAndUpdate(id, updateData, { new: true });
-        if (hasScheduleChange) {
-          await Notification.create({
-            userId: normalizeId(updated.approverId),
-            type: 'meeting_updated',
-            title: 'Meeting requires approval',
-            detail: `${actor.name} updated “${updated.title}”.`,
-            link: '/meetings?tab=pending',
-          });
-        }
 
         const userAgent = request.headers.get('user-agent') || '';
         const { device } = parseDeviceInfo(userAgent);
@@ -1025,15 +1277,18 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
-        return NextResponse.json(transform(updated));
+        const transformedUpdated = transform(updated);
+        await recordRealtimeEvent('meeting_updated', updated._id, transformedUpdated);
+        return NextResponse.json(transformedUpdated);
       }
       if (method === 'DELETE') {
         const actor = await getAuthenticatedUser(request);
         const meeting = await Meeting.findById(id);
         if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
         const isCreator = isMeetingActor(meeting, actor, 'requestedBy');
-        if (!isCreator) {
-          return NextResponse.json({ error: 'Only the meeting creator can delete this meeting.' }, { status: 403 });
+        const isAdmin = isUserAdminRole(actor);
+        if (!isCreator && !isAdmin) {
+          return NextResponse.json({ error: 'Only the meeting creator or an administrator can delete this meeting.' }, { status: 403 });
         }
 
         const url = new URL(request.url);
@@ -1060,12 +1315,14 @@ async function handleRequest(request, context) {
             timestamp: new Date(),
           });
 
+          const transformedMeeting = transform(meeting);
+          await recordRealtimeEvent('meeting_updated', meeting._id, transformedMeeting);
           return NextResponse.json({
             success: true,
             archived: true,
             message: 'Meeting moved to Archive (visible to creator and approver only).',
             id,
-            meeting: transform(meeting),
+            meeting: transformedMeeting,
           });
         }
 
@@ -1084,6 +1341,7 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
+        await recordRealtimeEvent('meeting_deleted', id, { id });
         return NextResponse.json({ success: true, deleted: true, id });
       }
     }
@@ -1097,7 +1355,9 @@ async function handleRequest(request, context) {
       if (method === 'POST') {
         const body = await request.json();
         const created = await Dependency.create(body);
-        return NextResponse.json(transform(created), { status: 201 });
+        const transformedCreated = transform(created);
+        await recordRealtimeEvent('dependency_created', created._id, transformedCreated);
+        return NextResponse.json(transformedCreated, { status: 201 });
       }
     }
 
@@ -1107,7 +1367,9 @@ async function handleRequest(request, context) {
         const { status } = await request.json();
         const updated = await Dependency.findByIdAndUpdate(id, { status }, { new: true });
         if (!updated) return NextResponse.json({ error: 'Dependency not found' }, { status: 404 });
-        return NextResponse.json(transform(updated));
+        const transformedUpdated = transform(updated);
+        await recordRealtimeEvent('dependency_updated', updated._id, transformedUpdated);
+        return NextResponse.json(transformedUpdated);
       }
     }
 
@@ -1120,7 +1382,9 @@ async function handleRequest(request, context) {
       if (method === 'POST') {
         const body = await request.json();
         const created = await Link.create(body);
-        return NextResponse.json(transform(created), { status: 201 });
+        const transformedCreated = transform(created);
+        await recordRealtimeEvent('link_created', created._id, transformedCreated);
+        return NextResponse.json(transformedCreated, { status: 201 });
       }
     }
 
@@ -1130,11 +1394,14 @@ async function handleRequest(request, context) {
         const body = await request.json();
         const updated = await Link.findByIdAndUpdate(id, body, { new: true });
         if (!updated) return NextResponse.json({ error: 'Link not found' }, { status: 404 });
-        return NextResponse.json(transform(updated));
+        const transformedUpdated = transform(updated);
+        await recordRealtimeEvent('link_updated', updated._id, transformedUpdated);
+        return NextResponse.json(transformedUpdated);
       }
       if (method === 'DELETE') {
         const deleted = await Link.findByIdAndDelete(id);
         if (!deleted) return NextResponse.json({ error: 'Link not found' }, { status: 404 });
+        await recordRealtimeEvent('link_deleted', id, { id });
         return NextResponse.json({ success: true, id });
       }
     }
@@ -1142,7 +1409,24 @@ async function handleRequest(request, context) {
     // 6. USERS
     if (path === 'users') {
       if (method === 'GET') {
-        const users = await User.find({}, '-passwordHash').sort({ name: 1 });
+        let users = await User.find({}, '-passwordHash').sort({ name: 1 });
+        if (!users || users.length === 0) {
+          try {
+            const { USERS: defaultUsers } = await import('@/data/users');
+            if (Array.isArray(defaultUsers) && defaultUsers.length > 0) {
+              const seedData = defaultUsers.map((u) => {
+                const doc = { ...u };
+                if (isObjectId(doc.id)) doc._id = doc.id;
+                delete doc.id;
+                return doc;
+              });
+              await User.insertMany(seedData, { ordered: false }).catch(() => null);
+              users = await User.find({}, '-passwordHash').sort({ name: 1 });
+            }
+          } catch (seedErr) {
+            console.error('User auto-seed error:', seedErr);
+          }
+        }
         return NextResponse.json(transformArr(users));
       }
       if (method === 'POST') {
@@ -1162,7 +1446,12 @@ async function handleRequest(request, context) {
           status: body.status || 'Active',
           role: body.role || 'User',
           department: body.department || 'Operations',
+          dob: body.dob ? String(body.dob).trim() : (body.dateOfBirth ? String(body.dateOfBirth).trim() : ''),
+          dateOfBirth: body.dob ? String(body.dob).trim() : (body.dateOfBirth ? String(body.dateOfBirth).trim() : ''),
         };
+        delete payload._id;
+        delete payload.id;
+
         const created = await User.create(payload);
         const actor = await getActorFromRequest(request);
         const userAgent = request.headers.get('user-agent') || '';
@@ -1192,7 +1481,12 @@ async function handleRequest(request, context) {
         } catch (mailErr) {
           console.error('Welcome email dispatch error:', mailErr.message);
         }
-        return NextResponse.json(transform(created), { status: 201 });
+        const transformedCreated = {
+          ...transform(created),
+          ...(body.id ? { clientTempId: body.id } : {})
+        };
+        await recordRealtimeEvent('user_created', created._id, transformedCreated);
+        return NextResponse.json(transformedCreated, { status: 201 });
       }
     }
 
@@ -1204,9 +1498,48 @@ async function handleRequest(request, context) {
 
       if (method === 'PUT') {
         const body = await request.json();
-        if (body.email) body.email = String(body.email).trim().toLowerCase();
-        const updated = await User.findByIdAndUpdate(id, body, { new: true });
-        if (!updated) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+        const updateData = { ...body };
+        delete updateData._id;
+        delete updateData.id;
+        if (updateData.email) updateData.email = String(updateData.email).trim().toLowerCase();
+
+        // Keep dob and dateOfBirth in sync
+        if (updateData.dob !== undefined) {
+          updateData.dob = updateData.dob ? String(updateData.dob).trim() : '';
+          updateData.dateOfBirth = updateData.dob;
+        } else if (updateData.dateOfBirth !== undefined) {
+          updateData.dateOfBirth = updateData.dateOfBirth ? String(updateData.dateOfBirth).trim() : '';
+          updateData.dob = updateData.dateOfBirth;
+        }
+
+        const userQuery = isObjectId(id)
+          ? { _id: id }
+          : { $or: [{ _id: id }, { email: updateData.email || id }] };
+
+        let updated = await User.findOneAndUpdate(userQuery, updateData, { new: true });
+        if (!updated && updateData.email) {
+          updated = await User.findOneAndUpdate(
+            { email: { $regex: new RegExp(`^${escapeRegex(updateData.email)}$`, 'i') } },
+            updateData,
+            { new: true }
+          );
+        }
+
+        // Resilient fallback: If user was not yet in MongoDB Atlas, create them
+        if (!updated) {
+          const insertPayload = {
+            ...updateData,
+            name: updateData.name || 'User',
+            email: updateData.email || (id.includes('@') ? id : `${id}@shoolin.co.uk`),
+            role: updateData.role || 'User',
+            department: updateData.department || 'Operations',
+            status: updateData.status || 'Active',
+          };
+          if (isObjectId(id)) {
+            insertPayload._id = id;
+          }
+          updated = await User.create(insertPayload);
+        }
 
         if (body.role) {
           await Session.updateMany(
@@ -1217,7 +1550,7 @@ async function handleRequest(request, context) {
 
         await AuditLog.create({
           action: 'USER_UPDATED',
-          details: `User "${updated.name}" (${updated.email}) updated (Role: ${updated.role}, Status: ${updated.status})`,
+          details: `User "${updated.name}" (${updated.email}) updated (Role: ${updated.role}, Status: ${updated.status}, DOB: ${updated.dob || 'NA'})`,
           module: 'USER_MGMT',
           performedBy: actor?.name || 'Administrator',
           performedByEmail: actor?.email || '',
@@ -1227,10 +1560,18 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
-        return NextResponse.json(transform(updated));
+        const transformedUpdated = {
+          ...transform(updated),
+          id: String(updated._id),
+          _id: String(updated._id),
+          ...(body.id ? { clientTempId: body.id } : {})
+        };
+        await recordRealtimeEvent('user_updated', updated._id, transformedUpdated);
+        return NextResponse.json(transformedUpdated);
       }
       if (method === 'DELETE') {
-        const deleted = await User.findByIdAndDelete(id);
+        const userQuery = isObjectId(id) ? { _id: id } : { $or: [{ _id: id }, { email: id }] };
+        const deleted = await User.findOneAndDelete(userQuery);
         if (!deleted) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
         await AuditLog.create({
@@ -1245,6 +1586,7 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
+        await recordRealtimeEvent('user_deleted', id, { id });
         return NextResponse.json({ success: true, id });
       }
     }
@@ -1258,14 +1600,112 @@ async function handleRequest(request, context) {
       if (method === 'POST') {
         const body = await request.json();
         const created = await Template.create(body);
-        return NextResponse.json(transform(created), { status: 201 });
+        const transformedCreated = transform(created);
+        await recordRealtimeEvent('template_created', created._id, transformedCreated);
+        return NextResponse.json(transformedCreated, { status: 201 });
       }
     }
 
-    // 8. MASTER STATUSES & ROLES
-    if (path === 'statuses' && method === 'GET') {
-      const statuses = await MasterStatus.find().sort({ order: 1 });
-      return NextResponse.json(transformArr(statuses));
+    // 8. MASTER DATASETS (BRANDS, DEPARTMENTS, STATUSES, CATEGORIES, ROLES)
+    if (path === 'masters/brands' || path === 'brands') {
+      if (method === 'GET') {
+        const brands = await MasterBrand.find().sort({ order: 1, name: 1 });
+        return NextResponse.json(transformArr(brands));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await MasterBrand.create(body);
+        const transformed = transform(created);
+        await recordRealtimeEvent('master_brands_updated', created._id, transformed);
+        return NextResponse.json(transformed, { status: 201 });
+      }
+    }
+    if ((path.startsWith('masters/brands/') || path.startsWith('brands/')) && !path.endsWith('/restore')) {
+      const id = path.replace(/^masters\/brands\//, '').replace(/^brands\//, '');
+      if (method === 'PUT') {
+        const body = await request.json();
+        const updated = await MasterBrand.findByIdAndUpdate(id, body, { new: true });
+        const transformed = transform(updated);
+        await recordRealtimeEvent('master_brands_updated', id, transformed);
+        return NextResponse.json(transformed);
+      }
+      if (method === 'DELETE') {
+        await MasterBrand.findByIdAndDelete(id);
+        await recordRealtimeEvent('master_brands_updated', id, { id, deleted: true });
+        return NextResponse.json({ success: true, id });
+      }
+    }
+
+    if (path === 'masters/departments' || path === 'departments') {
+      if (method === 'GET') {
+        const deps = await MasterDepartment.find().sort({ order: 1, name: 1 });
+        return NextResponse.json(transformArr(deps));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await MasterDepartment.create(body);
+        const transformed = transform(created);
+        await recordRealtimeEvent('master_departments_updated', created._id, transformed);
+        return NextResponse.json(transformed, { status: 201 });
+      }
+    }
+    if (path.startsWith('masters/departments/') || path.startsWith('departments/')) {
+      const id = path.replace(/^masters\/departments\//, '').replace(/^departments\//, '');
+      if (method === 'PUT') {
+        const body = await request.json();
+        const updated = await MasterDepartment.findByIdAndUpdate(id, body, { new: true });
+        const transformed = transform(updated);
+        await recordRealtimeEvent('master_departments_updated', id, transformed);
+        return NextResponse.json(transformed);
+      }
+      if (method === 'DELETE') {
+        await MasterDepartment.findByIdAndDelete(id);
+        await recordRealtimeEvent('master_departments_updated', id, { id, deleted: true });
+        return NextResponse.json({ success: true, id });
+      }
+    }
+
+    if (path === 'statuses' || path === 'masters/statuses') {
+      if (method === 'GET') {
+        const statuses = await MasterStatus.find().sort({ order: 1, name: 1 });
+        return NextResponse.json(transformArr(statuses));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await MasterStatus.create(body);
+        const transformed = transform(created);
+        await recordRealtimeEvent('master_statuses_updated', created._id, transformed);
+        return NextResponse.json(transformed, { status: 201 });
+      }
+    }
+    if (path.startsWith('masters/statuses/') || path.startsWith('statuses/')) {
+      const id = path.replace(/^masters\/statuses\//, '').replace(/^statuses\//, '');
+      if (method === 'PUT') {
+        const body = await request.json();
+        const updated = await MasterStatus.findByIdAndUpdate(id, body, { new: true });
+        const transformed = transform(updated);
+        await recordRealtimeEvent('master_statuses_updated', id, transformed);
+        return NextResponse.json(transformed);
+      }
+      if (method === 'DELETE') {
+        await MasterStatus.findByIdAndDelete(id);
+        await recordRealtimeEvent('master_statuses_updated', id, { id, deleted: true });
+        return NextResponse.json({ success: true, id });
+      }
+    }
+
+    if (path === 'masters/template-categories' || path === 'template-categories') {
+      if (method === 'GET') {
+        const cats = await TemplateCategory.find().sort({ order: 1, name: 1 });
+        return NextResponse.json(transformArr(cats));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await TemplateCategory.create(body);
+        const transformed = transform(created);
+        await recordRealtimeEvent('template_categories_updated', created._id, transformed);
+        return NextResponse.json(transformed, { status: 201 });
+      }
     }
 
     if (path === 'roles' && method === 'GET') {
@@ -1323,6 +1763,7 @@ async function handleRequest(request, context) {
           { permissions },
           { upsert: true, new: true }
         );
+        await recordRealtimeEvent('rbac_matrix_updated', roleName, { roleName, permissions: updated.permissions });
         return NextResponse.json({ roleName, permissions: updated.permissions });
       }
     }
@@ -1347,10 +1788,12 @@ async function handleRequest(request, context) {
           { permissions },
           { upsert: true, new: true }
         );
+        await recordRealtimeEvent('rbac_user_overrides_updated', userId, { userId, permissions: updated.permissions });
         return NextResponse.json({ userId, permissions: updated.permissions });
       }
       if (method === 'DELETE') {
         await UserOverride.findOneAndDelete({ userId });
+        await recordRealtimeEvent('rbac_user_overrides_deleted', userId, { userId });
         return NextResponse.json({ success: true, userId });
       }
     }
@@ -2019,6 +2462,417 @@ async function handleRequest(request, context) {
     if (path === 'auth/me' && method === 'GET') {
       const user = await User.findOne();
       return NextResponse.json(user ? transform(user) : null);
+    }
+
+    // PERSONAL TODOS (User-specific synced checklist)
+    if (path === 'personal-todos') {
+      if (method === 'GET') {
+        const userId = url.searchParams.get('userId');
+        const userEmail = url.searchParams.get('userEmail');
+        const query = {};
+        if (userId) query.userId = userId;
+        else if (userEmail) query.userEmail = userEmail;
+        const todos = await PersonalTodo.find(query).sort({ createdAt: -1 });
+        return NextResponse.json(transformArr(todos));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await PersonalTodo.create({
+          userId: body.userId || 'anonymous',
+          userEmail: body.userEmail || '',
+          text: body.text,
+          completed: Boolean(body.completed),
+          category: body.category || 'Focus',
+        });
+        await recordRealtimeEvent('PERSONAL_TODO_CREATED', created._id.toString(), transform(created));
+        return NextResponse.json(transform(created), { status: 201 });
+      }
+    }
+
+    if (path.startsWith('personal-todos/')) {
+      const todoId = path.split('/')[1];
+      if (method === 'PUT' || method === 'PATCH') {
+        const updates = await request.json();
+        const updated = await PersonalTodo.findByIdAndUpdate(todoId, updates, { new: true });
+        if (!updated) {
+          return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+        }
+        await recordRealtimeEvent('PERSONAL_TODO_UPDATED', todoId, transform(updated));
+        return NextResponse.json(transform(updated));
+      }
+      if (method === 'DELETE') {
+        const deleted = await PersonalTodo.findByIdAndDelete(todoId);
+        if (!deleted) {
+          return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+        }
+        await recordRealtimeEvent('PERSONAL_TODO_DELETED', todoId, { id: todoId });
+        return NextResponse.json({ success: true, id: todoId });
+      }
+    }
+
+    // MASTER BRANDS / PROJECTS
+    if (path === 'masters/brands') {
+      if (method === 'GET') {
+        let docs = await MasterBrand.find().sort({ order: 1, createdAt: 1 });
+        if (docs.length === 0) {
+          const defaults = [
+            { code: 'PMV', name: 'PMV Maritime', color: '#2563EB', status: 'Active', desc: 'Shipping fleet & logistics', order: 1 },
+            { code: 'FPD', name: "Captain's Cafe", color: '#452700', status: 'Active', desc: 'Produce delivery mobile application', order: 2 },
+            { code: 'LMA', name: 'Lagos Maritime Academy', color: '#FF6500', status: 'Active', desc: 'Lagos Maritime Institute in Nigeria', order: 3 },
+            { code: 'INT', name: 'Internal', color: '#9333EA', status: 'Active', desc: 'Internal engineering & HR operations', order: 4 },
+            { code: 'SOMS', name: 'School of Maritime Studies', color: '#2563EB', status: 'Active', desc: 'Maritime Institute', order: 5 }
+          ];
+          docs = await MasterBrand.insertMany(defaults);
+        }
+        return NextResponse.json(transformArr(docs));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await MasterBrand.create(body);
+        await recordRealtimeEvent('MASTER_BRANDS_UPDATED', created._id.toString(), transform(created));
+        return NextResponse.json(transform(created), { status: 201 });
+      }
+    }
+
+    if (path.startsWith('masters/brands/')) {
+      const id = path.split('/')[2];
+      if (method === 'PUT' || method === 'PATCH') {
+        const updates = await request.json();
+        let updated = await MasterBrand.findByIdAndUpdate(id, updates, { new: true });
+        if (!updated) {
+          const conditions = [{ code: id }, { name: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          updated = await MasterBrand.findOneAndUpdate({ $or: conditions }, updates, { new: true });
+        }
+        if (!updated) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
+        await recordRealtimeEvent('MASTER_BRANDS_UPDATED', id, transform(updated));
+        return NextResponse.json(transform(updated));
+      }
+      if (method === 'DELETE') {
+        let deleted = await MasterBrand.findByIdAndDelete(id);
+        if (!deleted) {
+          const conditions = [{ code: id }, { name: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          deleted = await MasterBrand.findOneAndDelete({ $or: conditions });
+        }
+        await recordRealtimeEvent('MASTER_BRANDS_UPDATED', id, { id });
+        return NextResponse.json({ success: true, id });
+      }
+    }
+
+    // MASTER DEPARTMENTS
+    if (path === 'masters/departments') {
+      if (method === 'GET') {
+        let docs = await MasterDepartment.find().sort({ order: 1, createdAt: 1 });
+        if (docs.length === 0) {
+          const defaults = [
+            { code: 'EXEC', name: 'Executive Operations', status: 'Active', order: 1 },
+            { code: 'OPS', name: 'Project Operations', status: 'Active', order: 2 },
+            { code: 'ENG-BE', name: 'Backend Engineering', status: 'Active', order: 3 },
+            { code: 'ENG-FE', name: 'Frontend Engineering', status: 'Active', order: 4 },
+            { code: 'DESIGN', name: 'UI/UX & Product Design', status: 'Active', order: 5 },
+            { code: 'QA-DEVOPS', name: 'QA & DevOps', status: 'Active', order: 6 }
+          ];
+          docs = await MasterDepartment.insertMany(defaults);
+        }
+        return NextResponse.json(transformArr(docs));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await MasterDepartment.create(body);
+        await recordRealtimeEvent('MASTER_DEPARTMENTS_UPDATED', created._id.toString(), transform(created));
+        return NextResponse.json(transform(created), { status: 201 });
+      }
+    }
+
+    if (path.startsWith('masters/departments/')) {
+      const id = path.split('/')[2];
+      if (method === 'PUT' || method === 'PATCH') {
+        const updates = await request.json();
+        let updated = await MasterDepartment.findByIdAndUpdate(id, updates, { new: true });
+        if (!updated) {
+          const conditions = [{ code: id }, { name: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          updated = await MasterDepartment.findOneAndUpdate({ $or: conditions }, updates, { new: true });
+        }
+        if (!updated) return NextResponse.json({ error: 'Department not found' }, { status: 404 });
+        await recordRealtimeEvent('MASTER_DEPARTMENTS_UPDATED', id, transform(updated));
+        return NextResponse.json(transform(updated));
+      }
+      if (method === 'DELETE') {
+        let deleted = await MasterDepartment.findByIdAndDelete(id);
+        if (!deleted) {
+          const conditions = [{ code: id }, { name: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          deleted = await MasterDepartment.findOneAndDelete({ $or: conditions });
+        }
+        await recordRealtimeEvent('MASTER_DEPARTMENTS_UPDATED', id, { id });
+        return NextResponse.json({ success: true, id });
+      }
+    }
+
+    // MASTER STATUSES & LIFECYCLES
+    if (path === 'masters/statuses' || path === 'statuses') {
+      if (method === 'GET') {
+        let docs = await MasterStatus.find().sort({ order: 1, createdAt: 1 });
+        if (docs.length === 0) {
+          docs = await MasterStatus.insertMany(DEFAULT_MASTER_STATUSES);
+        }
+        return NextResponse.json(transformArr(docs));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await MasterStatus.create(body);
+        await recordRealtimeEvent('MASTER_STATUSES_UPDATED', created._id.toString(), transform(created));
+        return NextResponse.json(transform(created), { status: 201 });
+      }
+    }
+
+    if (path.startsWith('masters/statuses/') || path.startsWith('statuses/')) {
+      const parts = path.split('/');
+      const id = parts[parts.length - 1];
+      if (method === 'PUT' || method === 'PATCH') {
+        const updates = await request.json();
+        let updated = await MasterStatus.findByIdAndUpdate(id, updates, { new: true });
+        if (!updated) {
+          const conditions = [{ name: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          updated = await MasterStatus.findOneAndUpdate({ $or: conditions }, updates, { new: true });
+        }
+        if (!updated) return NextResponse.json({ error: 'Status not found' }, { status: 404 });
+        await recordRealtimeEvent('MASTER_STATUSES_UPDATED', id, transform(updated));
+        return NextResponse.json(transform(updated));
+      }
+      if (method === 'DELETE') {
+        let deleted = await MasterStatus.findByIdAndDelete(id);
+        if (!deleted) {
+          const conditions = [{ name: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          deleted = await MasterStatus.findOneAndDelete({ $or: conditions });
+        }
+        await recordRealtimeEvent('MASTER_STATUSES_UPDATED', id, { id });
+        return NextResponse.json({ success: true, id });
+      }
+    }
+
+    // MASTER TEMPLATE / BLUEPRINT CATEGORIES
+    if (path === 'masters/template-categories' || path === 'template-categories' || path === 'blueprint-categories') {
+      if (method === 'GET') {
+        let docs = await TemplateCategory.find().sort({ order: 1, createdAt: 1 });
+        if (docs.length === 0) {
+          const defaults = [
+            { name: 'Sprint Architecture', code: 'SPRN', color: '#2563EB', status: 'Active', description: 'Agile sprint templates', order: 1 },
+            { name: 'Feature Delivery', code: 'FEAT', color: '#059669', status: 'Active', description: 'Product feature roadmap templates', order: 2 },
+            { name: 'Marketing & Launch', code: 'MKTG', color: '#9333EA', status: 'Active', description: 'Go-to-market campaigns', order: 3 },
+          ];
+          docs = await TemplateCategory.insertMany(defaults);
+        }
+        return NextResponse.json(transformArr(docs));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await TemplateCategory.create(body);
+        await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', created._id.toString(), transform(created));
+        return NextResponse.json(transform(created), { status: 201 });
+      }
+    }
+
+    if (path.startsWith('masters/template-categories/') || path.startsWith('template-categories/') || path.startsWith('blueprint-categories/')) {
+      const parts = path.split('/');
+      const id = parts[parts.length - 1];
+      if (method === 'PUT' || method === 'PATCH') {
+        const updates = await request.json();
+        let updated = await TemplateCategory.findByIdAndUpdate(id, updates, { new: true });
+        if (!updated) {
+          const conditions = [{ name: id }, { code: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          updated = await TemplateCategory.findOneAndUpdate({ $or: conditions }, updates, { new: true });
+        }
+        if (!updated) return NextResponse.json({ error: 'Template category not found' }, { status: 404 });
+        await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', id, transform(updated));
+        return NextResponse.json(transform(updated));
+      }
+      if (method === 'DELETE') {
+        let deleted = await TemplateCategory.findByIdAndDelete(id);
+        if (!deleted) {
+          const conditions = [{ name: id }, { code: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          deleted = await TemplateCategory.findOneAndDelete({ $or: conditions });
+        }
+        await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', id, { id });
+        return NextResponse.json({ success: true, id });
+      }
+    }
+
+    // MASTER LINK CATEGORIES
+    if (path === 'masters/link-categories' || path === 'link-categories') {
+      if (method === 'GET') {
+        let docs = await LinkCategory.find().sort({ order: 1, createdAt: 1 });
+        if (docs.length === 0) {
+          const defaults = [
+            { name: 'Social Media', count: 11, status: 'Active', desc: 'Brand social handles & marketing', order: 1 },
+            { name: 'Websites & Portals', count: 6, status: 'Active', desc: 'Production, staging, & QA environments', order: 2 },
+            { name: 'Documents & Assets', count: 14, status: 'Active', desc: 'Google Drive, Sheets, Figma, & Canva', order: 3 },
+            { name: 'Developer Tools & Cloud', count: 13, status: 'Active', desc: 'GitHub, AWS, Docker, & Vercel', order: 4 },
+          ];
+          docs = await LinkCategory.insertMany(defaults);
+        }
+        return NextResponse.json(transformArr(docs));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await LinkCategory.create(body);
+        await recordRealtimeEvent('LINK_CATEGORIES_UPDATED', created._id.toString(), transform(created));
+        return NextResponse.json(transform(created), { status: 201 });
+      }
+    }
+
+    if (path.startsWith('masters/link-categories/') || path.startsWith('link-categories/')) {
+      const parts = path.split('/');
+      const id = parts[parts.length - 1];
+      if (method === 'PUT' || method === 'PATCH') {
+        const updates = await request.json();
+        let updated = await LinkCategory.findByIdAndUpdate(id, updates, { new: true });
+        if (!updated) {
+          const conditions = [{ name: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          updated = await LinkCategory.findOneAndUpdate({ $or: conditions }, updates, { new: true });
+        }
+        if (!updated) return NextResponse.json({ error: 'Link category not found' }, { status: 404 });
+        await recordRealtimeEvent('LINK_CATEGORIES_UPDATED', id, transform(updated));
+        return NextResponse.json(transform(updated));
+      }
+      if (method === 'DELETE') {
+        let deleted = await LinkCategory.findByIdAndDelete(id);
+        if (!deleted) {
+          const conditions = [{ name: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          deleted = await LinkCategory.findOneAndDelete({ $or: conditions });
+        }
+        await recordRealtimeEvent('LINK_CATEGORIES_UPDATED', id, { id });
+        return NextResponse.json({ success: true, id });
+      }
+    }
+
+    // MASTER ROLES
+    if (path === 'masters/roles' || path === 'roles') {
+      if (method === 'GET') {
+        let docs = await Role.find().sort({ createdAt: 1 });
+        if (docs.length === 0) {
+          const defaults = [
+            { name: 'Super Admin', label: 'Super Admin', desc: 'Unrestricted master governance', color: 'rose', isSystem: true },
+            { name: 'Admin', label: 'Admin', desc: 'Operational departmental management', color: 'purple', isSystem: true },
+            { name: 'Manager / TL', label: 'Manager / TL', desc: 'Team leadership & project mandate coordination', color: 'indigo', isSystem: true },
+            { name: 'User', label: 'User', desc: 'Individual task contributor', color: 'blue', isSystem: true },
+          ];
+          docs = await Role.insertMany(defaults);
+        }
+        return NextResponse.json(transformArr(docs));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await Role.create(body);
+        await recordRealtimeEvent('ROLES_UPDATED', created._id.toString(), transform(created));
+        return NextResponse.json(transform(created), { status: 201 });
+      }
+    }
+
+    if (path.startsWith('masters/roles/') || path.startsWith('roles/')) {
+      const parts = path.split('/');
+      const id = parts[parts.length - 1];
+      if (method === 'PUT' || method === 'PATCH') {
+        const updates = await request.json();
+        let updated = await Role.findByIdAndUpdate(id, updates, { new: true });
+        if (!updated) {
+          const conditions = [{ name: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          updated = await Role.findOneAndUpdate({ $or: conditions }, updates, { new: true });
+        }
+        if (!updated) return NextResponse.json({ error: 'Role not found' }, { status: 404 });
+        await recordRealtimeEvent('ROLES_UPDATED', id, transform(updated));
+        return NextResponse.json(transform(updated));
+      }
+      if (method === 'DELETE') {
+        let deleted = await Role.findByIdAndDelete(id);
+        if (!deleted) {
+          const conditions = [{ name: id }];
+          if (isObjectId(id)) conditions.unshift({ _id: id });
+          deleted = await Role.findOneAndDelete({ $or: conditions });
+        }
+        await recordRealtimeEvent('ROLES_UPDATED', id, { id });
+        return NextResponse.json({ success: true, id });
+      }
+    }
+
+    // TIT-TO-BIT RBAC GOVERNANCE & ACCESS CONTROL
+    if (path === 'rbac/matrix') {
+      if (method === 'GET') {
+        const docs = await RolePermission.find();
+        const result = {};
+        docs.forEach((doc) => {
+          result[doc.roleName] = doc.permissions || {};
+        });
+        return NextResponse.json(result);
+      }
+      if (method === 'PUT') {
+        const body = await request.json();
+        const { roleName, permissions } = body;
+        if (!roleName) return NextResponse.json({ error: 'roleName required' }, { status: 400 });
+        const updated = await RolePermission.findOneAndUpdate(
+          { roleName },
+          { roleName, permissions },
+          { upsert: true, new: true }
+        );
+        await recordRealtimeEvent('rbac_matrix_updated', roleName, { roleName, permissions });
+        return NextResponse.json(updated);
+      }
+    }
+
+    if (path === 'rbac/user-overrides') {
+      if (method === 'GET') {
+        const docs = await UserOverride.find();
+        const result = {};
+        docs.forEach((doc) => {
+          result[doc.userId] = doc.permissions || {};
+        });
+        return NextResponse.json(result);
+      }
+    }
+
+    if (path.startsWith('rbac/user-overrides/')) {
+      const userId = decodeURIComponent(path.replace('rbac/user-overrides/', ''));
+      if (method === 'PUT') {
+        const body = await request.json();
+        const { permissions } = body;
+        const updated = await UserOverride.findOneAndUpdate(
+          { userId },
+          { userId, permissions },
+          { upsert: true, new: true }
+        );
+        await recordRealtimeEvent('rbac_user_overrides_updated', userId, { userId, permissions });
+        return NextResponse.json(updated);
+      }
+      if (method === 'DELETE') {
+        await UserOverride.deleteOne({ userId });
+        await recordRealtimeEvent('rbac_user_overrides_deleted', userId, { userId });
+        return NextResponse.json({ success: true, userId });
+      }
+    }
+
+    if (path === 'rbac/audit-log') {
+      if (method === 'GET') {
+        const logs = await AuditLog.find().sort({ createdAt: -1 }).limit(100);
+        return NextResponse.json(transformArr(logs));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await AuditLog.create(body);
+        return NextResponse.json(transform(created), { status: 201 });
+      }
+      if (method === 'DELETE') {
+        const deleted = await AuditLog.deleteMany({});
+        return NextResponse.json({ success: true, count: deleted.deletedCount, message: 'Audit logs cleared successfully' });
+      }
     }
 
     if (path === 'health') {

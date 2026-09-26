@@ -15,6 +15,7 @@ import { UserOverride } from '../models/UserOverride.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { Notification } from '../models/Notification.js';
 import { Session } from '../models/Session.js';
+import { PersonalTodo } from '../models/PersonalTodo.js';
 import { broadcastRealtimeEvent } from '../server.js';
 
 const router = express.Router();
@@ -180,12 +181,23 @@ router.get('/tasks', async (req, res) => {
   }
 });
 
+const isObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || '').trim());
+const taskLookup = (id) => isObjectId(id) ? { $or: [{ _id: id }, { code: id }] } : { code: id };
+
 router.post('/tasks', async (req, res) => {
   try {
     const count = await Task.countDocuments();
+    const startDate = req.body.startDate || req.body.fromDate || new Date().toISOString().split('T')[0];
+    const dueDate = req.body.dueDate || req.body.endDate || req.body.toDate || req.body.targetDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
     const payload = {
       code: req.body.code || `TSK-${100 + count + 1}`,
       ...req.body,
+      startDate,
+      fromDate: startDate,
+      dueDate,
+      endDate: dueDate,
+      toDate: dueDate,
+      targetDate: dueDate,
     };
     const created = await Task.create(payload);
     const result = transform(created);
@@ -206,7 +218,7 @@ router.patch('/tasks/:id/status', async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    const updated = await Task.findByIdAndUpdate(id, { status }, { new: true });
+    const updated = await Task.findOneAndUpdate(taskLookup(id), { status }, { new: true });
     if (!updated) return res.status(404).json({ error: 'Task not found' });
     const result = transform(updated);
     broadcastRealtimeEvent('task_status_changed', result);
@@ -219,7 +231,14 @@ router.patch('/tasks/:id/status', async (req, res) => {
 router.put('/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const updated = await Task.findByIdAndUpdate(id, req.body, { new: true });
+    const body = { ...req.body };
+    if (body.startDate && !body.fromDate) body.fromDate = body.startDate;
+    if (body.fromDate && !body.startDate) body.startDate = body.fromDate;
+    if (body.dueDate && !body.targetDate) body.targetDate = body.dueDate;
+    if (body.targetDate && !body.dueDate) body.dueDate = body.targetDate;
+    if (body.endDate && !body.dueDate) body.dueDate = body.endDate;
+    if (body.toDate && !body.dueDate) body.dueDate = body.toDate;
+    const updated = await Task.findOneAndUpdate(taskLookup(id), body, { new: true });
     if (!updated) return res.status(404).json({ error: 'Task not found' });
     const result = transform(updated);
     broadcastRealtimeEvent('task_updated', result);
@@ -232,7 +251,7 @@ router.put('/tasks/:id', async (req, res) => {
 router.delete('/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const deleted = await Task.findByIdAndDelete(id);
+    const deleted = await Task.findOneAndDelete(taskLookup(id));
     if (!deleted) return res.status(404).json({ error: 'Task not found' });
     broadcastRealtimeEvent('task_deleted', { id });
     res.json({ success: true, id });
@@ -255,9 +274,16 @@ router.get('/meetings', async (req, res) => {
 
 router.post('/meetings', async (req, res) => {
   try {
-    const created = await Meeting.create(req.body);
+    const payload = {
+      ...req.body,
+      status: 'Scheduled',
+      locationType: 'Online',
+      isArchived: false,
+    };
+    const created = await Meeting.create(payload);
     const result = transform(created);
     broadcastRealtimeEvent('meeting_created', result);
+
     res.status(201).json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -267,9 +293,168 @@ router.post('/meetings', async (req, res) => {
 router.put('/meetings/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const updated = await Meeting.findByIdAndUpdate(id, req.body, { new: true });
-    if (!updated) return res.status(404).json({ error: 'Meeting not found' });
+    const existing = await Meeting.findById(id);
+    if (!existing) return res.status(404).json({ error: 'Meeting not found' });
+
+    const updates = { ...req.body };
+    updates.status = existing.status === 'Cancelled' ? 'Scheduled' : (existing.status || 'Scheduled');
+
+    const updated = await Meeting.findByIdAndUpdate(id, updates, { new: true });
     const result = transform(updated);
+    broadcastRealtimeEvent('meeting_updated', result);
+
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/meetings/:id/approve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { comments, authorName } = req.body;
+    const meeting = await Meeting.findById(id);
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+    meeting.status = 'Approved';
+    meeting.approvedAt = new Date();
+    if (comments) {
+      meeting.comments.push({ text: `Approved: ${comments}`, authorName: authorName || 'Approver', createdAt: new Date() });
+    }
+    await meeting.save();
+    const result = transform(meeting);
+    broadcastRealtimeEvent('meeting_updated', result);
+
+    // Notify Host & Attendees
+    if (meeting.requestedBy) {
+      sendUserNotification({
+        userId: meeting.requestedBy,
+        type: 'meeting_approved',
+        title: 'Meeting Approved! 🎉',
+        detail: `"${meeting.title}" was approved for ${meeting.date} at ${meeting.time}.`,
+        link: '/meetings?tab=upcoming',
+      }).catch(() => {});
+    }
+
+
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/meetings/:id/decline', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { comments, authorName } = req.body;
+    const meeting = await Meeting.findById(id);
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+    meeting.status = 'Declined';
+    if (comments) {
+      meeting.comments.push({ text: `Declined: ${comments}`, authorName: authorName || 'Approver', createdAt: new Date() });
+    }
+    await meeting.save();
+    const result = transform(meeting);
+    broadcastRealtimeEvent('meeting_updated', result);
+
+    if (meeting.requestedBy) {
+      sendUserNotification({
+        userId: meeting.requestedBy,
+        type: 'meeting_declined',
+        title: 'Meeting Declined',
+        detail: `"${meeting.title}" was declined. Reason: ${comments || 'No reason provided'}`,
+        link: '/meetings?tab=pending',
+      }).catch(() => {});
+    }
+
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/meetings/:id/cancel', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { cancelReason, authorName } = req.body;
+    const meeting = await Meeting.findById(id);
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+    meeting.status = 'Cancelled';
+    meeting.cancelReason = cancelReason || 'Cancelled by host';
+    meeting.cancelledAt = new Date();
+    meeting.isArchived = true;
+    meeting.archivedAt = new Date();
+
+    if (cancelReason) {
+      meeting.comments.push({ text: `Cancelled: ${cancelReason}`, authorName: authorName || 'Host', createdAt: new Date() });
+    }
+    await meeting.save();
+    const result = transform(meeting);
+    broadcastRealtimeEvent('meeting_updated', result);
+
+
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/meetings/:id/reschedule', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { date, time, duration, comments, authorName } = req.body;
+    const meeting = await Meeting.findById(id);
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+    meeting.date = date || meeting.date;
+    meeting.time = time || meeting.time;
+    if (duration) meeting.duration = duration;
+    meeting.status = 'Scheduled';
+    meeting.isArchived = false;
+    meeting.rescheduleCount = (meeting.rescheduleCount || 0) + 1;
+
+    await meeting.save();
+    const result = transform(meeting);
+    broadcastRealtimeEvent('meeting_updated', result);
+
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/meetings/:id/restore', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const meeting = await Meeting.findById(id);
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+    meeting.isArchived = false;
+    meeting.archivedAt = null;
+    meeting.status = 'Scheduled';
+    await meeting.save();
+
+    const result = transform(meeting);
+    broadcastRealtimeEvent('meeting_updated', result);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/meetings/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text, authorName, authorId } = req.body;
+    const meeting = await Meeting.findById(id);
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+    meeting.comments.push({ text, authorName: authorName || 'User', authorId: authorId || '', createdAt: new Date() });
+    await meeting.save();
+
+    const result = transform(meeting);
     broadcastRealtimeEvent('meeting_updated', result);
     res.json(result);
   } catch (err) {
@@ -1298,6 +1483,50 @@ router.post('/meetings/:id/comments', async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+// Personal Todos
+router.get('/personal-todos', async (req, res) => {
+  try {
+    const { userId, userEmail } = req.query;
+    const query = {};
+    if (userId) query.userId = userId;
+    else if (userEmail) query.userEmail = userEmail;
+    const todos = await PersonalTodo.find(query).sort({ createdAt: -1 });
+    res.json(transformArr(todos));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/personal-todos', async (req, res) => {
+  try {
+    const created = await PersonalTodo.create(req.body);
+    broadcastRealtimeEvent('PERSONAL_TODO_CREATED', transform(created));
+    res.status(201).json(transform(created));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/personal-todos/:id', async (req, res) => {
+  try {
+    const updated = await PersonalTodo.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updated) return res.status(404).json({ error: 'Todo not found' });
+    broadcastRealtimeEvent('PERSONAL_TODO_UPDATED', transform(updated));
+    res.json(transform(updated));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/personal-todos/:id', async (req, res) => {
+  try {
+    const deleted = await PersonalTodo.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'Todo not found' });
+    broadcastRealtimeEvent('PERSONAL_TODO_DELETED', { id: req.params.id });
+    res.json({ success: true, id: req.params.id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

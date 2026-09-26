@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, FolderGit2, Calendar, RefreshCw, Layers, Sparkles, UserPlus, Check } from 'lucide-react';
+import { X, Plus, FolderGit2, RefreshCw, Layers, Sparkles, UserPlus, Check } from 'lucide-react';
 import { UserAvatar, resolveUserObject } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
 
@@ -13,24 +13,55 @@ export function CreateProjectModal({
   initialTemplate = null
 }) {
   let currentUser = null;
+  let masterBrands = [];
+  let masterCategories = [];
   try {
     const ctx = useAppContext();
-    if (ctx && ctx.currentUser) currentUser = ctx.currentUser;
+    if (ctx) {
+      if (ctx.currentUser) currentUser = ctx.currentUser;
+      if (ctx.masterBrands && ctx.masterBrands.length > 0) masterBrands = ctx.masterBrands;
+      if (ctx.blueprintCategories && ctx.blueprintCategories.length > 0) masterCategories = ctx.blueprintCategories;
+    }
   } catch (e) {}
+
+  const availableProjects = masterBrands.length > 0 ? masterBrands : [
+    { id: 'br-1', code: 'PMV', name: 'PMV Maritime', color: '#2563EB' },
+    { id: 'br-2', code: 'FPD', name: 'Captain\'s Cafe', color: '#452700' },
+    { id: 'br-3', code: 'LMA', name: 'Lagos Maritime Academy', color: '#FF6500' },
+    { id: 'br-4', code: 'INT', name: 'Internal', color: '#9333EA' },
+    { id: 'br-5', code: 'SOMS', name: 'School of Maritime Studies', color: '#2563EB' },
+  ];
+
+  const availableCategories = masterCategories.length > 0
+    ? masterCategories.map((c) => c.name)
+    : ['Website Development', 'Mobile App', 'Branding & UI System', 'SEO & Digital Marketing', 'Cloud Infrastructure', 'Custom Software'];
 
   const [name, setName] = useState('');
   const [type, setType] = useState('one-time');
-  const [client, setClient] = useState('PMV Global Group');
-  const [brand, setBrand] = useState('PMV');
-  const [category, setCategory] = useState('Website Development');
-  const [owner, setOwner] = useState('');
-  const [manager, setManager] = useState('');
+  const [selectedMasterProject, setSelectedMasterProject] = useState(availableProjects[0]?.name || 'PMV Maritime');
+  const [brand, setBrand] = useState(availableProjects[0]?.code || 'PMV');
+  const [category, setCategory] = useState(availableCategories[0] || 'Website Development');
   const [selectedTeam, setSelectedTeam] = useState([]);
   const [priority, setPriority] = useState('High');
+
   const [status, setStatus] = useState('In Progress');
-  const [startDate, setStartDate] = useState('2026-09-15');
   const [description, setDescription] = useState('');
-  const [color, setColor] = useState('#2563EB');
+  const [color, setColor] = useState(availableProjects[0]?.color || '#2563EB');
+
+  const handleProjectSelect = (projectName) => {
+    setSelectedMasterProject(projectName);
+    const match = availableProjects.find((p) => p.name === projectName || p.code === projectName);
+    if (match) {
+      setBrand(match.code || 'PMV');
+      if (match.color) setColor(match.color);
+    }
+  };
+
+  const defaultStartIso = new Date().toISOString().split('T')[0];
+  const defaultEndIso = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+
+  const [startDate, setStartDate] = useState(defaultStartIso);
+  const [endDate, setEndDate] = useState(defaultEndIso);
 
   // Recurring fields
   const [recurrenceFrequency, setRecurrenceFrequency] = useState('Monthly');
@@ -83,31 +114,24 @@ export function CreateProjectModal({
     if (projectToEdit) {
       setName(projectToEdit.name || '');
       setType(projectToEdit.type || 'one-time');
-      setClient(projectToEdit.client || 'PMV Global Group');
-      setBrand(projectToEdit.brand || 'PMV');
-      setCategory(projectToEdit.category || 'General');
-
-      const rawOwner = projectToEdit.owner || projectToEdit.ownerId || creatorId;
-      const rawManager = projectToEdit.manager || projectToEdit.managerId || creatorId;
-      const oId = resolveUserKey(rawOwner, users) || creatorId;
-      const mId = resolveUserKey(rawManager, users) || creatorId;
-
-      setOwner(oId);
-      setManager(mId);
+      const projMatch = availableProjects.find((p) => p.name === projectToEdit.client || p.code === projectToEdit.brand || p.name === projectToEdit.name) || availableProjects[0];
+      setSelectedMasterProject(projectToEdit.client || projMatch?.name || 'PMV Maritime');
+      setBrand(projectToEdit.brand || projMatch?.code || 'PMV');
+      setCategory(projectToEdit.category || availableCategories[0] || 'Website Development');
 
       const rawTeam = (projectToEdit.teamIds && projectToEdit.teamIds.length > 0)
         ? projectToEdit.teamIds
         : (projectToEdit.team || []);
 
-      // Resolve existing members against dynamic users
-      const resolvedExisting = deduplicateTeam(rawTeam.length > 0 ? rawTeam : [oId, mId]);
+      const resolvedExisting = deduplicateTeam(rawTeam);
       setSelectedTeam(resolvedExisting);
 
       setPriority(projectToEdit.priority || 'High');
       setStatus(projectToEdit.status || 'In Progress');
-      setStartDate(projectToEdit.startDate || '2026-09-15');
       setDescription(projectToEdit.description || '');
-      setColor(projectToEdit.color || '#2563EB');
+      setColor(projectToEdit.color || projMatch?.color || '#2563EB');
+      setStartDate(projectToEdit.startDate || defaultStartIso);
+      setEndDate(projectToEdit.endDate || projectToEdit.targetDate || defaultEndIso);
       if (projectToEdit.type === 'recurring' && projectToEdit.recurringConfig) {
         setRecurrenceFrequency(projectToEdit.recurringConfig.frequency || 'Monthly');
         setMonthlyDay(projectToEdit.recurringConfig.monthlyDay || 5);
@@ -115,37 +139,33 @@ export function CreateProjectModal({
         setEndCondition(projectToEdit.recurringConfig.endCondition || 'Annual Contract (12 cycles)');
       }
     } else if (initialTemplate) {
-      const oId = creatorId;
-      const mId = users[1] ? (users[1].id || users[1]._id) : creatorId;
       setName(`${initialTemplate.name} - Batch 1`);
       setType(initialTemplate.type || 'one-time');
-      setClient('PMV Global Group');
-      setBrand('PMV');
-      setCategory(initialTemplate.category || 'Website Development');
-      setOwner(oId);
-      setManager(mId);
-      setSelectedTeam(deduplicateTeam([creatorId, oId, mId]));
+      const defaultProj = availableProjects[0];
+      setSelectedMasterProject(defaultProj?.name || 'PMV Maritime');
+      setBrand(defaultProj?.code || 'PMV');
+      setCategory(initialTemplate.category || availableCategories[0] || 'Website Development');
+      setSelectedTeam([]);
       setPriority('High');
       setStatus('In Progress');
-      setStartDate('2026-09-15');
+      setStartDate(defaultStartIso);
+      setEndDate(defaultEndIso);
       setDescription(initialTemplate.description || '');
-      setColor('#2563EB');
+      setColor(defaultProj?.color || '#2563EB');
     } else {
-      const oId = creatorId;
-      const mId = users[1] ? (users[1].id || users[1]._id) : creatorId;
       setName('');
       setType('one-time');
-      setClient('PMV Global Group');
-      setBrand('PMV');
-      setCategory('Website Development');
-      setOwner(oId);
-      setManager(mId);
-      setSelectedTeam(deduplicateTeam([creatorId]));
+      const defaultProj = availableProjects[0];
+      setSelectedMasterProject(defaultProj?.name || 'PMV Maritime');
+      setBrand(defaultProj?.code || 'PMV');
+      setCategory(availableCategories[0] || 'Website Development');
+      setSelectedTeam([]);
       setPriority('High');
       setStatus('In Progress');
-      setStartDate('2026-09-15');
+      setStartDate(defaultStartIso);
+      setEndDate(defaultEndIso);
       setDescription('');
-      setColor('#2563EB');
+      setColor(defaultProj?.color || '#2563EB');
     }
   }, [isOpen, projectToEdit?.id || projectToEdit?._id, initialTemplate?.id, users]);
 
@@ -197,18 +217,20 @@ export function CreateProjectModal({
     const payload = {
       name: name.trim(),
       type,
-      client,
+      client: selectedMasterProject,
       brand,
       category,
-      ownerId,
-      owner: ownerId,
-      managerId,
-      manager: managerId,
-      teamIds: finalTeam,
-      team: finalTeam,
+      ownerId: creatorId,
+      owner: creatorId,
+      managerId: creatorId,
+      manager: creatorId,
+      teamIds: resolvedSelected,
+      team: resolvedSelected,
       priority,
       status,
-      startDate,
+      startDate: startDate || defaultStartIso,
+      endDate: endDate || defaultEndIso,
+      targetDate: endDate || defaultEndIso,
       description: description.trim() || 'No extended description provided.',
       color,
       ...(type === 'recurring' ? {
@@ -333,13 +355,17 @@ export function CreateProjectModal({
               </div>
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Category</label>
-                <input
-                  type="text"
+                <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  placeholder="e.g. Mobile App"
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-brand text-slate-900 dark:text-slate-100 placeholder-slate-400"
-                />
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand font-medium"
+                >
+                  {availableCategories.map((catName) => (
+                    <option key={catName} value={catName}>
+                      {catName}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -367,7 +393,7 @@ export function CreateProjectModal({
 
               {/* Quick Swatches */}
               <div className="flex items-center gap-1.5">
-                {['#2563EB', '#059669', '#D97706', '#9333EA', '#E11D48', '#0891B2', '#4F46E5', '#475569'].map((hex) => (
+                {['#2563EB', '#452700', '#FF6500', '#9333EA', '#059669', '#D97706', '#E11D48', '#0891B2'].map((hex) => (
                   <button
                     key={hex}
                     type="button"
@@ -382,64 +408,31 @@ export function CreateProjectModal({
             </div>
           </div>
 
-          {/* Client & Brand */}
+          {/* Project & Brand Code Prefix */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Client / Organization</label>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Project</label>
               <select
-                value={client}
-                onChange={(e) => {
-                  setClient(e.target.value);
-                  if (e.target.value.includes('FreshPod')) setBrand('FreshPod');
-                  else if (e.target.value.includes('Lagos')) setBrand('Lagos');
-                  else setBrand('PMV');
-                }}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand"
+                value={selectedMasterProject}
+                onChange={(e) => handleProjectSelect(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand font-medium"
               >
-                <option value="PMV Global Group">PMV Global Group</option>
-                <option value="FreshPod Brands">FreshPod Brands</option>
-                <option value="Lagos Logistics">Lagos Logistics</option>
-                <option value="Aura FinTech">Aura FinTech</option>
+                {availableProjects.map((p) => (
+                  <option key={p.id || p.code || p.name} value={p.name}>
+                    {p.name}
+                  </option>
+                ))}
               </select>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Brand Tag / Code Prefix</label>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Brand Code / Code Prefix</label>
               <input
                 type="text"
+                readOnly
                 value={brand}
-                onChange={(e) => setBrand(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand"
+                className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-mono font-bold text-slate-800 dark:text-slate-200"
               />
-            </div>
-          </div>
-
-          {/* Owner & Manager */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Project Owner (Accountable)</label>
-              <select
-                value={owner}
-                onChange={(e) => handleOwnerChange(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand"
-              >
-                {users.map(u => (
-                  <option key={u.id || u._id} value={u.id || u._id}>{u.name} ({u.role})</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Assigned Tech Lead / Manager</label>
-              <select
-                value={manager}
-                onChange={(e) => handleManagerChange(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand"
-              >
-                {users.map(u => (
-                  <option key={u.id || u._id} value={u.id || u._id}>{u.name} ({u.role})</option>
-                ))}
-              </select>
             </div>
           </div>
 
@@ -451,7 +444,6 @@ export function CreateProjectModal({
             <div className="p-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-700 rounded-xl space-y-2">
               <div className="flex flex-wrap gap-1.5 min-h-[32px] items-center">
                 {(() => {
-                  // Resolve & deduplicate — same user under different ID formats shows only once
                   const seen = new Set();
                   const dedupedMembers = [];
                   for (const userId of selectedTeam) {
@@ -462,6 +454,9 @@ export function CreateProjectModal({
                       seen.add(canonicalId);
                       dedupedMembers.push({ raw: userId, user: u, canonicalId: u.id || u._id });
                     }
+                  }
+                  if (dedupedMembers.length === 0) {
+                    return <span className="text-[11px] text-slate-400 italic">No squad members assigned (Default: None)</span>;
                   }
                   return dedupedMembers.map(({ user: u, canonicalId }) => (
                     <span
@@ -483,55 +478,49 @@ export function CreateProjectModal({
                 })()}
               </div>
 
-              {/* Add / Remove Checkbox Selector */}
+              {/* Add / Remove Checkbox Selector (Excludes Super Admin) */}
               <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
                 <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1.5">
                   Select squad members to grant project visibility:
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-32 overflow-y-auto">
-                  {users.map((u) => {
-                    const uId = u.id || u._id;
-                    const uName = u.name;
-                    const isSelected = selectedTeam.some((item) => {
-                      const itemCanonical = resolveUserKey(item, users);
-                      return itemCanonical === uId || item === uId || item === uName || String(item).toLowerCase() === String(uId).toLowerCase();
-                    });
+                  {(users || [])
+                    .filter((u) => {
+                      const role = String(u.role || '').toLowerCase();
+                      return role !== 'super admin' && role !== 'superadmin';
+                    })
+                    .map((u) => {
+                      const uId = u.id || u._id;
+                      const uName = u.name;
+                      const isSelected = selectedTeam.some((item) => {
+                        const itemCanonical = resolveUserKey(item, users);
+                        return itemCanonical === uId || item === uId || item === uName || String(item).toLowerCase() === String(uId).toLowerCase();
+                      });
 
-                    return (
-                      <label
-                        key={uId}
-                        className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${isSelected
-                            ? 'bg-brand-light/30 border-brand/40 text-brand font-semibold'
-                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                          }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleTeamMember(uId)}
-                          className="rounded border-slate-300 text-brand focus:ring-brand"
-                        />
-                        <UserAvatar user={u} size="xs" />
-                        <span className="truncate">{u.name.split(' ')[0]}</span>
-                      </label>
-                    );
-                  })}
+                      return (
+                        <label
+                          key={uId}
+                          className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${isSelected
+                              ? 'bg-brand-light/30 border-brand/40 text-brand font-semibold'
+                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleTeamMember(uId)}
+                            className="rounded border-slate-300 text-brand focus:ring-brand"
+                          />
+                          <UserAvatar user={u} size="xs" />
+                          <span className="truncate">{u.name.split(' ')[0]}</span>
+                        </label>
+                      );
+                    })}
                 </div>
-
               </div>
             </div>
           </div>
 
-          {/* Dates */}
-          <div>
-            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Start Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100"
-            />
-          </div>
 
           {/* Additional Recurring Project Configuration Fields */}
           {type === 'recurring' && (

@@ -17,9 +17,13 @@ import {
   MoveHorizontal,
   Maximize2,
   Sparkles,
-  RotateCcw
+  RotateCcw,
+  Lock
 } from 'lucide-react';
-import { UserAvatar } from '@/components/common/UserAvatar';
+import { UserAvatar, resolveUserObject, isTaskAssignee } from '@/components/common/UserAvatar';
+import { useAppContext } from '@/components/providers/AppProvider';
+import { showError, showSuccess } from '@/lib/swal';
+import { formatDate } from '@/lib/dateUtils';
 
 const DAY_WIDTH = 26; // width in pixels per calendar day
 
@@ -30,6 +34,8 @@ export function RoadmapTimelineView({
   onSelectProject,
   onSelectTask
 }) {
+  const { currentUser, handleUpdateProject, handleUpdateTask } = useAppContext();
+
   const [selectedProjectId, setSelectedProjectId] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [expandedProjects, setExpandedProjects] = useState({
@@ -38,25 +44,40 @@ export function RoadmapTimelineView({
     'proj-3': true
   });
 
+  // Dynamic Today calculation
+  const today = useMemo(() => new Date(), []);
+  const todayIso = useMemo(() => {
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, [today]);
+
+  const todayLabel = useMemo(() => {
+    return formatDate(today);
+  }, [today]);
+
   // Scroll and Grid Container Refs
   const timelineScrollRef = useRef(null);
   const gridContainerRef = useRef(null);
 
-  // Generate complete 365 calendar days for year 2026
+  // Generate 365 calendar days for the active year (matching today's year)
+  const currentYear = useMemo(() => today.getFullYear(), [today]);
+
   const { calendarDays, monthHeaders, totalYearDays } = useMemo(() => {
     const monthsData = [
-      { name: 'JAN 2026', short: 'Jan', monthIndex: 0, count: 31 },
-      { name: 'FEB 2026', short: 'Feb', monthIndex: 1, count: 28 },
-      { name: 'MAR 2026', short: 'Mar', monthIndex: 2, count: 31 },
-      { name: 'APR 2026', short: 'Apr', monthIndex: 3, count: 30 },
-      { name: 'MAY 2026', short: 'May', monthIndex: 4, count: 31 },
-      { name: 'JUN 2026', short: 'Jun', monthIndex: 5, count: 30 },
-      { name: 'JUL 2026', short: 'Jul', monthIndex: 6, count: 31 },
-      { name: 'AUG 2026', short: 'Aug', monthIndex: 7, count: 31 },
-      { name: 'SEP 2026', short: 'Sep', monthIndex: 8, count: 30 },
-      { name: 'OCT 2026', short: 'Oct', monthIndex: 9, count: 31 },
-      { name: 'NOV 2026', short: 'Nov', monthIndex: 10, count: 30 },
-      { name: 'DEC 2026', short: 'Dec', monthIndex: 11, count: 31 }
+      { name: `JAN ${currentYear}`, short: 'Jan', monthIndex: 0, count: 31 },
+      { name: `FEB ${currentYear}`, short: 'Feb', monthIndex: 1, count: (currentYear % 4 === 0 ? 29 : 28) },
+      { name: `MAR ${currentYear}`, short: 'Mar', monthIndex: 2, count: 31 },
+      { name: `APR ${currentYear}`, short: 'Apr', monthIndex: 3, count: 30 },
+      { name: `MAY ${currentYear}`, short: 'May', monthIndex: 4, count: 31 },
+      { name: `JUN ${currentYear}`, short: 'Jun', monthIndex: 5, count: 30 },
+      { name: `JUL ${currentYear}`, short: 'Jul', monthIndex: 6, count: 31 },
+      { name: `AUG ${currentYear}`, short: 'Aug', monthIndex: 7, count: 31 },
+      { name: `SEP ${currentYear}`, short: 'Sep', monthIndex: 8, count: 30 },
+      { name: `OCT ${currentYear}`, short: 'Oct', monthIndex: 9, count: 31 },
+      { name: `NOV ${currentYear}`, short: 'Nov', monthIndex: 10, count: 30 },
+      { name: `DEC ${currentYear}`, short: 'Dec', monthIndex: 11, count: 31 }
     ];
 
     const days = [];
@@ -67,13 +88,14 @@ export function RoadmapTimelineView({
       const monthStartDayIndex = dayIndex;
 
       for (let dayNum = 1; dayNum <= m.count; dayNum++) {
-        const dateObj = new Date(2026, m.monthIndex, dayNum);
+        const dateObj = new Date(currentYear, m.monthIndex, dayNum);
         const dayOfWeek = dateObj.getDay(); // 0 = Sun, 6 = Sat
-        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const isWeekend = dayOfWeek === 0;
+        // const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
         const dayLetter = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][dayOfWeek];
         const monthNumStr = String(m.monthIndex + 1).padStart(2, '0');
         const dayNumStr = String(dayNum).padStart(2, '0');
-        const isoDateStr = `2026-${monthNumStr}-${dayNumStr}`;
+        const isoDateStr = `${currentYear}-${monthNumStr}-${dayNumStr}`;
 
         days.push({
           index: dayIndex,
@@ -97,64 +119,90 @@ export function RoadmapTimelineView({
     });
 
     return { calendarDays: days, monthHeaders: headers, totalYearDays: dayIndex };
-  }, []);
+  }, [currentYear]);
 
   const totalGridWidthPx = totalYearDays * DAY_WIDTH;
 
-  // Convert ISO Date string ("YYYY-MM-DD") to day index (0 to 364)
+  // Convert ISO Date string ("YYYY-MM-DD") to day index (0 to totalYearDays - 1)
   const getDayIndexFromIso = useCallback((isoStr, fallbackDayIndex = 0) => {
     if (!isoStr) return fallbackDayIndex;
     const idx = calendarDays.findIndex(d => d.isoDateStr === isoStr);
     if (idx !== -1) return idx;
 
-    // Fallback date parser if string has different format
+    // Fallback date parser if string has different format or different year
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return fallbackDayIndex;
-    const startYear = new Date('2026-01-01T00:00:00Z').getTime();
+    const startYear = new Date(`${currentYear}-01-01T00:00:00Z`).getTime();
     const targetMs = d.getTime();
     const diffDays = Math.floor((targetMs - startYear) / 86400000);
     return Math.max(0, Math.min(totalYearDays - 1, diffDays));
-  }, [calendarDays, totalYearDays]);
+  }, [calendarDays, totalYearDays, currentYear]);
 
   const getIsoFromDayIndex = useCallback((dayIdx) => {
     const validIdx = Math.max(0, Math.min(totalYearDays - 1, dayIdx));
-    return calendarDays[validIdx]?.isoDateStr || '2026-01-01';
-  }, [calendarDays, totalYearDays]);
+    return calendarDays[validIdx]?.isoDateStr || `${currentYear}-01-01`;
+  }, [calendarDays, totalYearDays, currentYear]);
 
   // Local state for dynamic schedule changes (Drag & Stretch)
-  const [projectSchedules, setProjectSchedules] = useState({});
   const [taskSchedules, setTaskSchedules] = useState({});
 
   // Active Drag State
   const [activeDrag, setActiveDrag] = useState(null);
 
-  // Initialize schedule maps from props
+  // Synchronize task schedules from live props (Date From & Date To)
   useEffect(() => {
-    const projMap = {};
-    projects.forEach((p, idx) => {
-      const defaultStart = p.startDate || (idx % 2 === 0 ? '2026-02-15' : '2026-04-01');
-      const defaultEnd = p.deadline || (idx % 2 === 0 ? '2026-08-30' : '2026-10-15');
-      projMap[p.id] = {
-        startDate: defaultStart,
-        deadline: defaultEnd
-      };
-    });
-    setProjectSchedules(prev => ({ ...projMap, ...prev }));
-
     const taskMap = {};
-    tasks.forEach((t, idx) => {
-      const defaultDue = t.dueDate || (idx % 3 === 0 ? '2026-06-15' : idx % 3 === 1 ? '2026-08-20' : '2026-11-10');
-      const dueIdx = getDayIndexFromIso(defaultDue, 180);
-      const startIdx = Math.max(0, dueIdx - 25);
-      const defaultStart = getIsoFromDayIndex(startIdx);
-
-      taskMap[t.id] = {
-        startDate: defaultStart,
-        dueDate: defaultDue
+    (tasks || []).forEach((t) => {
+      const tId = t.id || t._id;
+      if (!tId) return;
+      const start = t.startDate || t.fromDate || (t.createdAt ? t.createdAt.split('T')[0] : todayIso);
+      const due = t.dueDate || t.toDate || t.targetDate || t.endDate || start;
+      taskMap[tId] = {
+        startDate: start,
+        dueDate: due
       };
     });
-    setTaskSchedules(prev => ({ ...taskMap, ...prev }));
-  }, [projects, tasks, getDayIndexFromIso, getIsoFromDayIndex]);
+    setTaskSchedules((prev) => ({ ...prev, ...taskMap }));
+  }, [tasks, todayIso]);
+
+  // Derive project bounds dynamically from tasks (since projects don't have separate dates)
+  const getProjectTaskBounds = useCallback((pId, pCode, project = null) => {
+    const pTasks = (tasks || []).filter(t => t && (t.projectId === pId || t.projectId === pCode));
+    if (pTasks.length === 0) {
+      const fallbackStart = project?.startDate || project?.fromDate || (project?.createdAt ? project.createdAt.split('T')[0] : todayIso);
+      const fallbackEnd = project?.endDate || project?.toDate || project?.targetDate || fallbackStart;
+      return {
+        startDate: fallbackStart,
+        endDate: fallbackEnd,
+        hasTasks: false,
+        taskCount: 0
+      };
+    }
+
+    let minStartIso = null;
+    let maxDueIso = null;
+
+    pTasks.forEach(t => {
+      const tId = t.id || t._id;
+      const sched = taskSchedules[tId] || {};
+      const tStart = (activeDrag && activeDrag.itemType === 'task' && activeDrag.itemId === tId)
+        ? getIsoFromDayIndex(activeDrag.currentStartIdx)
+        : (sched.startDate || t.startDate || t.fromDate || todayIso);
+      const tDue = (activeDrag && activeDrag.itemType === 'task' && activeDrag.itemId === tId)
+        ? getIsoFromDayIndex(activeDrag.currentEndIdx)
+        : (sched.dueDate || t.dueDate || t.toDate || t.targetDate || t.endDate || tStart);
+
+      if (!minStartIso || tStart < minStartIso) minStartIso = tStart;
+      if (!maxDueIso || tDue > maxDueIso) maxDueIso = tDue;
+    });
+
+    return {
+      startDate: minStartIso || todayIso,
+      endDate: maxDueIso || minStartIso || todayIso,
+      hasTasks: true,
+      taskCount: pTasks.length
+    };
+  }, [tasks, taskSchedules, activeDrag, todayIso, getIsoFromDayIndex]);
 
   const toggleProject = (pId) => {
     setExpandedProjects(prev => ({ ...prev, [pId]: !prev[pId] }));
@@ -166,7 +214,8 @@ export function RoadmapTimelineView({
 
   const filteredProjects = useMemo(() => {
     return activeProjects.filter(p => {
-      const matchProject = selectedProjectId === 'ALL' || p.id === selectedProjectId || p._id === selectedProjectId;
+      const pId = p.id || p._id;
+      const matchProject = selectedProjectId === 'ALL' || pId === selectedProjectId;
       const matchStatus = selectedStatus === 'ALL' || p.status === selectedStatus;
       return matchProject && matchStatus;
     });
@@ -179,7 +228,7 @@ export function RoadmapTimelineView({
       : getDayIndexFromIso(startDateIso, 30);
     const endIdx = overrideEndIdx !== undefined
       ? overrideEndIdx
-      : getDayIndexFromIso(endDateIso, 150);
+      : getDayIndexFromIso(endDateIso, 60);
 
     const validStart = Math.max(0, Math.min(totalYearDays - 1, startIdx));
     const validEnd = Math.max(validStart, Math.min(totalYearDays - 1, endIdx));
@@ -199,30 +248,44 @@ export function RoadmapTimelineView({
     };
   };
 
-  // Drag Handlers for Shift (Move) and Stretch (Left/Right edge resize)
-  const handleMouseDown = (e, itemType, itemId, mode) => {
+  // Permission Checks: "Assigned person only drag or anything else do in Roadmaps"
+  const canUserDragTask = useCallback((task, parentProject) => {
+    if (!task || !currentUser) return false;
+    return isTaskAssignee(task, currentUser, users);
+  }, [currentUser, users]);
+
+  // Drag Handlers for Tasks: Shift (Move) and Stretch (Left/Right edge resize)
+  // Note: Projects cannot be manually moved or resized; they derive bounds dynamically from child tasks.
+  const handleMouseDown = (e, itemType, itemId, mode, targetItem, parentProject = null) => {
     e.preventDefault();
     e.stopPropagation();
 
-    let origStartIso = '2026-02-01';
-    let origEndIso = '2026-08-01';
+    // Only tasks are draggable/resizable
+    if (itemType !== 'task') return;
 
-    if (itemType === 'project') {
-      const sched = projectSchedules[itemId] || {};
-      origStartIso = sched.startDate || '2026-02-01';
-      origEndIso = sched.deadline || '2026-08-01';
-    } else {
-      const sched = taskSchedules[itemId] || {};
-      origStartIso = sched.startDate || '2026-03-01';
-      origEndIso = sched.dueDate || '2026-06-01';
+    // Verify permission: only assigned person can drag
+    if (!canUserDragTask(targetItem, parentProject)) {
+      const assigneeObj = targetItem?.assignedTo ? resolveUserObject(targetItem.assignedTo, users) : null;
+      const assigneeName = assigneeObj?.name || 'the assigned member';
+      showError(
+        'Access Denied',
+        `Only the assigned member (${assigneeName}) can reschedule or resize this task.`
+      );
+      return;
     }
 
+    const sched = taskSchedules[itemId] || {};
+    const origStartIso = sched.startDate || targetItem?.startDate || targetItem?.fromDate || todayIso;
+    const origEndIso = sched.dueDate || targetItem?.dueDate || targetItem?.toDate || targetItem?.targetDate || origStartIso;
+
     const origStartIdx = getDayIndexFromIso(origStartIso, 30);
-    const origEndIdx = getDayIndexFromIso(origEndIso, 150);
+    const origEndIdx = getDayIndexFromIso(origEndIso, 60);
 
     setActiveDrag({
-      itemType,
+      itemType: 'task',
       itemId,
+      targetProject: parentProject,
+      projectCode: targetItem?.projectId || targetItem?.code || '',
       mode, // 'move' | 'left' | 'right'
       startX: e.clientX,
       origStartIdx,
@@ -260,21 +323,14 @@ export function RoadmapTimelineView({
     }) : null);
   }, [activeDrag, totalYearDays]);
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback(async () => {
     if (!activeDrag) return;
 
     const finalStartIso = getIsoFromDayIndex(activeDrag.currentStartIdx);
     const finalEndIso = getIsoFromDayIndex(activeDrag.currentEndIdx);
 
-    if (activeDrag.itemType === 'project') {
-      setProjectSchedules(prev => ({
-        ...prev,
-        [activeDrag.itemId]: {
-          startDate: finalStartIso,
-          deadline: finalEndIso
-        }
-      }));
-    } else {
+    if (activeDrag.itemType === 'task') {
+      // 1. Immediately reflect locally
       setTaskSchedules(prev => ({
         ...prev,
         [activeDrag.itemId]: {
@@ -282,10 +338,56 @@ export function RoadmapTimelineView({
           dueDate: finalEndIso
         }
       }));
+
+      // 2. Persist to MongoDB and sync across all clients immediately
+      if (handleUpdateTask) {
+        try {
+          await handleUpdateTask(activeDrag.itemId, {
+            startDate: finalStartIso,
+            fromDate: finalStartIso,
+            dueDate: finalEndIso,
+            targetDate: finalEndIso,
+            endDate: finalEndIso,
+            toDate: finalEndIso
+          });
+        } catch (err) {
+          console.error('Failed to sync task dates to server:', err);
+        }
+      }
+
+      // 3. Keep parent project bounds synchronized in database as well
+      if (handleUpdateProject && activeDrag.targetProject) {
+        const pId = activeDrag.targetProject.id || activeDrag.targetProject._id;
+        const pCode = activeDrag.targetProject.code;
+        const updatedProjectTasks = (tasks || []).filter(t => t && (t.projectId === pId || t.projectId === pCode));
+        let minStart = finalStartIso;
+        let maxDue = finalEndIso;
+        updatedProjectTasks.forEach(t => {
+          const tId = t.id || t._id;
+          if (tId === activeDrag.itemId) return;
+          const sched = taskSchedules[tId] || {};
+          const s = sched.startDate || t.startDate || t.fromDate;
+          const d = sched.dueDate || t.dueDate || t.toDate || t.targetDate || t.endDate || s;
+          if (s && (!minStart || s < minStart)) minStart = s;
+          if (d && (!maxDue || d > maxDue)) maxDue = d;
+        });
+
+        try {
+          await handleUpdateProject(pId, {
+            startDate: minStart,
+            fromDate: minStart,
+            endDate: maxDue,
+            dueDate: maxDue,
+            targetDate: maxDue
+          });
+        } catch (err) {
+          console.error('Failed to sync project dates to server:', err);
+        }
+      }
     }
 
     setActiveDrag(null);
-  }, [activeDrag, getIsoFromDayIndex]);
+  }, [activeDrag, getIsoFromDayIndex, handleUpdateTask, handleUpdateProject, tasks, taskSchedules]);
 
   useEffect(() => {
     if (activeDrag) {
@@ -301,18 +403,26 @@ export function RoadmapTimelineView({
     };
   }, [activeDrag, handleMouseMove, handleMouseUp]);
 
-  // Quick navigation scrollTo helper
-  const jumpToPeriod = (period) => {
-    if (!timelineScrollRef.current) return;
+  // Today position calculation (Dynamically computed from todayIso)
+  const todayDayIndex = useMemo(() => {
+    return getDayIndexFromIso(todayIso, 254);
+  }, [getDayIndexFromIso, todayIso]);
 
+  const todayLeftPx = useMemo(() => {
+    return todayDayIndex * DAY_WIDTH + (DAY_WIDTH / 2);
+  }, [todayDayIndex]);
+
+  // Quick navigation scrollTo helper — Workable Today Button
+  const jumpToPeriod = useCallback((period) => {
+    if (!timelineScrollRef.current) return;
     const scrollEl = timelineScrollRef.current;
+    const containerWidth = scrollEl.clientWidth || 800;
 
     if (period === 'full') {
       scrollEl.scrollTo({ left: 0, behavior: 'smooth' });
     } else if (period === 'today') {
-      // Sep 12 is day index 254 (254 * DAY_WIDTH = 6604px)
-      const todayDayIdx = getDayIndexFromIso('2026-09-12', 254);
-      const targetPx = Math.max(0, (todayDayIdx * DAY_WIDTH) - 200);
+      // Accurately center the current day in the viewport
+      const targetPx = Math.max(0, (todayDayIndex * DAY_WIDTH) - (containerWidth / 2) + (DAY_WIDTH / 2));
       scrollEl.scrollTo({ left: targetPx, behavior: 'smooth' });
     } else if (period === 'q1') {
       scrollEl.scrollTo({ left: 0, behavior: 'smooth' });
@@ -323,17 +433,15 @@ export function RoadmapTimelineView({
     } else if (period === 'q4') {
       scrollEl.scrollTo({ left: 273 * DAY_WIDTH, behavior: 'smooth' });
     }
-  };
-
-  // Today position calculation (Sep 12, 2026 = Day Index 254)
-  const todayDayIndex = getDayIndexFromIso('2026-09-12', 254);
-  const todayLeftPx = todayDayIndex * DAY_WIDTH + (DAY_WIDTH / 2);
+  }, [todayDayIndex]);
 
   // Auto-scroll to Today on initial mount
   useEffect(() => {
-    if (timelineScrollRef.current) {
-      const targetPx = Math.max(0, (todayDayIndex * DAY_WIDTH) - 300);
-      timelineScrollRef.current.scrollTo({ left: targetPx, behavior: 'auto' });
+    if (timelineScrollRef.current && todayDayIndex >= 0) {
+      const scrollEl = timelineScrollRef.current;
+      const containerWidth = scrollEl.clientWidth || 800;
+      const targetPx = Math.max(0, (todayDayIndex * DAY_WIDTH) - (containerWidth / 2) + (DAY_WIDTH / 2));
+      scrollEl.scrollTo({ left: targetPx, behavior: 'auto' });
     }
   }, [todayDayIndex]);
 
@@ -345,14 +453,14 @@ export function RoadmapTimelineView({
           <div className="flex items-center gap-2">
             <Calendar className="w-5 h-5 text-brand" />
             <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-              Interactive 2026 Project Roadmap
+              Interactive {currentYear} Project Roadmap
             </h1>
             <span className="text-[11px] px-2 py-0.5 bg-brand-light/30 text-brand font-mono font-semibold rounded-xs border border-brand/30">
-              365 Calendar Days Gantt
+              Live Gantt • Realtime Sync
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Full scrollable 365-day calendar. Drag bars horizontally to shift schedule or drag edge handles to stretch start/due dates.
+            Full scrollable calendar. Project spans auto-wrap deliverables. Assigned members can drag task bars to adjust Date From &amp; Date To.
           </p>
         </div>
 
@@ -394,22 +502,24 @@ export function RoadmapTimelineView({
           >
             <option value="ALL">All Statuses</option>
             <option value="Active">Active</option>
+            <option value="In Progress">In Progress</option>
             <option value="Planning">Planning</option>
             <option value="On Hold">On Hold</option>
             <option value="Completed">Completed</option>
           </select>
         </div>
 
-        {/* Quick View Jump Buttons */}
+        {/* Quick View Jump Buttons — Dynamic Workable Today Button */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
           <span className="text-[11px] font-semibold uppercase text-slate-400 mr-1 shrink-0">Jump To:</span>
           <button
             type="button"
             onClick={() => jumpToPeriod('today')}
-            className="px-2.5 py-0.5 text-xs font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded-xs hover:bg-rose-100 transition-colors shrink-0 flex items-center gap-1 shadow-2xs"
+            className="px-2.5 py-1 text-xs font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded-xs hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors shrink-0 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+            title={`Center roadmap on today: ${todayLabel}, ${currentYear}`}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-            <span>Today (Sep 12)</span>
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+            <span>Today ({todayLabel})</span>
           </button>
           <button
             type="button"
@@ -463,46 +573,39 @@ export function RoadmapTimelineView({
             {/* Left Body Rows */}
             <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {filteredProjects.map((project) => {
-                const projectTasks = tasks.filter(t => t.projectId === project.id);
-                const isExpanded = !!expandedProjects[project.id];
-                const projCode = project.code || project.id.toUpperCase();
+                const pId = project.id || project._id;
+                const projectTasks = tasks.filter(t => t.projectId === pId || t.projectId === project.code);
+                const isExpanded = !!expandedProjects[pId];
+                const projCode = project.code || pId.toUpperCase();
 
                 return (
-                  <div key={project.id} className="flex flex-col">
-                    {/* Project Row Header - Highlighted for clear distinction */}
+                  <div key={pId} className="flex flex-col">
+                    {/* Project Row Header */}
                     <div className="h-14 px-3.5 flex items-center justify-between gap-2 bg-slate-100/80 dark:bg-slate-800/80 border-y border-slate-200/90 dark:border-slate-700/80 hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition-colors">
                       <div className="flex items-center gap-2 min-w-0">
                         <button
                           type="button"
-                          onClick={() => toggleProject(project.id)}
+                          onClick={() => toggleProject(pId)}
                           className="w-5 h-5 flex items-center justify-center rounded-sm text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors shrink-0"
                         >
                           <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                         </button>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="font-mono text-[10px] font-bold text-brand bg-brand-subtle px-1 py-0.2 rounded-xs border border-brand-border shrink-0">
-                              {projCode}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => onSelectProject && onSelectProject(project)}
-                              className="text-xs font-bold text-slate-900 dark:text-slate-100 hover:text-brand transition-colors truncate block text-left"
-                            >
-                              {project.name}
-                            </button>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                            <span className="truncate">{project.category || 'Core'}</span>
-                            <span>•</span>
-                            <span>{projectTasks.length} tasks</span>
-                          </div>
+
+                        <div className="min-w-0 flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => onSelectProject && onSelectProject(project)}
+                            className="font-bold text-xs text-slate-900 dark:text-slate-100 hover:text-brand truncate text-left"
+                            title={project.name}
+                          >
+                            {project.name}
+                          </button>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="text-xs font-bold text-slate-700 dark:text-slate-300 font-mono">
-                          {project.progress}%
+                          {project.progress || 0}%
                         </span>
                       </div>
                     </div>
@@ -511,12 +614,14 @@ export function RoadmapTimelineView({
                     {isExpanded && projectTasks.length > 0 && (
                       <div className="bg-slate-50/50 dark:bg-slate-900/50 divide-y divide-slate-100 dark:divide-slate-800/40 border-t border-slate-100 dark:border-slate-800/60">
                         {projectTasks.map((task) => {
-                          const taskCode = task.code || task.id;
+                          const tId = task.id || task._id;
+                          const taskCode = task.code || tId;
+                          const canDragT = canUserDragTask(task, project);
+
                           return (
-                            <div key={task.id} className="h-9 px-3 pl-7 flex items-center justify-between gap-1.5">
+                            <div key={tId} className="h-9 px-3 pl-7 flex items-center justify-between gap-1.5">
                               <div className="flex items-center gap-1.5 min-w-0">
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${task.status === 'Completed' ? 'bg-emerald-500' : task.status === 'In Progress' ? 'bg-brand' : 'bg-slate-400'
-                                  }`} />
+                                <UserAvatar user={task.assignedTo} size="xs" />
                                 <span className="font-mono text-[9px] font-bold text-slate-500 dark:text-slate-400 bg-slate-200/70 dark:bg-slate-800 px-1 py-0.2 rounded-xs shrink-0">
                                   {taskCode}
                                 </span>
@@ -527,6 +632,11 @@ export function RoadmapTimelineView({
                                 >
                                   {task.title}
                                 </button>
+                                {!canDragT && (
+                                  <span title="Read-only view (Only assigned member can reschedule)" className="text-slate-400 shrink-0">
+                                    <Lock className="w-2.5 h-2.5" />
+                                  </span>
+                                )}
                               </div>
 
                               <span className={`text-[9px] px-1.5 py-0.2 font-semibold rounded-xs border shrink-0 ${task.status === 'Completed'
@@ -560,7 +670,7 @@ export function RoadmapTimelineView({
             >
               {/* 365 Days 2-Row Header */}
               <div className="h-16 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/90 flex flex-col font-mono text-slate-700 dark:text-slate-200">
-                {/* Row 1: Month Names Header Bar with Quarter Separators */}
+                {/* Row 1: Month Names Header Bar */}
                 <div className="h-7 flex border-b border-slate-200/80 dark:border-slate-700/70">
                   {monthHeaders.map((m, idx) => {
                     const isQuarterEnd = idx === 2 || idx === 5 || idx === 8;
@@ -568,11 +678,10 @@ export function RoadmapTimelineView({
                       <div
                         key={m.name}
                         style={{ width: `${m.widthPx}px` }}
-                        className={`flex items-center justify-center font-bold text-[11px] uppercase tracking-wider text-slate-800 dark:text-slate-100 bg-slate-100/50 dark:bg-slate-800/50 truncate px-2 ${
-                          isQuarterEnd
-                            ? 'border-r-2 border-r-slate-400 dark:border-r-slate-500 font-extrabold'
-                            : 'border-r border-slate-200 dark:border-slate-700/80'
-                        }`}
+                        className={`flex items-center justify-center font-bold text-[11px] uppercase tracking-wider text-slate-800 dark:text-slate-100 bg-slate-100/50 dark:bg-slate-800/50 truncate px-2 ${isQuarterEnd
+                          ? 'border-r-2 border-r-slate-400 dark:border-r-slate-500 font-extrabold'
+                          : 'border-r border-slate-200 dark:border-slate-700/80'
+                          }`}
                       >
                         {m.name} ({m.count}d)
                       </div>
@@ -583,20 +692,21 @@ export function RoadmapTimelineView({
                 {/* Row 2: Every Single Calendar Day (1..31) + Day Letter */}
                 <div className="h-9 flex">
                   {calendarDays.map(d => {
-                    const isQuarterEnd = d.isoDateStr === '2026-03-31' || d.isoDateStr === '2026-06-30' || d.isoDateStr === '2026-09-30';
+                    const isToday = d.isoDateStr === todayIso;
+                    const isQuarterEnd = d.isoDateStr === `${currentYear}-03-31` || d.isoDateStr === `${currentYear}-06-30` || d.isoDateStr === `${currentYear}-09-30`;
                     return (
                       <div
                         key={d.index}
                         style={{ width: `${DAY_WIDTH}px` }}
-                        className={`flex flex-col items-center justify-center text-[9px] ${
-                          isQuarterEnd
-                            ? 'border-r-2 border-r-slate-400 dark:border-r-slate-500'
-                            : 'border-r border-slate-200/50 dark:border-slate-800/50'
-                        } ${
-                          d.isWeekend
-                            ? 'bg-slate-200/40 dark:bg-slate-800/80 text-slate-400 font-semibold'
-                            : 'text-slate-600 dark:text-slate-300 font-bold'
-                        }`}
+                        className={`flex flex-col items-center justify-center text-[9px] ${isQuarterEnd
+                          ? 'border-r-2 border-r-slate-400 dark:border-r-slate-500'
+                          : 'border-r border-slate-200/50 dark:border-slate-800/50'
+                          } ${isToday
+                            ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 font-black'
+                            : d.isWeekend
+                              ? 'bg-slate-200/40 dark:bg-slate-800/80 text-slate-400 font-semibold'
+                              : 'text-slate-600 dark:text-slate-300 font-bold'
+                          }`}
                       >
                         <span>{d.dayNum}</span>
                         <span className="text-[8px] opacity-60 uppercase">{d.dayLetter}</span>
@@ -606,32 +716,35 @@ export function RoadmapTimelineView({
                 </div>
               </div>
 
-              {/* Vertical Day Background Columns & 3 Thick Quarter Borders Overlay */}
+              {/* Vertical Day Background Columns & Quarter Borders Overlay */}
               <div className="absolute inset-0 pt-16 flex pointer-events-none z-0">
                 {calendarDays.map(d => {
-                  const isQuarterEnd = d.isoDateStr === '2026-03-31' || d.isoDateStr === '2026-06-30' || d.isoDateStr === '2026-09-30';
+                  const isQuarterEnd = d.isoDateStr === `${currentYear}-03-31` || d.isoDateStr === `${currentYear}-06-30` || d.isoDateStr === `${currentYear}-09-30`;
+                  const isTodayCol = d.isoDateStr === todayIso;
                   return (
                     <div
                       key={d.index}
                       style={{ width: `${DAY_WIDTH}px` }}
-                      className={`h-full ${
-                        isQuarterEnd
-                          ? 'border-r-2 border-r-slate-400/90 dark:border-r-slate-600/90 z-20'
-                          : 'border-r border-slate-100 dark:border-slate-800/30'
-                      } ${
-                        d.isWeekend ? 'bg-slate-100/35 dark:bg-slate-850/40' : ''
-                      }`}
+                      className={`h-full ${isQuarterEnd
+                        ? 'border-r-2 border-r-slate-400/90 dark:border-r-slate-600/90 z-20'
+                        : 'border-r border-slate-200 dark:border-slate-800'
+                        } ${isTodayCol
+                          ? 'bg-rose-50/30 dark:bg-rose-950/20'
+                          : d.isWeekend
+                            ? 'bg-red-200 dark:bg-red-900/60'
+                            : ''
+                        }`}
                     />
                   );
                 })}
               </div>
 
-              {/* Today Red Line Indicator & Floating Badge (Positioned below header, fully visible) */}
+              {/* Today Red Line Indicator & Floating Badge (Positioned at dynamic todayLeftPx) */}
               <div
                 className="absolute top-16 bottom-0 w-0.5 bg-rose-500 z-30 pointer-events-none shadow-sm"
                 style={{ left: `${todayLeftPx}px` }}
               >
-                <div className="sticky top-1 -ml-7 px-2 w-fit py-0.5 bg-rose-600 text-white text-[10px] font-bold rounded-full shadow-md flex items-center gap-1 border border-white dark:border-slate-900 whitespace-nowrap">
+                <div className="sticky top-0 -ml-7 px-2 w-fit py-0.5 bg-rose-600 text-white text-[10px] font-bold rounded-full shadow-md flex items-center gap-1 border border-white dark:border-slate-900 whitespace-nowrap">
                   <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                   <span>Today</span>
                 </div>
@@ -640,44 +753,28 @@ export function RoadmapTimelineView({
               {/* Timeline Bar Tracks */}
               <div className="divide-y divide-slate-100 dark:divide-slate-800/80 relative z-10">
                 {filteredProjects.map((project) => {
-                  const projectTasks = tasks.filter(t => t.projectId === project.id);
-                  const isExpanded = !!expandedProjects[project.id];
-                  const projCode = project.code || project.id.toUpperCase();
-
-                  // Schedule override during drag
-                  const isProjDragging = activeDrag && activeDrag.itemType === 'project' && activeDrag.itemId === project.id;
-                  const projSched = projectSchedules[project.id] || {};
-                  const projPos = getBarPixelPos(
-                    projSched.startDate,
-                    projSched.deadline,
-                    isProjDragging ? activeDrag.currentStartIdx : undefined,
-                    isProjDragging ? activeDrag.currentEndIdx : undefined
-                  );
+                  const pId = project.id || project._id;
+                  const projectTasks = tasks.filter(t => t.projectId === pId || t.projectId === project.code);
+                  const isExpanded = !!expandedProjects[pId];
+                  const projCode = project.code || pId.toUpperCase();
+                  const projectBounds = getProjectTaskBounds(pId, project.code, project);
+                  const projPos = getBarPixelPos(projectBounds.startDate, projectBounds.endDate);
 
                   return (
-                    <div key={project.id} className="flex flex-col">
-                      {/* Project Bar Track - Highlighted container */}
+                    <div key={pId} className="flex flex-col">
+                      {/* Project Bar Track (Auto-spans child tasks, Non-draggable) */}
                       <div className="h-14 relative flex items-center bg-purple-800/10 dark:bg-slate-800/40 border-y border-slate-200/90 dark:border-slate-700/80">
                         <div
-                          className={`group relative h-8 rounded-lg shadow-sm transition-shadow flex items-center px-3 text-white font-semibold text-xs overflow-visible cursor-grab active:cursor-grabbing ${isProjDragging ? 'ring-2 ring-brand ring-offset-2 z-30 shadow-lg brightness-110 scale-[1.01]' : 'hover:brightness-105 hover:shadow-md'
-                            }`}
+                          className="group relative h-8 rounded-lg shadow-sm transition-all flex items-center px-3 text-white font-semibold text-xs overflow-visible cursor-pointer hover:brightness-105 hover:shadow-md"
                           style={{
                             left: `${projPos.leftPx}px`,
                             width: `${projPos.widthPx}px`,
                             backgroundColor: project.color || 'var(--brand-primary)'
                           }}
-                          onMouseDown={(e) => handleMouseDown(e, 'project', project.id, 'move')}
+                          onClick={() => toggleProject(pId)}
+                          title="Click to toggle deliverables"
                         >
-                          {/* Left Stretch Handle */}
-                          <div
-                            title="Drag left edge to stretch/shrink start date"
-                            className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize hover:bg-white/40 active:bg-white/60 rounded-l-lg flex items-center justify-center z-20 opacity-80 hover:opacity-100"
-                            onMouseDown={(e) => handleMouseDown(e, 'project', project.id, 'left')}
-                          >
-                            <div className="w-1 h-3 bg-white/80 rounded-full" />
-                          </div>
-
-                          {/* Center Content with Code/ID */}
+                          {/* Center Content with Code/ID & Deliverables Count */}
                           <div className="flex items-center justify-between w-full min-w-0 gap-1.5 pointer-events-none px-1">
                             <span className="truncate font-bold tracking-tight drop-shadow-sm flex items-center gap-1.5">
                               <span className="opacity-90 font-mono text-[10px] bg-black/25 px-1 py-0.2 rounded">
@@ -686,29 +783,22 @@ export function RoadmapTimelineView({
                               <span>{project.name}</span>
                             </span>
                             <span className="text-[10px] bg-black/30 px-1.5 py-0.5 rounded-full font-bold font-mono shrink-0">
-                              {projPos.durationDays}d
+                              {projectBounds.hasTasks ? `${projPos.durationDays}d (${projectBounds.taskCount} tasks)` : 'No tasks'}
                             </span>
                           </div>
 
-                          {/* Right Stretch Handle */}
-                          <div
-                            title="Drag right edge to stretch/shrink deadline date"
-                            className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize hover:bg-white/40 active:bg-white/60 rounded-r-lg flex items-center justify-center z-20 opacity-80 hover:opacity-100"
-                            onMouseDown={(e) => handleMouseDown(e, 'project', project.id, 'right')}
-                          >
-                            <div className="w-1 h-3 bg-white/80 rounded-full" />
-                          </div>
-
-                          {/* Live Hover/Drag Date Range Tooltip */}
+                          {/* Live Hover Date Range Tooltip */}
                           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex items-center gap-1.5 px-2.5 py-1 bg-slate-900 text-white text-[10px] font-mono rounded-md shadow-md whitespace-nowrap pointer-events-none z-30">
                             <Calendar className="w-3 h-3 text-brand" />
-                            <span>[{projCode}] {projPos.startDateIso} – {projPos.endDateIso} ({projPos.durationDays} days)</span>
+                            <span>
+                              [{projCode}] {project.name} | Deliverables Span: {formatDate(projPos.startDateIso)} – {formatDate(projPos.endDateIso)} ({projectBounds.taskCount} tasks, {projPos.durationDays} days) (Auto-calculated from tasks)
+                            </span>
                           </div>
 
                           {/* Progress fill */}
                           <div
                             className="absolute bottom-0 left-0 h-1 bg-white/40 rounded-full pointer-events-none"
-                            style={{ width: `${project.progress}%` }}
+                            style={{ width: `${project.progress || 0}%` }}
                           />
                         </div>
                       </div>
@@ -717,23 +807,31 @@ export function RoadmapTimelineView({
                       {isExpanded && projectTasks.length > 0 && (
                         <div className="bg-slate-50/50 dark:bg-slate-900/50 divide-y divide-slate-100 dark:divide-slate-800/40 border-t border-slate-100 dark:border-slate-800/60">
                           {projectTasks.map((task) => {
-                            const isTaskDragging = activeDrag && activeDrag.itemType === 'task' && activeDrag.itemId === task.id;
-                            const taskSched = taskSchedules[task.id] || {};
+                            const tId = task.id || task._id;
+                            const isTaskDragging = activeDrag && activeDrag.itemType === 'task' && activeDrag.itemId === tId;
+                            const taskSched = taskSchedules[tId] || {};
+                            const taskStart = taskSched.startDate || task.startDate || task.fromDate || todayIso;
+                            const taskDue = taskSched.dueDate || task.dueDate || task.toDate || task.targetDate || taskStart;
+
                             const taskPos = getBarPixelPos(
-                              taskSched.startDate,
-                              taskSched.dueDate,
+                              taskStart,
+                              taskDue,
                               isTaskDragging ? activeDrag.currentStartIdx : undefined,
                               isTaskDragging ? activeDrag.currentEndIdx : undefined
                             );
 
-                            const taskCode = task.code || task.id;
+                            const taskCode = task.code || tId;
+                            const canDragT = canUserDragTask(task, project);
 
                             return (
-                              <div key={task.id} className="h-9 relative flex items-center">
+                              <div key={tId} className="h-9 relative flex items-center">
                                 <div
-                                  className={`group relative h-6 rounded-md shadow-2xs transition-shadow flex items-center px-2 text-white font-medium text-[11px] overflow-visible cursor-grab active:cursor-grabbing ${isTaskDragging
-                                    ? 'ring-2 ring-brand ring-offset-1 z-30 shadow-md brightness-110 scale-[1.01]'
-                                    : 'hover:brightness-105'
+                                  className={`group relative h-6 rounded-md shadow-2xs transition-shadow flex items-center px-2 text-white font-medium text-[11px] overflow-visible ${canDragT
+                                    ? 'cursor-grab active:cursor-grabbing'
+                                    : 'cursor-default'
+                                    } ${isTaskDragging
+                                      ? 'ring-2 ring-brand ring-offset-1 z-30 shadow-md brightness-110 scale-[1.01]'
+                                      : 'hover:brightness-105'
                                     } ${task.status === 'Completed'
                                       ? 'bg-emerald-600'
                                       : task.status === 'In Progress'
@@ -744,37 +842,42 @@ export function RoadmapTimelineView({
                                     left: `${taskPos.leftPx}px`,
                                     width: `${taskPos.widthPx}px`
                                   }}
-                                  onMouseDown={(e) => handleMouseDown(e, 'task', task.id, 'move')}
+                                  onMouseDown={(e) => canDragT ? handleMouseDown(e, 'task', tId, 'move', task, project) : e.preventDefault()}
                                 >
-                                  {/* Left Stretch Handle */}
-                                  <div
-                                    title="Drag left edge to resize start date"
-                                    className="absolute left-0 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-white/40 rounded-l-md z-20"
-                                    onMouseDown={(e) => handleMouseDown(e, 'task', task.id, 'left')}
-                                  />
+                                  {/* Left Stretch Handle: Drag to adjust Date From */}
+                                  {canDragT && (
+                                    <div
+                                      title="Drag left edge to resize Date From"
+                                      className="absolute left-0 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-white/40 rounded-l-md z-20"
+                                      onMouseDown={(e) => handleMouseDown(e, 'task', tId, 'left', task, project)}
+                                    />
+                                  )}
 
                                   <div className="flex items-center justify-between w-full min-w-0 pointer-events-none px-1 gap-1">
                                     <span className="truncate text-[10px] font-semibold flex items-center gap-1">
                                       <span className="opacity-90 font-mono text-[9px] bg-black/25 px-1 py-0.2 rounded shrink-0">
                                         [{taskCode}]
                                       </span>
-                                      <span className="truncate">{task.title}</span>
+                                      <span>{task.title}</span>
                                     </span>
-                                    <span className="text-[9px] bg-black/25 px-1 py-0.2 rounded font-mono shrink-0 ml-1">
+                                    <span className="text-[9px] opacity-75 font-mono shrink-0">
                                       {taskPos.durationDays}d
                                     </span>
                                   </div>
 
-                                  {/* Right Stretch Handle */}
-                                  <div
-                                    title="Drag right edge to resize due date"
-                                    className="absolute right-0 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-white/40 rounded-r-md z-20"
-                                    onMouseDown={(e) => handleMouseDown(e, 'task', task.id, 'right')}
-                                  />
+                                  {/* Right Stretch Handle: Drag to adjust Date To */}
+                                  {canDragT && (
+                                    <div
+                                      title="Drag right edge to resize Date To"
+                                      className="absolute right-0 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-white/40 rounded-r-md z-20"
+                                      onMouseDown={(e) => handleMouseDown(e, 'task', tId, 'right', task, project)}
+                                    />
+                                  )}
 
-                                  {/* Live Hover/Drag Tooltip */}
-                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex items-center gap-1 px-2 py-0.5 bg-slate-900 text-white text-[9px] font-mono rounded shadow-sm whitespace-nowrap pointer-events-none z-30">
-                                    <span>[{taskCode}] {taskPos.startDateIso} – {taskPos.endDateIso} ({taskPos.durationDays}d)</span>
+                                  {/* Task Tooltip with Date From and Date To */}
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex items-center gap-1.5 px-2 py-0.5 bg-slate-900 text-white text-[9px] font-mono rounded shadow-md whitespace-nowrap pointer-events-none z-30">
+                                    <span>[{taskCode}] {task.title} | From: {formatDate(taskPos.startDateIso)} – To: {formatDate(taskPos.endDateIso)} ({taskPos.durationDays}d)</span>
+                                    {!canDragT && <span className="text-amber-400 font-sans ml-1">(View Only)</span>}
                                   </div>
                                 </div>
                               </div>

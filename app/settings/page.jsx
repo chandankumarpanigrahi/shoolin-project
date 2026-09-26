@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '@/components/providers/AppProvider';
+import { api } from '@/lib/api';
 import { showConfirm } from '@/lib/swal';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { useToast } from '@/components/common/Toast';
@@ -17,6 +18,7 @@ import {
   Sparkles,
   Settings,
   ShieldCheck,
+  ShieldAlert,
   Bell,
   Monitor,
   Save,
@@ -44,13 +46,14 @@ import {
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Tabs ──────────────────────────────────────────────────
-const TABS = [
+// ─── Sidebar Navigation Tabs with RBAC Mapping ───────────────────────────────
+export const ALL_TABS = [
   { id: 'appearance', label: 'Appearance', icon: Palette, desc: 'Themes & brand colors' },
-  { id: 'profile', label: 'Profile', icon: UserCheck, desc: 'Identity & preferences' },
-  { id: 'workspace', label: 'Workspace', icon: Building2, desc: 'Organization & tenant' },
-  { id: 'notifications', label: 'Notifications', icon: Bell, desc: 'Alerts & communications' },
-  { id: 'display', label: 'Display & Density', icon: Monitor, desc: 'Layout & interface density' },
-  { id: 'security', label: 'Security & Data', icon: ShieldCheck, desc: 'Sessions, audit & backups' },
+  { id: 'profile', label: 'Profile', icon: UserCheck, desc: 'Identity & contact' },
+  { id: 'workspace', label: 'Workspace', icon: Building2, desc: 'Organization & tenant', perm: 'settings.workspace.view' },
+  { id: 'notifications', label: 'Notifications', icon: Bell, desc: 'Alerts & communications', perm: 'settings.notifications.view' },
+  { id: 'display', label: 'Display & Density', icon: Monitor, desc: 'Layout & interface density', perm: 'settings.display.view' },
+  { id: 'security', label: 'Security & Data', icon: ShieldCheck, desc: 'Passwords & session safeguards' },
 ];
 
 // ─── Clean Section Card Wrapper with Optional Save Footer ─────────────────────
@@ -65,6 +68,8 @@ function SectionCard({
   onReset,
   saveLabel = 'Save Changes',
   showFooterSave = true,
+  isReadOnly = false,
+  readOnlyNotice = '',
 }) {
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden transition-colors">
@@ -75,11 +80,17 @@ function SectionCard({
             <Icon className="w-4 h-4 text-brand" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 tracking-tight">
                 {title}
               </h2>
               {badge}
+              {isReadOnly && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                  <Lock className="w-2.5 h-2.5" />
+                  Read-Only
+                </span>
+              )}
             </div>
             {description && (
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
@@ -89,8 +100,8 @@ function SectionCard({
           </div>
         </div>
 
-        {/* Quick Save in Card Header if Dirty */}
-        {isDirty && onSave && (
+        {/* Quick Save in Card Header if Dirty and Not Read-Only */}
+        {isDirty && onSave && !isReadOnly && (
           <button
             type="button"
             onClick={onSave}
@@ -103,48 +114,76 @@ function SectionCard({
       </div>
 
       {/* Body */}
-      <div className="p-5">{children}</div>
+      <div className="p-5">
+        {isReadOnly && readOnlyNotice && (
+          <div className="mb-4 px-3.5 py-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/40 text-amber-800 dark:text-amber-300 flex items-center gap-2.5 text-xs font-medium">
+            <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>{readOnlyNotice}</span>
+          </div>
+        )}
+        {children}
+      </div>
 
       {/* Card Action Footer */}
-      {showFooterSave && onSave && (
+      {showFooterSave && (
         <div className="px-5 py-3 bg-slate-50/70 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-[11px]">
-            {isDirty ? (
-              <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                Unsaved modifications
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                All settings up to date
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {onReset && (
+          {isReadOnly ? (
+            <>
+              <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                <Lock className="w-3.5 h-3.5" />
+                <span>View-only mode (modifications restricted by administrator policy)</span>
+              </div>
               <button
                 type="button"
-                onClick={onReset}
-                disabled={!isDirty}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-40 disabled:pointer-events-none rounded-lg transition-colors"
+                disabled
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-200 dark:border-slate-700"
               >
-                Discard
+                <Lock className="w-3.5 h-3.5" />
+                Editing Locked
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onSave}
-              className={`inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg transition-all shadow-xs ${
-                isDirty
-                  ? 'bg-brand hover:bg-brand-hover text-white ring-2 ring-brand/20'
-                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'
-              }`}
-            >
-              <Save className="w-3.5 h-3.5" />
-              {saveLabel}
-            </button>
-          </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 text-[11px]">
+                {isDirty ? (
+                  <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Unsaved modifications
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    All settings up to date
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {onReset && (
+                  <button
+                    type="button"
+                    onClick={onReset}
+                    disabled={!isDirty}
+                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-40 disabled:pointer-events-none rounded-lg transition-colors"
+                  >
+                    Discard
+                  </button>
+                )}
+                {onSave && (
+                  <button
+                    type="button"
+                    onClick={onSave}
+                    className={`inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg transition-all shadow-xs ${isDirty
+                      ? 'bg-brand hover:bg-brand-hover text-white ring-2 ring-brand/20'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'
+                      }`}
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {saveLabel}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -242,7 +281,7 @@ function AppearanceTab({ toast }) {
               id: 'dark',
               label: 'Dark Mode',
               desc: 'Deep space OLED black & navy slate ergonomic theme',
-              iconBg: 'bg-slate-800 text-brand border border-slate-700',
+              iconBg: 'bg-slate-800 text-white border border-slate-700',
               icon: <Moon className="w-5 h-5" />,
             },
           ].map((opt) => (
@@ -256,11 +295,10 @@ function AppearanceTab({ toast }) {
                   toast.info(`Switched to ${opt.label}`);
                 }
               }}
-              className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between w-full text-left group ${
-                theme === opt.id
-                  ? 'border-brand bg-brand-subtle shadow-xs ring-1 ring-brand/20'
-                  : 'border-slate-200 dark:border-slate-800 hover:border-brand/40 hover:bg-slate-50 dark:hover:bg-slate-800/40'
-              }`}
+              className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between w-full text-left group ${theme === opt.id
+                ? 'border-brand bg-brand-subtle dark:bg-slate-800 shadow-xs ring-1 ring-brand/20'
+                : 'border-slate-200 dark:border-slate-800 hover:border-brand/40 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                }`}
             >
               <div className="flex items-center gap-3">
                 <div className={`p-2.5 rounded-xl ${opt.iconBg} transition-transform group-hover:scale-105`}>
@@ -315,11 +353,10 @@ function AppearanceTab({ toast }) {
                       handleApplyColor(preset.id);
                       toast.success(`Active palette: ${preset.name}`);
                     }}
-                    className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border-2 transition-all group ${
-                      isSelected
-                        ? 'border-brand bg-brand-subtle shadow-xs scale-102'
-                        : 'border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                    }`}
+                    className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border-2 transition-all group ${isSelected
+                      ? 'border-brand bg-brand-subtle dark:bg-slate-800 shadow-xs scale-102'
+                      : 'border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                      }`}
                   >
                     <span
                       className="w-8 h-8 rounded-full shadow-sm flex items-center justify-center text-white ring-2 ring-white dark:ring-slate-900 transition-transform group-hover:scale-110"
@@ -385,15 +422,15 @@ function AppearanceTab({ toast }) {
 
 // ─── 2. Profile Tab ───────────────────────────────────────────────────────────
 function ProfileTab({ toast }) {
-  const { currentUser, setCurrentUser, users, setUsers, openChangeDpModal, setIsAuthOpen } = useAppContext();
+  const { currentUser, setCurrentUser, users, setUsers, openChangeDpModal, handleUpdateUser, can } = useAppContext();
+  const canEdit = can ? can('settings.profile.edit') : true;
 
   const [form, setForm] = useState({
     name: currentUser?.name || '',
     email: currentUser?.email || '',
     phone: currentUser?.phone || '+91 98765 43210',
-    timezone: currentUser?.timezone || 'Asia/Kolkata',
+    dob: currentUser?.dob || currentUser?.dateOfBirth || '',
     department: currentUser?.department || 'Executive Office',
-    bio: currentUser?.bio || 'Operations and enterprise strategy lead at Shoolin Innovations.',
   });
 
   const [dirty, setDirty] = useState(false);
@@ -405,19 +442,23 @@ function ProfileTab({ toast }) {
         name: currentUser.name || '',
         email: currentUser.email || '',
         phone: currentUser.phone || '+91 98765 43210',
-        timezone: currentUser.timezone || 'Asia/Kolkata',
+        dob: currentUser.dob || currentUser.dateOfBirth || '',
         department: currentUser.department || 'Executive Office',
-        bio: currentUser.bio || 'Operations and enterprise strategy lead at Shoolin Innovations.',
       });
     }
   }, [currentUser]);
 
   const update = (key, val) => {
+    if (!canEdit) return;
     setForm((p) => ({ ...p, [key]: val }));
     setDirty(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!canEdit) {
+      toast.error('You do not have permission to edit profile details.');
+      return;
+    }
     if (!form.name.trim()) {
       toast.error('Name cannot be empty.');
       return;
@@ -428,22 +469,23 @@ function ProfileTab({ toast }) {
       name: form.name.trim(),
       email: form.email.trim(),
       phone: form.phone.trim(),
-      timezone: form.timezone,
+      dob: form.dob || '',
+      dateOfBirth: form.dob || '',
       department: form.department,
-      bio: form.bio,
     };
 
-    // Update current user
-    setCurrentUser(updatedUser);
-
-    // Update in users array
-    if (users && setUsers) {
-      const newUsers = users.map((u) => (u.id === currentUser.id ? updatedUser : u));
-      setUsers(newUsers);
-      try {
-        localStorage.setItem('pulsepm_users', JSON.stringify(newUsers));
-      } catch (e) {
-        console.error(e);
+    if (handleUpdateUser) {
+      await handleUpdateUser(updatedUser);
+    } else {
+      setCurrentUser(updatedUser);
+      if (users && setUsers) {
+        const newUsers = users.map((u) => (u.id === currentUser.id ? updatedUser : u));
+        setUsers(newUsers);
+        try {
+          localStorage.setItem('pulsepm_users', JSON.stringify(newUsers));
+        } catch (e) {
+          console.error(e);
+        }
       }
     }
 
@@ -456,10 +498,9 @@ function ProfileTab({ toast }) {
       setForm({
         name: currentUser.name || '',
         email: currentUser.email || '',
-        phone: currentUser.phone || '',
-        timezone: currentUser.timezone || 'Asia/Kolkata',
-        department: currentUser.department || '',
-        bio: currentUser.bio || '',
+        phone: currentUser.phone || '+91 98765 43210',
+        dob: currentUser.dob || currentUser.dateOfBirth || '',
+        department: currentUser.department || 'Executive Office',
       });
     }
     setDirty(false);
@@ -476,17 +517,19 @@ function ProfileTab({ toast }) {
         showFooterSave={false}
       >
         <div className="flex flex-col sm:flex-row sm:items-center gap-5">
-          {/* Avatar with Overlay */}
+          {/* Avatar with Overlay - DP update is always accessible */}
           <div
-            className="relative group cursor-pointer shrink-0 self-start sm:self-auto"
+            className="relative group shrink-0 w-16 h-16 cursor-pointer"
             onClick={() => openChangeDpModal(currentUser)}
             title="Click to change profile picture"
           >
-            <UserAvatar user={currentUser} size="xl" />
-            <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
-              <Camera className="w-5 h-5" />
+            <div className="relative w-16 h-16 rounded-full overflow-hidden">
+              <UserAvatar user={currentUser} size="xl" className="w-full h-full" />
+              <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                <Camera className="w-5 h-5" />
+              </div>
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full bg-brand border-2 border-white dark:border-slate-900 flex items-center justify-center text-white shadow-xs">
+            <div className="absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full bg-brand border-2 border-white dark:border-slate-900 flex items-center justify-center text-white shadow-xs pointer-events-none">
               <Camera className="w-3 h-3" />
             </div>
           </div>
@@ -503,25 +546,6 @@ function ProfileTab({ toast }) {
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
               Department: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{currentUser.department}</strong>
             </p>
-
-            <div className="flex items-center gap-2.5 mt-3.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => openChangeDpModal(currentUser)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand hover:bg-brand-hover text-white text-xs font-bold rounded-lg transition-colors shadow-xs"
-              >
-                <Camera className="w-3.5 h-3.5" />
-                Update Photo
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsAuthOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-semibold rounded-lg transition-colors shadow-2xs"
-              >
-                <UserCheck className="w-3.5 h-3.5 text-brand" />
-                Switch Active User
-              </button>
-            </div>
           </div>
         </div>
       </SectionCard>
@@ -529,12 +553,14 @@ function ProfileTab({ toast }) {
       {/* Personal Information Form Card with Save Bar */}
       <SectionCard
         title="Personal Profile & Preferences"
-        description="Manage your contact details, enterprise handle, and regional timezone"
+        description="Manage your contact details and enterprise display name"
         icon={UserCheck}
         isDirty={dirty}
         onSave={handleSave}
         onReset={handleDiscard}
         saveLabel="Save Profile Details"
+        isReadOnly={!canEdit}
+        readOnlyNotice={!canEdit ? 'Profile details are locked by administrator access control policy (View-Only mode).' : ''}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -544,10 +570,11 @@ function ProfileTab({ toast }) {
               </label>
               <input
                 type="text"
+                disabled={!canEdit}
                 value={form.name}
                 onChange={(e) => update('name', e.target.value)}
                 placeholder="Your full name"
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -557,10 +584,11 @@ function ProfileTab({ toast }) {
               </label>
               <input
                 type="email"
+                disabled={!canEdit}
                 value={form.email}
                 onChange={(e) => update('email', e.target.value)}
                 placeholder="name@shoolin.com"
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -570,42 +598,26 @@ function ProfileTab({ toast }) {
               </label>
               <input
                 type="tel"
+                disabled={!canEdit}
                 value={form.phone}
                 onChange={(e) => update('phone', e.target.value)}
                 placeholder="+91 98765 43210"
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wide">
-                Active Timezone
+                Date of Birth <span className="text-slate-400 font-normal lowercase">(optional)</span>
               </label>
-              <select
-                value={form.timezone}
-                onChange={(e) => update('timezone', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-              >
-                {['Asia/Kolkata', 'UTC', 'America/New_York', 'Europe/London', 'Asia/Dubai', 'Asia/Singapore'].map((tz) => (
-                  <option key={tz} value={tz}>
-                    {tz}
-                  </option>
-                ))}
-              </select>
+              <input
+                type="date"
+                disabled={!canEdit}
+                value={form.dob || ''}
+                onChange={(e) => update('dob', e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
+              />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wide">
-              Bio & Role Summary
-            </label>
-            <textarea
-              rows={2}
-              value={form.bio}
-              onChange={(e) => update('bio', e.target.value)}
-              placeholder="Brief professional note..."
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand resize-none"
-            />
           </div>
         </div>
       </SectionCard>
@@ -615,6 +627,9 @@ function ProfileTab({ toast }) {
 
 // ─── 3. Workspace Tab ─────────────────────────────────────────────────────────
 function WorkspaceTab({ toast }) {
+  const { can } = useAppContext();
+  const canEdit = can ? can('settings.workspace.edit') : false;
+
   const [form, setForm] = useState({
     orgName: 'Shoolin Innovations Limited',
     taskPrefix: 'SHL',
@@ -633,15 +648,20 @@ function WorkspaceTab({ toast }) {
       if (saved) {
         setForm(JSON.parse(saved));
       }
-    } catch {}
+    } catch { }
   }, []);
 
   const update = (key, val) => {
+    if (!canEdit) return;
     setForm((p) => ({ ...p, [key]: val }));
     setDirty(true);
   };
 
   const handleSave = () => {
+    if (!canEdit) {
+      toast.error('You do not have administrative permission to modify workspace parameters.');
+      return;
+    }
     try {
       localStorage.setItem('shoolin_workspace_settings', JSON.stringify(form));
       setDirty(false);
@@ -655,7 +675,7 @@ function WorkspaceTab({ toast }) {
     try {
       const saved = localStorage.getItem('shoolin_workspace_settings');
       if (saved) setForm(JSON.parse(saved));
-    } catch {}
+    } catch { }
     setDirty(false);
     toast.info('Workspace changes reverted.');
   };
@@ -671,6 +691,8 @@ function WorkspaceTab({ toast }) {
         onSave={handleSave}
         onReset={handleDiscard}
         saveLabel="Save Organization Parameters"
+        isReadOnly={!canEdit}
+        readOnlyNotice={!canEdit ? 'Workspace parameters are restricted to Workspace Administrators (View-Only mode).' : ''}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -679,9 +701,10 @@ function WorkspaceTab({ toast }) {
             </label>
             <input
               type="text"
+              disabled={!canEdit}
               value={form.orgName}
               onChange={(e) => update('orgName', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -691,10 +714,11 @@ function WorkspaceTab({ toast }) {
             </label>
             <input
               type="text"
+              disabled={!canEdit}
               value={form.taskPrefix}
               onChange={(e) => update('taskPrefix', e.target.value.toUpperCase())}
               placeholder="SHL"
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono uppercase text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono uppercase text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -703,9 +727,10 @@ function WorkspaceTab({ toast }) {
               Fiscal Year Financial Cycle
             </label>
             <select
+              disabled={!canEdit}
               value={form.fiscalYear}
               onChange={(e) => update('fiscalYear', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {['April–March', 'January–December', 'July–June', 'October–September'].map((o) => (
                 <option key={o} value={o}>
@@ -721,9 +746,10 @@ function WorkspaceTab({ toast }) {
             </label>
             <input
               type="number"
+              disabled={!canEdit}
               value={form.maxProjects}
               onChange={(e) => update('maxProjects', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -733,9 +759,10 @@ function WorkspaceTab({ toast }) {
             </label>
             <input
               type="email"
+              disabled={!canEdit}
               value={form.supportEmail}
               onChange={(e) => update('supportEmail', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -744,9 +771,10 @@ function WorkspaceTab({ toast }) {
               Interface Default Language
             </label>
             <select
+              disabled={!canEdit}
               value={form.language}
               onChange={(e) => update('language', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {['English (US)', 'English (UK)', 'Hindi', 'Arabic', 'Spanish', 'French', 'German'].map((l) => (
                 <option key={l} value={l}>
@@ -879,6 +907,9 @@ const DEFAULT_NOTIFICATION_RULES = [
 ];
 
 function NotificationsTab({ toast }) {
+  const { can } = useAppContext();
+  const canEdit = can ? can('settings.notifications.edit') : false;
+
   // Matrix rules state
   const [rules, setRules] = useState(DEFAULT_NOTIFICATION_RULES);
   // Quiet hours and global controls
@@ -924,6 +955,10 @@ function NotificationsTab({ toast }) {
   }, []);
 
   const handleRequestPermission = async () => {
+    if (!canEdit) {
+      toast.info('Browser push configuration is view-only for your current role.');
+      return;
+    }
     if (typeof window === 'undefined' || !('Notification' in window)) {
       toast.error('Browser push notifications are not supported in this environment.');
       return;
@@ -942,6 +977,10 @@ function NotificationsTab({ toast }) {
   };
 
   const handleSendTestPush = () => {
+    if (!canEdit) {
+      toast.info('Test notifications restricted in view-only mode.');
+      return;
+    }
     if (typeof window === 'undefined') return;
 
     if (!('Notification' in window) || Notification.permission !== 'granted') {
@@ -962,6 +1001,7 @@ function NotificationsTab({ toast }) {
   };
 
   const updateRuleChannel = (id, channel) => {
+    if (!canEdit) return;
     setRules((prev) =>
       prev.map((r) => (r.id === id ? { ...r, [channel]: !r[channel] } : r))
     );
@@ -969,6 +1009,7 @@ function NotificationsTab({ toast }) {
   };
 
   const updateRuleTiming = (id, newTiming) => {
+    if (!canEdit) return;
     setRules((prev) =>
       prev.map((r) => (r.id === id ? { ...r, timing: newTiming } : r))
     );
@@ -976,6 +1017,10 @@ function NotificationsTab({ toast }) {
   };
 
   const handleSave = () => {
+    if (!canEdit) {
+      toast.error('You do not have permission to modify notification rules.');
+      return;
+    }
     try {
       localStorage.setItem('shoolin_push_matrix_v2', JSON.stringify(rules));
       localStorage.setItem('shoolin_quiet_hours_v2', JSON.stringify(quietHours));
@@ -998,7 +1043,7 @@ function NotificationsTab({ toast }) {
 
       const savedGeneral = localStorage.getItem('shoolin_notification_general_v2');
       if (savedGeneral) setGeneralPrefs(JSON.parse(savedGeneral));
-    } catch {}
+    } catch { }
     setDirty(false);
     toast.info('Notification changes reverted.');
   };
@@ -1039,8 +1084,9 @@ function NotificationsTab({ toast }) {
             {permissionStatus !== 'granted' ? (
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={handleRequestPermission}
-                className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-brand hover:bg-brand-hover text-white shadow-sm transition-all flex items-center gap-1.5"
+                className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-sm transition-all flex items-center gap-1.5"
               >
                 <Zap className="w-3.5 h-3.5" />
                 Enable Browser Push
@@ -1049,8 +1095,9 @@ function NotificationsTab({ toast }) {
 
             <button
               type="button"
+              disabled={!canEdit}
               onClick={handleSendTestPush}
-              className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-white/10 hover:bg-white/15 text-white border border-white/10 transition-all flex items-center gap-1.5"
+              className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-white/10 hover:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed text-white border border-white/10 transition-all flex items-center gap-1.5"
             >
               <Send className="w-3.5 h-3.5" />
               Send Test Alert
@@ -1069,6 +1116,8 @@ function NotificationsTab({ toast }) {
         onReset={handleDiscard}
         saveLabel="Save Notification Matrix"
         showFooterSave={true}
+        isReadOnly={!canEdit}
+        readOnlyNotice={!canEdit ? 'Notification matrix rules and delivery timings are view-only for your current role.' : ''}
       >
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
           {rules.map((rule) => {
@@ -1100,9 +1149,10 @@ function NotificationsTab({ toast }) {
                         When to Push
                       </label>
                       <select
+                        disabled={!canEdit}
                         value={rule.timing}
                         onChange={(e) => updateRuleTiming(rule.id, e.target.value)}
-                        className="text-xs py-1.5 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand font-medium"
+                        className="text-xs py-1.5 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         {rule.timingOptions.map((opt) => (
                           <option key={opt.value} value={opt.value}>
@@ -1120,13 +1170,13 @@ function NotificationsTab({ toast }) {
                         </span>
                         <button
                           type="button"
+                          disabled={!canEdit}
                           onClick={() => updateRuleChannel(rule.id, 'push')}
-                          title="Toggle Web/Mobile Push"
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${
-                            rule.push
-                              ? 'bg-brand/10 border-brand text-brand dark:bg-brand/20'
-                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 opacity-60'
-                          }`}
+                          title={canEdit ? 'Toggle Web/Mobile Push' : 'Locked in view-only mode'}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${rule.push
+                            ? 'bg-brand/10 border-brand text-brand dark:bg-brand/20'
+                            : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 opacity-60'
+                            } ${!canEdit ? 'cursor-not-allowed opacity-50' : ''}`}
                         >
                           <Smartphone className="w-4 h-4" />
                         </button>
@@ -1138,13 +1188,13 @@ function NotificationsTab({ toast }) {
                         </span>
                         <button
                           type="button"
+                          disabled={!canEdit}
                           onClick={() => updateRuleChannel(rule.id, 'inApp')}
-                          title="Toggle In-App Banner/Drawer"
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${
-                            rule.inApp
-                              ? 'bg-indigo-50 border-indigo-400 text-indigo-600 dark:bg-indigo-950/40 dark:border-indigo-600 dark:text-indigo-400'
-                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 opacity-60'
-                          }`}
+                          title={canEdit ? 'Toggle In-App Banner/Drawer' : 'Locked in view-only mode'}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${rule.inApp
+                            ? 'bg-indigo-50 border-indigo-400 text-indigo-600 dark:bg-indigo-950/40 dark:border-indigo-600 dark:text-indigo-400'
+                            : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 opacity-60'
+                            } ${!canEdit ? 'cursor-not-allowed opacity-50' : ''}`}
                         >
                           <Bell className="w-4 h-4" />
                         </button>
@@ -1156,13 +1206,13 @@ function NotificationsTab({ toast }) {
                         </span>
                         <button
                           type="button"
+                          disabled={!canEdit}
                           onClick={() => updateRuleChannel(rule.id, 'email')}
-                          title="Toggle Email Alert"
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${
-                            rule.email
-                              ? 'bg-sky-50 border-sky-400 text-sky-600 dark:bg-sky-950/40 dark:border-sky-600 dark:text-sky-400'
-                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 opacity-60'
-                          }`}
+                          title={canEdit ? 'Toggle Email Alert' : 'Locked in view-only mode'}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${rule.email
+                            ? 'bg-sky-50 border-sky-400 text-sky-600 dark:bg-sky-950/40 dark:border-sky-600 dark:text-sky-400'
+                            : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 opacity-60'
+                            } ${!canEdit ? 'cursor-not-allowed opacity-50' : ''}`}
                         >
                           <Mail className="w-4 h-4" />
                         </button>
@@ -1186,6 +1236,7 @@ function NotificationsTab({ toast }) {
         onReset={handleDiscard}
         saveLabel="Save Schedule Rules"
         showFooterSave={false}
+        isReadOnly={!canEdit}
       >
         <div className="space-y-4">
           <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-800">
@@ -1198,19 +1249,20 @@ function NotificationsTab({ toast }) {
             <button
               type="button"
               role="switch"
+              disabled={!canEdit}
               aria-checked={quietHours.enabled}
               onClick={() => {
+                if (!canEdit) return;
                 setQuietHours((q) => ({ ...q, enabled: !q.enabled }));
                 setDirty(true);
               }}
-              className={`w-10 h-5 rounded-full transition-colors shrink-0 relative cursor-pointer ${
-                quietHours.enabled ? 'bg-brand' : 'bg-slate-300 dark:bg-slate-700'
-              }`}
+              className={`w-10 h-5 rounded-full transition-colors shrink-0 relative ${canEdit ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                } ${quietHours.enabled ? 'bg-brand' : 'bg-slate-300 dark:bg-slate-700'
+                }`}
             >
               <span
-                className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${
-                  quietHours.enabled ? 'left-[22px]' : 'left-0.5'
-                }`}
+                className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${quietHours.enabled ? 'left-[22px]' : 'left-0.5'
+                  }`}
               />
             </button>
           </div>
@@ -1223,12 +1275,14 @@ function NotificationsTab({ toast }) {
                 </label>
                 <input
                   type="time"
+                  disabled={!canEdit}
                   value={quietHours.startTime}
                   onChange={(e) => {
+                    if (!canEdit) return;
                     setQuietHours((q) => ({ ...q, startTime: e.target.value }));
                     setDirty(true);
                   }}
-                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -1238,12 +1292,14 @@ function NotificationsTab({ toast }) {
                 </label>
                 <input
                   type="time"
+                  disabled={!canEdit}
                   value={quietHours.endTime}
                   onChange={(e) => {
+                    if (!canEdit) return;
                     setQuietHours((q) => ({ ...q, endTime: e.target.value }));
                     setDirty(true);
                   }}
-                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -1262,19 +1318,20 @@ function NotificationsTab({ toast }) {
                 <button
                   type="button"
                   role="switch"
+                  disabled={!canEdit}
                   aria-checked={quietHours.allowCriticalEscalations}
                   onClick={() => {
+                    if (!canEdit) return;
                     setQuietHours((q) => ({ ...q, allowCriticalEscalations: !q.allowCriticalEscalations }));
                     setDirty(true);
                   }}
-                  className={`w-9 h-5 rounded-full transition-colors shrink-0 relative cursor-pointer ${
-                    quietHours.allowCriticalEscalations ? 'bg-amber-600' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
+                  className={`w-9 h-5 rounded-full transition-colors shrink-0 relative ${canEdit ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                    } ${quietHours.allowCriticalEscalations ? 'bg-amber-600' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
                 >
                   <span
-                    className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${
-                      quietHours.allowCriticalEscalations ? 'left-[18px]' : 'left-0.5'
-                    }`}
+                    className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${quietHours.allowCriticalEscalations ? 'left-[18px]' : 'left-0.5'
+                      }`}
                   />
                 </button>
               </div>
@@ -1288,6 +1345,9 @@ function NotificationsTab({ toast }) {
 
 // ─── 5. Display & Density Tab ─────────────────────────────────────────────────
 function DisplayTab({ toast }) {
+  const { can } = useAppContext();
+  const canEdit = can ? can('settings.display.edit') : false;
+
   const [opts, setOpts] = useState({
     density: 'comfortable',
     sidebarDefault: 'expanded',
@@ -1300,15 +1360,20 @@ function DisplayTab({ toast }) {
     try {
       const saved = localStorage.getItem('shoolin_display_prefs');
       if (saved) setOpts(JSON.parse(saved));
-    } catch {}
+    } catch { }
   }, []);
 
   const update = (key, val) => {
+    if (!canEdit) return;
     setOpts((p) => ({ ...p, [key]: val }));
     setDirty(true);
   };
 
   const handleSave = () => {
+    if (!canEdit) {
+      toast.error('You do not have permission to modify display settings.');
+      return;
+    }
     try {
       localStorage.setItem('shoolin_display_prefs', JSON.stringify(opts));
       setDirty(false);
@@ -1322,7 +1387,7 @@ function DisplayTab({ toast }) {
     try {
       const saved = localStorage.getItem('shoolin_display_prefs');
       if (saved) setOpts(JSON.parse(saved));
-    } catch {}
+    } catch { }
     setDirty(false);
     toast.info('Display settings reverted.');
   };
@@ -1337,6 +1402,8 @@ function DisplayTab({ toast }) {
         onSave={handleSave}
         onReset={handleDiscard}
         saveLabel="Save Display Controls"
+        isReadOnly={!canEdit}
+        readOnlyNotice={!canEdit ? 'Display controls are restricted to administrators (View-Only mode).' : ''}
       >
         <div className="space-y-5">
           {/* Density Selector */}
@@ -1353,12 +1420,13 @@ function DisplayTab({ toast }) {
                 <button
                   key={d.id}
                   type="button"
+                  disabled={!canEdit}
                   onClick={() => update('density', d.id)}
-                  className={`p-3 rounded-xl border text-left transition-all ${
-                    opts.density === d.id
-                      ? 'border-brand bg-brand-subtle text-brand ring-1 ring-brand/20'
+                  className={`p-3 rounded-xl border text-left transition-all ${!canEdit ? 'opacity-80 cursor-not-allowed' : ''
+                    } ${opts.density === d.id
+                      ? 'border-brand bg-brand-subtle dark:bg-slate-800 text-brand ring-1 ring-brand/20'
                       : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-brand/40'
-                  }`}
+                    }`}
                 >
                   <p className="text-xs font-bold capitalize">{d.label}</p>
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">{d.desc}</p>
@@ -1380,12 +1448,13 @@ function DisplayTab({ toast }) {
                 <button
                   key={s.id}
                   type="button"
+                  disabled={!canEdit}
                   onClick={() => update('sidebarDefault', s.id)}
-                  className={`p-3 rounded-xl border text-left transition-all ${
-                    opts.sidebarDefault === s.id
-                      ? 'border-brand bg-brand-subtle text-brand ring-1 ring-brand/20'
+                  className={`p-3 rounded-xl border text-left transition-all ${!canEdit ? 'opacity-80 cursor-not-allowed' : ''
+                    } ${opts.sidebarDefault === s.id
+                      ? 'border-brand bg-brand-subtle dark:bg-slate-800 text-brand ring-1 ring-brand/20'
                       : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-brand/40'
-                  }`}
+                    }`}
                 >
                   <p className="text-xs font-bold">{s.label}</p>
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">{s.desc}</p>
@@ -1404,12 +1473,13 @@ function DisplayTab({ toast }) {
                 <button
                   key={r}
                   type="button"
+                  disabled={!canEdit}
                   onClick={() => update('tableRows', r)}
-                  className={`py-2 rounded-lg border text-xs font-mono font-bold transition-all ${
-                    opts.tableRows === r
-                      ? 'border-brand bg-brand-subtle text-brand'
+                  className={`py-2 rounded-lg border text-xs font-mono font-bold transition-all ${!canEdit ? 'opacity-80 cursor-not-allowed' : ''
+                    } ${opts.tableRows === r
+                      ? 'border-brand bg-brand-subtle dark:bg-slate-800 text-brand'
                       : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-brand/40'
-                  }`}
+                    }`}
                 >
                   {r} Rows
                 </button>
@@ -1430,16 +1500,16 @@ function DisplayTab({ toast }) {
             <button
               type="button"
               role="switch"
+              disabled={!canEdit}
               aria-checked={opts.animationsEnabled}
               onClick={() => update('animationsEnabled', !opts.animationsEnabled)}
-              className={`w-10 h-5 rounded-full transition-colors shrink-0 relative cursor-pointer ${
-                opts.animationsEnabled ? 'bg-brand' : 'bg-slate-300 dark:bg-slate-700'
-              }`}
+              className={`w-10 h-5 rounded-full transition-colors shrink-0 relative ${!canEdit ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                } ${opts.animationsEnabled ? 'bg-brand' : 'bg-slate-300 dark:bg-slate-700'
+                }`}
             >
               <span
-                className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${
-                  opts.animationsEnabled ? 'left-[22px]' : 'left-0.5'
-                }`}
+                className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${opts.animationsEnabled ? 'left-[22px]' : 'left-0.5'
+                  }`}
               />
             </button>
           </div>
@@ -1517,18 +1587,16 @@ function PasswordOtpCard({ toast }) {
           <button
             type="button"
             onClick={() => setMode('otp')}
-            className={`px-3 py-1 rounded-md font-bold transition-all ${
-              mode === 'otp' ? 'bg-white dark:bg-slate-900 text-brand shadow-xs' : 'text-slate-500'
-            }`}
+            className={`px-3 py-1 rounded-md font-bold transition-all ${mode === 'otp' ? 'bg-white dark:bg-slate-900 text-brand shadow-xs' : 'text-slate-500'
+              }`}
           >
             Reset via OTP Email
           </button>
           <button
             type="button"
             onClick={() => setMode('current')}
-            className={`px-3 py-1 rounded-md font-bold transition-all ${
-              mode === 'current' ? 'bg-white dark:bg-slate-900 text-brand shadow-xs' : 'text-slate-500'
-            }`}
+            className={`px-3 py-1 rounded-md font-bold transition-all ${mode === 'current' ? 'bg-white dark:bg-slate-900 text-brand shadow-xs' : 'text-slate-500'
+              }`}
           >
             Use Current Password
           </button>
@@ -1543,7 +1611,7 @@ function PasswordOtpCard({ toast }) {
                   <input
                     type="email"
                     disabled
-                    value={currentUser.email}
+                    value={currentUser?.email || ''}
                     className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-mono text-slate-600 dark:text-slate-400"
                   />
                   <button
@@ -1611,7 +1679,7 @@ function PasswordOtpCard({ toast }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-colors shadow-xs"
+            className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-colors shadow-xs disabled:opacity-50"
           >
             {loading ? 'Processing...' : 'Update Password'}
           </button>
@@ -1623,9 +1691,14 @@ function PasswordOtpCard({ toast }) {
 
 // ─── 6. Security & Data Management Tab ────────────────────────────────────────
 function SecurityTab({ toast }) {
-  const { projects, tasks, users } = useAppContext();
+  const { projects, tasks, users, currentUser } = useAppContext();
+  const isSuperAdmin = currentUser?.role === 'Super Admin';
 
   const handleExportData = () => {
+    if (!isSuperAdmin) {
+      toast.error('Data backup operations are restricted to Super Administrators.');
+      return;
+    }
     try {
       const exportPayload = {
         exportedAt: new Date().toISOString(),
@@ -1654,6 +1727,10 @@ function SecurityTab({ toast }) {
   };
 
   const handleResetWorkspace = async () => {
+    if (!isSuperAdmin) {
+      toast.error('You do not have administrative permission to reset workspace defaults.');
+      return;
+    }
     const confirmed = await showConfirm({
       title: 'Reset Workspace Caches?',
       text: 'Are you sure you want to reset local storage caches to factory defaults?',
@@ -1674,93 +1751,100 @@ function SecurityTab({ toast }) {
 
   return (
     <div className="space-y-5">
+      {/* Top Section: Password Setup & OTP Security (Accessible to all account holders) */}
       <PasswordOtpCard toast={toast} />
 
-      <SectionCard
-        title="Enterprise Security & Session Safeguards"
-        description="Session duration, authentication policies, and cryptographic security audits"
-        icon={ShieldCheck}
-        showFooterSave={false}
-      >
-        <div className="space-y-3">
-          {[
-            {
-              title: 'Multi-Factor Authentication (MFA)',
-              status: 'Configured & Active',
-              badgeColor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
-              desc: 'Enforced for all Super Admin and Department Lead roles across tenant',
-            },
-            {
-              title: 'Inactivity Session Lockout',
-              status: '30 Minutes',
-              badgeColor: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-              desc: 'Automatically locks workstation view and requires biometric or PIN reentry',
-            },
-            {
-              title: 'Role-Based Bitwise Access Audits',
-              status: 'Realtime Logging',
-              badgeColor: 'bg-brand-light text-brand-text',
-              desc: 'Tit-to-bit authorization matrix tracks every project mutation and permission override',
-            },
-          ].map((item) => (
-            <div
-              key={item.title}
-              className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800"
-            >
-              <div>
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{item.title}</p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.desc}</p>
+      {/* Bottom Section 1: Enterprise Security & Session Safeguards (Super Admin only) */}
+      {isSuperAdmin && (
+        <SectionCard
+          title="Enterprise Security & Session Safeguards"
+          description="Session duration, authentication policies, and cryptographic security audits"
+          icon={ShieldCheck}
+          showFooterSave={false}
+        >
+          <div className="space-y-3">
+            {[
+              {
+                title: 'Multi-Factor Authentication (MFA)',
+                status: 'Configured & Active',
+                badgeColor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
+                desc: 'Enforced for all Super Admin and Department Lead roles across tenant',
+              },
+              {
+                title: 'Inactivity Session Lockout',
+                status: '30 Minutes',
+                badgeColor: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+                desc: 'Automatically locks workstation view and requires biometric or PIN reentry',
+              },
+              {
+                title: 'Role-Based Bitwise Access Audits',
+                status: 'Realtime Logging',
+                badgeColor: 'bg-brand-light text-brand-text',
+                desc: 'Tit-to-bit authorization matrix tracks every project mutation and permission override',
+              },
+            ].map((item) => (
+              <div
+                key={item.title}
+                className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800"
+              >
+                <div>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{item.title}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.desc}</p>
+                </div>
+                <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full shrink-0 ${item.badgeColor}`}>
+                  {item.status}
+                </span>
               </div>
-              <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full shrink-0 ${item.badgeColor}`}>
-                {item.status}
-              </span>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Data Backup & Workspace Maintenance"
-        description="Export encrypted system snapshots or restore factory defaults"
-        icon={Download}
-        showFooterSave={false}
-      >
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/80 dark:border-slate-700/80">
-            <div>
-              <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Export Full Workspace Data</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Download all active projects, tasks, user rosters, and settings as a portable JSON package
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleExportData}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs shrink-0"
-            >
-              <Download className="w-3.5 h-3.5 text-brand" />
-              Export JSON
-            </button>
+            ))}
           </div>
+        </SectionCard>
+      )}
 
-          <div className="flex items-center justify-between gap-4 p-4 bg-rose-50/50 dark:bg-rose-950/20 rounded-xl border border-rose-200 dark:border-rose-900/60">
-            <div>
-              <p className="text-xs font-bold text-rose-800 dark:text-rose-200">Reset Local Caches & Factory Defaults</p>
-              <p className="text-[11px] text-rose-600/80 dark:text-rose-400 mt-0.5">
-                Clear customized theme overrides and restored default tenant configuration
-              </p>
+      {/* Bottom Section 2: Data Backup & Workspace Maintenance (Super Admin only) */}
+      {isSuperAdmin && (
+        <SectionCard
+          title="Data Backup & Workspace Maintenance"
+          description="Export encrypted system snapshots or restore factory defaults"
+          icon={Download}
+          showFooterSave={false}
+        >
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/80 dark:border-slate-700/80">
+              <div>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Export Full Workspace Data</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Download all active projects, tasks, user rosters, and settings as a portable JSON package
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleExportData}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs shrink-0"
+              >
+                <Download className="w-3.5 h-3.5 text-brand" />
+                Export JSON
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleResetWorkspace}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors shadow-2xs shrink-0"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Reset Caches
-            </button>
+
+            <div className="flex items-center justify-between gap-4 p-4 bg-rose-50/50 dark:bg-rose-950/20 rounded-xl border border-rose-200 dark:border-rose-900/60">
+              <div>
+                <p className="text-xs font-bold text-rose-800 dark:text-rose-200">Reset Local Caches & Factory Defaults</p>
+                <p className="text-[11px] text-rose-600/80 dark:text-rose-400 mt-0.5">
+                  Clear customized theme overrides and restored default tenant configuration
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetWorkspace}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors shadow-2xs shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Reset Caches
+              </button>
+            </div>
           </div>
-        </div>
-      </SectionCard>
+        </SectionCard>
+      )}
     </div>
   );
 }
@@ -1768,18 +1852,73 @@ function SecurityTab({ toast }) {
 // ─── Main Settings Page Component ─────────────────────────────────────────────
 export default function SettingsPage() {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useUrlTab('tab', 'appearance', [
-    'appearance',
-    'profile',
-    'workspace',
-    'notifications',
-    'display',
-    'security'
-  ]);
+  const { can, currentUser } = useAppContext();
 
-  const currentTabMeta = TABS.find((t) => t.id === activeTab) || TABS[0];
+  const canAccessSettings = can ? can('settings.view') : true;
+
+  // Filter tabs by permission
+  const visibleTabs = ALL_TABS.filter((t) => !t.perm || (can ? can(t.perm) : true));
+  const validTabIds = visibleTabs.map((t) => t.id);
+
+  const [activeTab, setActiveTab] = useUrlTab(
+    'tab',
+    visibleTabs[0]?.id || 'appearance',
+    validTabIds.length > 0 ? validTabIds : ['appearance']
+  );
+
+  // If the active tab is not visible to the user, redirect to the first available tab
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((t) => t.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id);
+    }
+  }, [activeTab, visibleTabs, setActiveTab]);
+
+  const currentTabMeta = visibleTabs.find((t) => t.id === activeTab) || visibleTabs[0] || ALL_TABS[0];
+
+  // Access check for global Settings Hub
+  if (!canAccessSettings) {
+    return (
+      <div className="w-full max-w-4xl mx-auto py-12 px-4">
+        <div className="bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/50 rounded-2xl p-8 text-center shadow-lg">
+          <div className="w-14 h-14 bg-rose-100 dark:bg-rose-950/60 rounded-2xl flex items-center justify-center mx-auto mb-4 text-rose-600 dark:text-rose-400">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+            Access Restricted
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto mb-6 leading-relaxed">
+            Your role (<span className="font-semibold text-slate-800 dark:text-slate-200">{currentUser?.role || 'User'}</span>) does not have permission to access the Settings &amp; Preferences hub (<code className="text-xs bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono">settings.view</code>).
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <a
+              href="/dashboard"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-brand text-white text-xs font-bold rounded-xl hover:bg-brand-hover transition-colors shadow-xs"
+            >
+              Return to Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const renderTab = () => {
+    // If the active tab has a specific permission requirement and user does not have it
+    const tabMeta = ALL_TABS.find((t) => t.id === activeTab);
+    if (tabMeta?.perm && can && !can(tabMeta.perm)) {
+      return (
+        <div className="bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900/60 rounded-xl p-8 text-center shadow-xs">
+          <Lock className="w-8 h-8 text-amber-500 mx-auto mb-3" />
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">
+            Section Restricted
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-4">
+            You do not have permission to view the {tabMeta.label} section ({tabMeta.perm}).
+          </p>
+        </div>
+      );
+    }
+
     switch (activeTab) {
       case 'appearance':
         return <AppearanceTab toast={toast} />;
@@ -1808,7 +1947,7 @@ export default function SettingsPage() {
               <Settings className="w-4 h-4 text-brand" />
             </div>
             <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-              Settings & Preferences
+              Settings &amp; Preferences
             </h1>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 ml-10.5">
@@ -1817,16 +1956,18 @@ export default function SettingsPage() {
         </div>
 
         {/* Global Tab Indicator */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-lg border border-slate-200 dark:border-slate-700/80 text-xs font-semibold text-slate-700 dark:text-slate-300">
-          <currentTabMeta.icon className="w-3.5 h-3.5 text-brand" />
-          <span>Section: {currentTabMeta.label}</span>
-        </div>
+        {currentTabMeta && (
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-lg border border-slate-200 dark:border-slate-700/80 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <currentTabMeta.icon className="w-3.5 h-3.5 text-brand" />
+            <span>Section: {currentTabMeta.label}</span>
+          </div>
+        )}
       </div>
 
       {/* ─── Mobile Horizontal Scrollable Tab Bar ───────────── */}
       <div className="md:hidden w-full overflow-x-auto pb-2 scrollbar-hide">
         <div className="flex items-center gap-2 min-w-max">
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
             return (
@@ -1834,11 +1975,10 @@ export default function SettingsPage() {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all shadow-2xs ${
-                  active
-                    ? 'bg-brand text-white shadow-xs'
-                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-                }`}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all shadow-2xs ${active
+                  ? 'bg-brand text-white shadow-xs'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
               >
                 <Icon className="w-3.5 h-3.5" />
                 <span>{tab.label}</span>
@@ -1853,7 +1993,7 @@ export default function SettingsPage() {
         {/* Left Sticky Sidebar Nav */}
         <aside className="w-60 shrink-0 hidden md:block sticky top-20">
           <nav className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden">
-            {TABS.map((tab, idx) => {
+            {visibleTabs.map((tab, idx) => {
               const Icon = tab.icon;
               const active = activeTab === tab.id;
               return (
@@ -1861,21 +2001,18 @@ export default function SettingsPage() {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center justify-between px-4 py-3.5 text-left transition-all group ${
-                    idx < TABS.length - 1 ? 'border-b border-slate-100 dark:border-slate-800/80' : ''
-                  } ${
-                    active
-                      ? 'bg-brand-subtle text-brand font-bold'
+                  className={`w-full flex items-center justify-between px-4 py-3.5 text-left transition-all group ${idx < visibleTabs.length - 1 ? 'border-b border-slate-100 dark:border-slate-800/80' : ''
+                    } ${active
+                      ? 'bg-brand-subtle dark:bg-slate-800 text-brand font-bold'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100 font-medium'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                        active
-                          ? 'bg-brand text-white'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 group-hover:text-slate-700'
-                      }`}
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${active
+                        ? 'bg-brand text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover:bg-slate-100 dark:group-hover:bg-slate-700 group-hover:text-slate-400'
+                        }`}
                     >
                       <Icon className="w-3.5 h-3.5" />
                     </div>

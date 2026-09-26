@@ -352,6 +352,7 @@ export function AppShell({ children }) {
         projects={activeProjects || projects}
         tasks={tasks}
         users={users}
+        meetings={meetings}
         currentUser={currentUser}
         onScheduleMeeting={handleScheduleMeeting}
         onUpdateMeeting={handleUpdateMeeting}

@@ -37,11 +37,13 @@ import {
   Info,
   ExternalLink,
   HelpCircle,
-  RefreshCw
+  RefreshCw,
+  Settings
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { RoleBadge } from '@/components/common/Badges';
+import { formatDateTime } from '@/lib/dateUtils';
 
 const MODULE_ICONS = {
   dashboard: BarChart3,
@@ -54,7 +56,8 @@ const MODULE_ICONS = {
   kpi: BarChart3,
   templates: Layers,
   masters: Database,
-  access_control: ShieldCheck
+  access_control: ShieldCheck,
+  settings: Settings
 };
 
 export function AccessControlView({ initialUserId = null, isEmbedded = false }) {
@@ -1034,7 +1037,7 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
                 {accessAuditLog.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                     <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
-                      {new Date(log.timestamp).toLocaleString()}
+                      {formatDateTime(log.timestamp)}
                     </td>
                     <td className="py-2.5 px-3 whitespace-nowrap">
                       <span className="font-semibold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">

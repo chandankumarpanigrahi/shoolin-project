@@ -6,6 +6,7 @@ import { useAppContext } from '@/components/providers/AppProvider';
 import { StatusSelect } from '@/components/common/Badges';
 import { resolveUserObject, isTaskAssignee } from '@/components/common/UserAvatar';
 import { showError } from '@/lib/swal';
+import { formatDate } from '@/lib/dateUtils';
 
 export function CreateTaskModal({
   isOpen,
@@ -27,13 +28,17 @@ export function CreateTaskModal({
     (p) => p && !p.isDeleted && p.status !== 'Deleted'
   );
 
+  const defaultStart = new Date().toISOString().split('T')[0];
+  const defaultDue = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState(defaultProjectId || activeProjects[0]?.id || '');
-  const [assignedTo, setAssignedTo] = useState(users[0]?.id || '');
+  const [assignedTo, setAssignedTo] = useState('');
   const [priority, setPriority] = useState('High');
   const [status, setStatus] = useState(statusOptions[0] || 'Not Started');
-  const [targetDate, setTargetDate] = useState('2026-10-15');
+  const [startDate, setStartDate] = useState(defaultStart);
+  const [dueDate, setDueDate] = useState(defaultDue);
 
   const selectedProj = useMemo(
     () => (projects || []).find((p) => p.id === projectId || p._id === projectId || p.code === projectId),
@@ -69,26 +74,29 @@ export function CreateTaskModal({
       setTitle(taskToEdit.title || '');
       setDescription(taskToEdit.description || '');
       setProjectId(taskToEdit.projectId || defaultProjectId || projects[0]?.id || '');
-      setAssignedTo(taskToEdit.assignedTo || users[0]?.id || '');
+      setAssignedTo(taskToEdit.assignedTo || '');
       setPriority(taskToEdit.priority || 'High');
       setStatus(taskToEdit.status || 'Not Started');
-      setTargetDate(taskToEdit.targetDate || '2026-10-15');
+      setStartDate(taskToEdit.startDate || taskToEdit.fromDate || defaultStart);
+      setDueDate(taskToEdit.dueDate || taskToEdit.toDate || taskToEdit.targetDate || taskToEdit.endDate || defaultDue);
     } else if (parentTask) {
       setProjectId(parentTask.projectId);
       setTitle('');
       setDescription('');
-      setAssignedTo(users[0]?.id || '');
+      setAssignedTo('');
       setPriority('High');
       setStatus(statusOptions[0] || 'Not Started');
-      setTargetDate('2026-10-15');
+      setStartDate(defaultStart);
+      setDueDate(defaultDue);
     } else {
       if (defaultProjectId) setProjectId(defaultProjectId);
       setTitle('');
       setDescription('');
-      setAssignedTo(users[0]?.id || '');
+      setAssignedTo('');
       setPriority('High');
       setStatus(statusOptions[0] || 'Not Started');
-      setTargetDate('2026-10-15');
+      setStartDate(defaultStart);
+      setDueDate(defaultDue);
     }
   }, [taskToEdit, parentTask, defaultProjectId, isOpen, projects, users]);
 
@@ -103,18 +111,28 @@ export function CreateTaskModal({
     if (taskToEdit) {
       const targetId = taskToEdit.id || taskToEdit._id;
       let effectiveStatus = status;
+      let effectiveAssignedTo = assignedTo;
       if (!isAssignee && status !== taskToEdit.status) {
         showError('Access Denied', 'Only the assigned member can change the status of this task.');
         effectiveStatus = taskToEdit.status;
+      }
+      if (!isAssignee && assignedTo !== (taskToEdit.assignedTo || '')) {
+        showError('Access Denied', 'Only the assigned member can reassign this task.');
+        effectiveAssignedTo = taskToEdit.assignedTo || '';
       }
       const updates = {
         title: title.trim(),
         description: description.trim() || 'No extended description provided.',
         projectId,
-        assignedTo,
+        assignedTo: effectiveAssignedTo,
         priority,
         status: effectiveStatus,
-        targetDate,
+        startDate,
+        fromDate: startDate,
+        dueDate,
+        endDate: dueDate,
+        toDate: dueDate,
+        targetDate: dueDate,
       };
       if (onUpdateTask) {
         onUpdateTask(targetId, updates);
@@ -145,7 +163,12 @@ export function CreateTaskModal({
       assignedTo,
       priority,
       status,
-      targetDate,
+      startDate,
+      fromDate: startDate,
+      dueDate,
+      endDate: dueDate,
+      toDate: dueDate,
+      targetDate: dueDate,
       createdDate: new Date().toISOString().split('T')[0],
       createdBy: currentUser?.id || currentUser?._id || users[0]?.id || users[0]?._id,
       dependencies: []
@@ -234,6 +257,7 @@ export function CreateTaskModal({
                 onChange={(e) => setAssignedTo(e.target.value)}
                 className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs focus:outline-none focus:border-brand bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
               >
+                <option value="">Unassigned (None)</option>
                 <optgroup label="Project Squad Members">
                   {projectSquadUsers.map((u) => (
                     <option key={u.id || u._id} value={u.id || u._id}>
@@ -256,7 +280,7 @@ export function CreateTaskModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Priority</label>
               <select
@@ -289,13 +313,39 @@ export function CreateTaskModal({
                 title={taskToEdit && !isAssignee ? 'Only the assigned member can change status' : undefined}
               />
             </div>
+          </div>
 
+          {/* Date From and Date To */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Target Date</label>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-brand" />
+                  Date From (Start Date) {startDate ? `(${formatDate(startDate)})` : ''}
+                </span>
+              </label>
               <input
                 type="date"
-                value={targetDate}
-                onChange={(e) => setTargetDate(e.target.value)}
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                required
+                className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs focus:outline-none focus:border-brand text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-rose-500" />
+                  Date To (Deadline) {dueDate ? `(${formatDate(dueDate)})` : ''}
+                </span>
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                min={startDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                required
                 className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs focus:outline-none focus:border-brand text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800"
               />
             </div>

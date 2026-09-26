@@ -18,7 +18,7 @@ import {
 } from '@/data/permissions';
 import { getUrlParam, setUrlParam, removeUrlParam } from '@/hooks/useUrlState';
 import { api } from '@/lib/api';
-import { subscribeToRealtimeEvent } from '@/lib/socket';
+import { subscribeToRealtimeEvent, broadcastLocalEvent } from '@/lib/socket';
 import { showConfirm, showSuccess, showError } from '@/lib/swal';
 import { isTaskAssignee, resolveUserObject } from '@/components/common/UserAvatar';
 
@@ -32,6 +32,23 @@ export const BRAND_COLOR_PRESETS = [
   { id: 'rose', name: 'Rose', primary: '#e11d48', hover: '#be123c', active: '#9f1239', light: '#ffe4e6', lightHover: '#fecdd3', subtle: '#fff1f2', text: '#be123c', border: '#fecdd3' },
   { id: 'amber', name: 'Amber', primary: '#d97706', hover: '#b45309', active: '#92400e', light: '#fef3c7', lightHover: '#fde68a', subtle: '#fffbeb', text: '#b45309', border: '#fde68a' },
   { id: 'teal', name: 'Teal', primary: '#0d9488', hover: '#0f766e', active: '#115e59', light: '#ccfbf1', lightHover: '#99f6e4', subtle: '#f0fdfa', text: '#0f766e', border: '#99f6e4' },
+];
+
+export const DEFAULT_MASTER_BRANDS = [
+  { id: 'br-1', code: 'PMV', name: 'PMV Maritime', color: '#2563EB', status: 'Active', desc: 'Shipping fleet & logistics' },
+  { id: 'br-2', code: 'FPD', name: 'Captain\'s Cafe', color: '#452700', status: 'Active', desc: 'Produce delivery mobile application' },
+  { id: 'br-3', code: 'LMA', name: 'Lagos Maritime Academy', color: '#FF6500', status: 'Active', desc: 'Lagos Maritime Institute in Nigeria' },
+  { id: 'br-4', code: 'INT', name: 'Internal', color: '#9333EA', status: 'Active', desc: 'Internal engineering & HR operations' },
+  { id: 'br-5', code: 'SOMS', name: 'School of Maritime Studies', color: '#2563EB', status: 'Active', desc: 'Maritime Institute' },
+];
+
+export const DEFAULT_MASTER_DEPARTMENTS = [
+  { id: 'dep-1', code: 'EXEC', name: 'Executive Operations', status: 'Active' },
+  { id: 'dep-2', code: 'OPS', name: 'Project Operations', status: 'Active' },
+  { id: 'dep-3', code: 'ENG-BE', name: 'Backend Engineering', status: 'Active' },
+  { id: 'dep-4', code: 'ENG-FE', name: 'Frontend Engineering', status: 'Active' },
+  { id: 'dep-5', code: 'DESIGN', name: 'UI/UX & Product Design', status: 'Active' },
+  { id: 'dep-6', code: 'QA-DEVOPS', name: 'QA & DevOps', status: 'Active' },
 ];
 
 export const applyBrandColorToDOM = (presetOrHex) => {
@@ -168,6 +185,278 @@ export function AppProvider({ children }) {
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [blueprintCategories, setBlueprintCategories] = useState(DEFAULT_BLUEPRINT_CATEGORIES);
   const [masterStatuses, setMasterStatuses] = useState(DEFAULT_MASTER_STATUSES);
+  const [masterLinkCategories, setMasterLinkCategories] = useState([]);
+  const [masterBrands, setMasterBrands] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('pulsepm_master_brands_v2');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return DEFAULT_MASTER_BRANDS;
+  });
+  const [masterDepartments, setMasterDepartments] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('pulsepm_master_deps_v4');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return DEFAULT_MASTER_DEPARTMENTS;
+  });
+
+  // Master Datasets CRUD Handlers (Dynamically DB Synced)
+  const handleAddMasterBrand = async (brandData) => {
+    try {
+      const created = await api.masters.createBrand(brandData);
+      setMasterBrands((prev) => [...prev, created]);
+      broadcastLocalEvent('MASTER_BRANDS_UPDATED', created);
+      showSuccess(`Brand "${created.name}" created and synced to DB.`);
+      return created;
+    } catch (err) {
+      showError('Failed to save brand to database: ' + err.message);
+    }
+  };
+
+  const handleUpdateMasterBrand = async (id, updates) => {
+    try {
+      const updated = await api.masters.updateBrand(id, updates);
+      setMasterBrands((prev) =>
+        prev.map((b) => (b.id === id || b._id === id || b.code === id ? { ...b, ...updated } : b))
+      );
+      broadcastLocalEvent('MASTER_BRANDS_UPDATED', updated);
+      showSuccess(`Brand "${updated.name || id}" updated in DB.`);
+      return updated;
+    } catch (err) {
+      showError('Failed to update brand in database: ' + err.message);
+    }
+  };
+
+  const handleDeleteMasterBrand = async (id) => {
+    try {
+      await api.masters.deleteBrand(id);
+      setMasterBrands((prev) => prev.filter((b) => b.id !== id && b._id !== id && b.code !== id));
+      broadcastLocalEvent('MASTER_BRANDS_UPDATED', { id });
+      showSuccess('Brand removed from DB.');
+    } catch (err) {
+      showError('Failed to delete brand from database: ' + err.message);
+    }
+  };
+
+  const saveMasterBrands = (items) => {
+    setMasterBrands(items);
+    if (typeof window !== 'undefined') localStorage.setItem('pulsepm_master_brands_v2', JSON.stringify(items));
+  };
+
+  const handleAddMasterDepartment = async (depData) => {
+    try {
+      const created = await api.masters.createDepartment(depData);
+      setMasterDepartments((prev) => [...prev, created]);
+      broadcastLocalEvent('MASTER_DEPARTMENTS_UPDATED', created);
+      showSuccess(`Department "${created.name}" created and synced to DB.`);
+      return created;
+    } catch (err) {
+      showError('Failed to save department to database: ' + err.message);
+    }
+  };
+
+  const handleUpdateMasterDepartment = async (id, updates) => {
+    try {
+      const updated = await api.masters.updateDepartment(id, updates);
+      setMasterDepartments((prev) =>
+        prev.map((d) => (d.id === id || d._id === id || d.code === id ? { ...d, ...updated } : d))
+      );
+      broadcastLocalEvent('MASTER_DEPARTMENTS_UPDATED', updated);
+      showSuccess(`Department "${updated.name || id}" updated in DB.`);
+      return updated;
+    } catch (err) {
+      showError('Failed to update department in database: ' + err.message);
+    }
+  };
+
+  const handleDeleteMasterDepartment = async (id) => {
+    try {
+      await api.masters.deleteDepartment(id);
+      setMasterDepartments((prev) => prev.filter((d) => d.id !== id && d._id !== id && d.code !== id));
+      broadcastLocalEvent('MASTER_DEPARTMENTS_UPDATED', { id });
+      showSuccess('Department removed from DB.');
+    } catch (err) {
+      showError('Failed to delete department from database: ' + err.message);
+    }
+  };
+
+  const saveMasterDepartments = (items) => {
+    setMasterDepartments(items);
+    if (typeof window !== 'undefined') localStorage.setItem('pulsepm_master_deps_v4', JSON.stringify(items));
+  };
+
+  const handleAddMasterStatus = async (statusData) => {
+    try {
+      const created = await api.masters.createStatus(statusData);
+      setMasterStatuses((prev) => [...prev, created]);
+      broadcastLocalEvent('MASTER_STATUSES_UPDATED', created);
+      showSuccess(`Status "${created.name}" created and synced to DB.`);
+      return created;
+    } catch (err) {
+      showError('Failed to save status to database: ' + err.message);
+    }
+  };
+
+  const handleUpdateMasterStatus = async (id, updates) => {
+    try {
+      const updated = await api.masters.updateStatus(id, updates);
+      setMasterStatuses((prev) =>
+        prev.map((s) => (s.id === id || s._id === id || s.name === id ? { ...s, ...updated } : s))
+      );
+      broadcastLocalEvent('MASTER_STATUSES_UPDATED', updated);
+      showSuccess(`Status "${updated.name || id}" updated in DB.`);
+      return updated;
+    } catch (err) {
+      showError('Failed to update status in database: ' + err.message);
+    }
+  };
+
+  const handleDeleteMasterStatus = async (id) => {
+    try {
+      await api.masters.deleteStatus(id);
+      setMasterStatuses((prev) => prev.filter((s) => s.id !== id && s._id !== id && s.name !== id));
+      broadcastLocalEvent('MASTER_STATUSES_UPDATED', { id });
+      showSuccess('Status removed from DB.');
+    } catch (err) {
+      showError('Failed to delete status from database: ' + err.message);
+    }
+  };
+
+  const saveMasterStatuses = (items) => {
+    setMasterStatuses(items);
+    if (typeof window !== 'undefined') localStorage.setItem('pulsepm_master_statuses_v2', JSON.stringify(items));
+  };
+
+  const handleAddBlueprintCategory = async (catData) => {
+    try {
+      const created = await api.masters.createCategory(catData);
+      setBlueprintCategories((prev) => [...prev, created]);
+      broadcastLocalEvent('TEMPLATE_CATEGORIES_UPDATED', created);
+      showSuccess(`Category "${created.name}" created and synced to DB.`);
+      return created;
+    } catch (err) {
+      showError('Failed to save template category: ' + err.message);
+    }
+  };
+
+  const handleUpdateBlueprintCategory = async (idOrObj, updates) => {
+    try {
+      const id = typeof idOrObj === 'object' ? idOrObj.id || idOrObj._id || idOrObj.name : idOrObj;
+      const payload = typeof idOrObj === 'object' ? idOrObj : updates;
+      const updated = await api.masters.updateCategory(id, payload);
+      setBlueprintCategories((prev) =>
+        prev.map((c) => (c.id === id || c._id === id || c.name === id ? { ...c, ...updated } : c))
+      );
+      broadcastLocalEvent('TEMPLATE_CATEGORIES_UPDATED', updated);
+      showSuccess(`Category "${updated.name || id}" updated in DB.`);
+      return updated;
+    } catch (err) {
+      showError('Failed to update category in database: ' + err.message);
+    }
+  };
+
+  const handleDeleteBlueprintCategory = async (id) => {
+    try {
+      await api.masters.deleteCategory(id);
+      setBlueprintCategories((prev) => prev.filter((c) => c.id !== id && c._id !== id && c.name !== id));
+      broadcastLocalEvent('TEMPLATE_CATEGORIES_UPDATED', { id });
+      showSuccess('Template category removed from DB.');
+    } catch (err) {
+      showError('Failed to delete category from database: ' + err.message);
+    }
+  };
+
+  const saveBlueprintCategories = (items) => {
+    setBlueprintCategories(items);
+  };
+
+  const handleAddLinkCategory = async (catData) => {
+    try {
+      const created = await api.masters.createLinkCategory(catData);
+      setMasterLinkCategories((prev) => [...prev, created]);
+      broadcastLocalEvent('LINK_CATEGORIES_UPDATED', created);
+      showSuccess(`Link Category "${created.name}" created and synced to DB.`);
+      return created;
+    } catch (err) {
+      showError('Failed to save link category to database: ' + err.message);
+    }
+  };
+
+  const handleUpdateLinkCategory = async (id, updates) => {
+    try {
+      const updated = await api.masters.updateLinkCategory(id, updates);
+      setMasterLinkCategories((prev) =>
+        prev.map((c) => (c.id === id || c._id === id || c.name === id ? { ...c, ...updated } : c))
+      );
+      broadcastLocalEvent('LINK_CATEGORIES_UPDATED', updated);
+      showSuccess(`Link Category "${updated.name || id}" updated in DB.`);
+      return updated;
+    } catch (err) {
+      showError('Failed to update link category in database: ' + err.message);
+    }
+  };
+
+  const handleDeleteLinkCategory = async (id) => {
+    try {
+      await api.masters.deleteLinkCategory(id);
+      setMasterLinkCategories((prev) => prev.filter((c) => c.id !== id && c._id !== id && c.name !== id));
+      broadcastLocalEvent('LINK_CATEGORIES_UPDATED', { id });
+      showSuccess('Link category removed from DB.');
+    } catch (err) {
+      showError('Failed to delete link category from database: ' + err.message);
+    }
+  };
+
+  const saveMasterLinkCategories = (items) => {
+    setMasterLinkCategories(items);
+  };
+
+  const handleAddRole = async (roleData) => {
+    try {
+      const created = await api.masters.createRole(roleData);
+      setRolesList((prev) => [...prev, created]);
+      broadcastLocalEvent('ROLES_UPDATED', created);
+      showSuccess(`Role "${created.name}" created and synced to DB.`);
+      return created;
+    } catch (err) {
+      showError('Failed to save role to database: ' + err.message);
+    }
+  };
+
+  const handleUpdateRole = async (id, updates) => {
+    try {
+      const updated = await api.masters.updateRole(id, updates);
+      setRolesList((prev) =>
+        prev.map((r) => (r.id === id || r._id === id || r.name === id ? { ...r, ...updated } : r))
+      );
+      broadcastLocalEvent('ROLES_UPDATED', updated);
+      showSuccess(`Role "${updated.name || id}" updated in DB.`);
+      return updated;
+    } catch (err) {
+      showError('Failed to update role in database: ' + err.message);
+    }
+  };
+
+  const handleDeleteRole = async (id) => {
+    try {
+      await api.masters.deleteRole(id);
+      setRolesList((prev) => prev.filter((r) => r.id !== id && r._id !== id && r.name !== id));
+      broadcastLocalEvent('ROLES_UPDATED', { id });
+      showSuccess('Role removed from DB.');
+    } catch (err) {
+      showError('Failed to delete role from database: ' + err.message);
+    }
+  };
+
+  const saveRoles = (items) => {
+    setRolesList(items);
+    if (typeof window !== 'undefined') localStorage.setItem('pulsepm_master_roles_v2', JSON.stringify(items));
+  };
 
   // Tit-to-Bit Access Control & Roles State
   const [rolesList, setRolesList] = useState(INITIAL_ROLES);
@@ -231,11 +520,15 @@ export function AppProvider({ children }) {
             dbUsers,
             dbTemplates,
             dbStatuses,
+            dbBrands,
+            dbDepartments,
             dbRoles,
             dbRbacMatrix,
             dbUserOverrides,
             dbAuditLogs,
             dbNotifications,
+            dbTemplateCategories,
+            dbLinkCategories,
           ] = await Promise.all([
             api.projects.getAll({ includeDeleted: true }).catch(() => null),
             api.tasks.getAll(null, { includeDeletedProjects: true }).catch(() => null),
@@ -245,11 +538,15 @@ export function AppProvider({ children }) {
             api.users.getAll().catch(() => null),
             api.templates.getAll().catch(() => null),
             api.statuses.getAll().catch(() => null),
+            api.masters.getBrands().catch(() => null),
+            api.masters.getDepartments().catch(() => null),
             api.roles.getAll().catch(() => null),
             api.rbac.getMatrix().catch(() => null),
             api.rbac.getUserOverrides().catch(() => null),
             api.rbac.getAuditLog().catch(() => null),
             api.notifications.getAll().catch(() => null),
+            api.masters.getCategories().catch(() => null),
+            api.masters.getLinkCategories().catch(() => null),
           ]);
 
           if (Array.isArray(dbProjects) && dbProjects.length > 0) {
@@ -297,7 +594,11 @@ export function AppProvider({ children }) {
             setTemplates(dbTemplates);
           }
           if (Array.isArray(dbStatuses) && dbStatuses.length > 0) setMasterStatuses(dbStatuses);
+          if (Array.isArray(dbBrands) && dbBrands.length > 0) setMasterBrands(dbBrands);
+          if (Array.isArray(dbDepartments) && dbDepartments.length > 0) setMasterDepartments(dbDepartments);
           if (Array.isArray(dbRoles) && dbRoles.length > 0) setRolesList(dbRoles);
+          if (Array.isArray(dbTemplateCategories) && dbTemplateCategories.length > 0) setBlueprintCategories(dbTemplateCategories);
+          if (Array.isArray(dbLinkCategories) && dbLinkCategories.length > 0) setMasterLinkCategories(dbLinkCategories);
           if (dbRbacMatrix && typeof dbRbacMatrix === 'object' && Object.keys(dbRbacMatrix).length > 0) {
             setRolePermissions(dbRbacMatrix);
           }
@@ -415,20 +716,29 @@ export function AppProvider({ children }) {
       });
 
       const unsubUserCreated = subscribeToRealtimeEvent('user_created', (newUser) => {
+        if (!newUser) return;
         setUsers((prev) => [newUser, ...prev.filter((u) => u.id !== newUser.id && u._id !== newUser._id)]);
       });
 
       const unsubUserUpdated = subscribeToRealtimeEvent('user_updated', (updatedUser) => {
+        if (!updatedUser) return;
+        const targetId = updatedUser.id || updatedUser._id || updatedUser.clientTempId;
+        const targetEmail = updatedUser.email ? updatedUser.email.toLowerCase() : '';
+
         setUsers((prev) =>
-          prev.map((u) => (u.id === updatedUser.id || u._id === updatedUser._id ? { ...u, ...updatedUser } : u))
+          prev.map((u) => {
+            const isMatch =
+              (targetId && (u.id === targetId || u._id === targetId || (updatedUser.clientTempId && u.id === updatedUser.clientTempId))) ||
+              (targetEmail && u.email && u.email.toLowerCase() === targetEmail);
+            return isMatch ? { ...u, ...updatedUser } : u;
+          })
         );
         setCurrentUser((prev) => {
           if (!prev) return prev;
-          if (
-            prev.id === updatedUser.id ||
-            prev._id === updatedUser._id ||
-            (prev.email && updatedUser.email && prev.email.toLowerCase() === updatedUser.email.toLowerCase())
-          ) {
+          const isMatch =
+            (targetId && (prev.id === targetId || prev._id === targetId || (updatedUser.clientTempId && prev.id === updatedUser.clientTempId))) ||
+            (targetEmail && prev.email && prev.email.toLowerCase() === targetEmail);
+          if (isMatch) {
             const merged = { ...prev, ...updatedUser };
             try { localStorage.setItem('pulsepm_current_user', JSON.stringify(merged)); } catch (e) {}
             return merged;
@@ -439,6 +749,36 @@ export function AppProvider({ children }) {
 
       const unsubUserDeleted = subscribeToRealtimeEvent('user_deleted', ({ id }) => {
         setUsers((prev) => prev.filter((u) => u.id !== id && u._id !== id));
+      });
+
+      const unsubMasterBrands = subscribeToRealtimeEvent('MASTER_BRANDS_UPDATED', async () => {
+        const fresh = await api.masters.getBrands().catch(() => null);
+        if (Array.isArray(fresh)) setMasterBrands(fresh);
+      });
+
+      const unsubMasterDepartments = subscribeToRealtimeEvent('MASTER_DEPARTMENTS_UPDATED', async () => {
+        const fresh = await api.masters.getDepartments().catch(() => null);
+        if (Array.isArray(fresh)) setMasterDepartments(fresh);
+      });
+
+      const unsubMasterStatuses = subscribeToRealtimeEvent('MASTER_STATUSES_UPDATED', async () => {
+        const fresh = await api.masters.getStatuses().catch(() => null);
+        if (Array.isArray(fresh)) setMasterStatuses(fresh);
+      });
+
+      const unsubTemplateCategories = subscribeToRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', async () => {
+        const fresh = await api.masters.getCategories().catch(() => null);
+        if (Array.isArray(fresh)) setBlueprintCategories(fresh);
+      });
+
+      const unsubLinkCategories = subscribeToRealtimeEvent('LINK_CATEGORIES_UPDATED', async () => {
+        const fresh = await api.masters.getLinkCategories().catch(() => null);
+        if (Array.isArray(fresh)) setMasterLinkCategories(fresh);
+      });
+
+      const unsubRoles = subscribeToRealtimeEvent('ROLES_UPDATED', async () => {
+        const fresh = await api.masters.getRoles().catch(() => null);
+        if (Array.isArray(fresh)) setRolesList(fresh);
       });
 
       // Load active user session from localStorage
@@ -503,6 +843,12 @@ export function AppProvider({ children }) {
         unsubUserCreated();
         unsubUserUpdated();
         unsubUserDeleted();
+        unsubMasterBrands();
+        unsubMasterDepartments();
+        unsubMasterStatuses();
+        unsubTemplateCategories();
+        unsubLinkCategories();
+        unsubRoles();
         unsubRbacMatrix();
         unsubRbacUser();
         unsubRbacUserDelete();
@@ -510,6 +856,52 @@ export function AppProvider({ children }) {
     } catch (e) {
       console.error('Theme, users, templates, statuses or permissions init error:', e);
     }
+  }, []);
+
+  // Multi-Device & Multi-User Rapid Delta Synchronization Engine
+  useEffect(() => {
+    let isPolling = false;
+    let lastSyncTimestamp = Date.now() - 60000;
+
+    const pollSyncEvents = async () => {
+      if (isPolling) return;
+      isPolling = true;
+
+      try {
+        const res = await api.realtime.getEvents(lastSyncTimestamp);
+        if (res && res.events && Array.isArray(res.events) && res.events.length > 0) {
+          for (const ev of res.events) {
+            if (ev.timestamp && ev.timestamp > lastSyncTimestamp) {
+              lastSyncTimestamp = ev.timestamp;
+            }
+            // Trigger local bus which invokes all subscribeToRealtimeEvent callbacks in memory
+            broadcastLocalEvent(ev.event, ev.payload);
+          }
+        }
+        if (res && res.serverTime) {
+          lastSyncTimestamp = Math.max(lastSyncTimestamp, res.serverTime - 4000);
+        }
+      } catch (e) {
+        // Silently continue polling
+      } finally {
+        isPolling = false;
+      }
+    };
+
+    const pollInterval = setInterval(pollSyncEvents, 1500);
+
+    const onFocus = () => pollSyncEvents();
+    window.addEventListener('focus', onFocus);
+    const onVisChange = () => {
+      if (document.visibilityState === 'visible') pollSyncEvents();
+    };
+    document.addEventListener('visibilitychange', onVisChange);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisChange);
+    };
   }, []);
 
   const logout = (reason = null) => {
@@ -646,59 +1038,169 @@ export function AppProvider({ children }) {
   const isMobileOpen = isSidebarOpen;
   const setIsMobileOpen = setIsSidebarOpen;
 
-  // Personal To-Do State (per currentUser)
-  const DEFAULT_TODOS = [
-    { id: 'todo-1', text: 'Review client sprint deliverables for FreshPod Mobile App', completed: false, category: 'Focus' },
-    { id: 'todo-2', text: 'Verify Redis AWS peering security groups & latency', completed: false, category: 'Review' },
-    { id: 'todo-3', text: 'Prepare Q3 roadmap slides for executive sync', completed: true, category: 'Prep' },
-  ];
-
-  const [personalTodos, setPersonalTodos] = useState(DEFAULT_TODOS);
+  // Personal To-Do State (per currentUser, synced with DB)
+  const [personalTodos, setPersonalTodos] = useState([]);
   const [isPersonalTodoOpen, setIsPersonalTodoOpenState] = useState(false);
 
+  const currentUserId = currentUser?.id || currentUser?._id;
+  const currentUserEmail = currentUser?.email;
+
+  // Load user's personal todos from database on mount or user switch
   useEffect(() => {
-    if (typeof window !== 'undefined' && currentUser?.id) {
+    let isMounted = true;
+    if (!currentUserId && !currentUserEmail) return;
+
+    // Load from cache first for zero flicker
+    if (typeof window !== 'undefined' && currentUserId) {
       try {
-        const stored = localStorage.getItem(`pulsepm_todos_${currentUser.id}`);
-        if (stored) {
-          setPersonalTodos(JSON.parse(stored));
-        } else {
-          setPersonalTodos(DEFAULT_TODOS);
+        const stored = localStorage.getItem(`pulsepm_todos_${currentUserId}`);
+        if (stored) setPersonalTodos(JSON.parse(stored));
+      } catch (e) {}
+    }
+
+    // Load from MongoDB database
+    api.personalTodos
+      .getAll(currentUserId, currentUserEmail)
+      .then((data) => {
+        if (!isMounted) return;
+        if (Array.isArray(data)) {
+          setPersonalTodos(data);
+          if (typeof window !== 'undefined' && currentUserId) {
+            localStorage.setItem(`pulsepm_todos_${currentUserId}`, JSON.stringify(data));
+          }
         }
-      } catch (e) {
-        console.error('Failed to parse personal todos', e);
+      })
+      .catch((err) => {
+        console.warn('Could not fetch personal todos from DB:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId, currentUserEmail]);
+
+  // Subscribe to realtime personal todo events across tabs and devices
+  useEffect(() => {
+    if (!currentUserId && !currentUserEmail) return;
+
+    const unsubCreated = subscribeToRealtimeEvent('PERSONAL_TODO_CREATED', (newTodo) => {
+      if (!newTodo) return;
+      if (newTodo.userId === currentUserId || newTodo.userEmail === currentUserEmail) {
+        setPersonalTodos((prev) => {
+          if (prev.some((t) => (t.id === newTodo.id || t._id === newTodo.id || t._id === newTodo._id))) return prev;
+          const next = [newTodo, ...prev];
+          if (typeof window !== 'undefined' && currentUserId) {
+            localStorage.setItem(`pulsepm_todos_${currentUserId}`, JSON.stringify(next));
+          }
+          return next;
+        });
       }
-    }
-  }, [currentUser?.id]);
+    });
 
-  const saveTodos = (updated) => {
-    setPersonalTodos(updated);
-    if (typeof window !== 'undefined' && currentUser?.id) {
-      localStorage.setItem(`pulsepm_todos_${currentUser.id}`, JSON.stringify(updated));
-    }
-  };
+    const unsubUpdated = subscribeToRealtimeEvent('PERSONAL_TODO_UPDATED', (updated) => {
+      if (!updated) return;
+      setPersonalTodos((prev) => {
+        const next = prev.map((t) =>
+          (t.id === updated.id || t._id === updated.id || t._id === updated._id) ? { ...t, ...updated } : t
+        );
+        if (typeof window !== 'undefined' && currentUserId) {
+          localStorage.setItem(`pulsepm_todos_${currentUserId}`, JSON.stringify(next));
+        }
+        return next;
+      });
+    });
 
-  const addPersonalTodo = (text, category = 'Focus') => {
-    const newItem = {
-      id: 'todo-' + Date.now(),
-      text,
+    const unsubDeleted = subscribeToRealtimeEvent('PERSONAL_TODO_DELETED', ({ id }) => {
+      if (!id) return;
+      setPersonalTodos((prev) => {
+        const next = prev.filter((t) => t.id !== id && t._id !== id);
+        if (typeof window !== 'undefined' && currentUserId) {
+          localStorage.setItem(`pulsepm_todos_${currentUserId}`, JSON.stringify(next));
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      unsubCreated();
+      unsubUpdated();
+      unsubDeleted();
+    };
+  }, [currentUserId, currentUserEmail]);
+
+  const addPersonalTodo = async (text, category = 'Focus') => {
+    if (!text?.trim()) return;
+    const tempId = 'temp-' + Date.now();
+    const optimistic = {
+      id: tempId,
+      _id: tempId,
+      userId: String(currentUserId || 'anonymous'),
+      userEmail: currentUserEmail || '',
+      text: text.trim(),
       completed: false,
       category,
       createdAt: new Date().toISOString()
     };
-    saveTodos([newItem, ...personalTodos]);
+    const nextList = [optimistic, ...personalTodos];
+    setPersonalTodos(nextList);
+    if (typeof window !== 'undefined' && currentUserId) {
+      localStorage.setItem(`pulsepm_todos_${currentUserId}`, JSON.stringify(nextList));
+    }
+
+    try {
+      const created = await api.personalTodos.create({
+        userId: String(currentUserId || 'anonymous'),
+        userEmail: currentUserEmail || '',
+        text: text.trim(),
+        completed: false,
+        category,
+      });
+      setPersonalTodos((prev) =>
+        prev.map((t) => (t.id === tempId ? { ...created, id: created.id || created._id } : t))
+      );
+    } catch (err) {
+      console.error('Failed to create personal todo in DB:', err);
+    }
   };
 
-  const togglePersonalTodo = (todoId) => {
-    const updated = personalTodos.map((t) =>
-      t.id === todoId ? { ...t, completed: !t.completed } : t
+  const togglePersonalTodo = async (todoId) => {
+    const target = personalTodos.find((t) => (t.id === todoId || t._id === todoId));
+    if (!target) return;
+    const newCompleted = !target.completed;
+    const nextList = personalTodos.map((t) =>
+      (t.id === todoId || t._id === todoId) ? { ...t, completed: newCompleted } : t
     );
-    saveTodos(updated);
+    setPersonalTodos(nextList);
+    if (typeof window !== 'undefined' && currentUserId) {
+      localStorage.setItem(`pulsepm_todos_${currentUserId}`, JSON.stringify(nextList));
+    }
+
+    const realId = target._id || target.id;
+    if (realId && !String(realId).startsWith('temp-')) {
+      try {
+        await api.personalTodos.update(realId, { completed: newCompleted });
+      } catch (err) {
+        console.error('Failed to update personal todo in DB:', err);
+      }
+    }
   };
 
-  const deletePersonalTodo = (todoId) => {
-    const updated = personalTodos.filter((t) => t.id !== todoId);
-    saveTodos(updated);
+  const deletePersonalTodo = async (todoId) => {
+    const target = personalTodos.find((t) => (t.id === todoId || t._id === todoId));
+    const nextList = personalTodos.filter((t) => t.id !== todoId && t._id !== todoId);
+    setPersonalTodos(nextList);
+    if (typeof window !== 'undefined' && currentUserId) {
+      localStorage.setItem(`pulsepm_todos_${currentUserId}`, JSON.stringify(nextList));
+    }
+
+    const realId = target?._id || target?.id;
+    if (realId && !String(realId).startsWith('temp-')) {
+      try {
+        await api.personalTodos.delete(realId);
+      } catch (err) {
+        console.error('Failed to delete personal todo in DB:', err);
+      }
+    }
   };
 
   // Modals Visibility with URL State Synchronization
@@ -909,10 +1411,12 @@ export function AppProvider({ children }) {
           }
         : payload;
       setProjects((prev) => [projItem, ...prev]);
+      broadcastLocalEvent('project_created', projItem);
       return projItem;
     } catch (err) {
       console.error('Failed to create project in MongoDB:', err);
       setProjects((prev) => [payload, ...prev]);
+      broadcastLocalEvent('project_created', payload);
       return payload;
     }
   };
@@ -943,6 +1447,7 @@ export function AppProvider({ children }) {
         p.id === projectId || p._id === projectId ? { ...p, ...normalizedUpdates } : p
       )
     );
+    broadcastLocalEvent('project_updated', { id: projectId, ...normalizedUpdates });
     if (selectedProject?.id === projectId || selectedProject?._id === projectId) {
       setSelectedProject((prev) => (prev ? { ...prev, ...normalizedUpdates } : null));
     }
@@ -960,6 +1465,7 @@ export function AppProvider({ children }) {
         prev.filter((p) => p.id !== projectId && p._id !== projectId && p.code !== projectId)
       );
       setTasks((prev) => prev.filter((t) => t.projectId !== projectId));
+      broadcastLocalEvent('project_deleted', { id: projectId });
     } else {
       setProjects((prev) =>
         prev.map((p) =>
@@ -968,6 +1474,7 @@ export function AppProvider({ children }) {
             : p
         )
       );
+      broadcastLocalEvent('project_updated', { id: projectId, isDeleted: true, status: 'Deleted' });
     }
     if (selectedProject?.id === projectId || selectedProject?._id === projectId || selectedProject?.code === projectId) {
       setSelectedProject(null);
@@ -988,6 +1495,7 @@ export function AppProvider({ children }) {
           : p
       )
     );
+    broadcastLocalEvent('project_updated', { id: projectId, isDeleted: false, status: 'In Progress', deletedAt: null });
   };
 
   // Task Handlers
@@ -1020,9 +1528,11 @@ export function AppProvider({ children }) {
       const created = await api.tasks.create(newTask);
       const taskItem = created || newTask;
       setTasks((prev) => [taskItem, ...prev]);
+      broadcastLocalEvent('task_created', taskItem);
     } catch (err) {
       console.error('Failed to create task in MongoDB:', err);
       setTasks((prev) => [newTask, ...prev]);
+      broadcastLocalEvent('task_created', newTask);
     }
     if (newTask.projectId) {
       setProjects((prev) =>
@@ -1048,6 +1558,7 @@ export function AppProvider({ children }) {
     const taskToDelete = tasks.find((t) => t.id === taskId);
     const updatedTasks = tasks.filter((t) => t.id !== taskId);
     setTasks(updatedTasks);
+    broadcastLocalEvent('task_deleted', { id: taskId });
 
     if (taskToDelete?.projectId) {
       setProjects((prev) =>
@@ -1097,6 +1608,7 @@ export function AppProvider({ children }) {
       return t;
     });
     setTasks(updatedTasks);
+    broadcastLocalEvent('task_status_changed', { id: taskId, status: newStatus });
     if (selectedTask && (selectedTask.id === taskId || selectedTask._id === taskId || selectedTask.code === taskId)) {
       setSelectedTask((prev) => (prev ? { ...prev, status: newStatus } : null));
     }
@@ -1153,6 +1665,7 @@ export function AppProvider({ children }) {
       return t;
     });
     setTasks(updatedTasks);
+    broadcastLocalEvent('task_updated', { id: taskId, ...updates });
     if (selectedTask && (selectedTask.id === taskId || selectedTask._id === taskId || selectedTask.code === taskId)) {
       setSelectedTask((prev) => (prev ? { ...prev, ...updates } : null));
     }
@@ -1178,16 +1691,6 @@ export function AppProvider({ children }) {
     }
   };
 
-  const saveMasterStatuses = (updated) => {
-    setMasterStatuses(updated);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('pulsepm_master_statuses_v2', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to save master statuses', e);
-      }
-    }
-  };
 
   const isCompletedStatus = (statusName) => {
     return isCompletedStatusHelper(statusName, masterStatuses);
@@ -1274,8 +1777,22 @@ export function AppProvider({ children }) {
     return updated;
   };
 
-  const handleRescheduleMeeting = async (meetingId, date, time, comments = '', duration = null, approverId = null) => {
-    const updated = await api.meetings.reschedule(meetingId, date, time, comments, currentUser?.name, duration, approverId);
+  const handleCancelMeeting = async (meetingId, cancelReason = '') => {
+    const updated = await api.meetings.cancel(meetingId, cancelReason, currentUser?.name);
+    if (updated) {
+      setMeetings((prev) =>
+        prev.map((m) =>
+          m.id === meetingId || m._id === meetingId || m.id === updated.id || m._id === updated.id
+            ? { ...m, ...updated, status: 'Cancelled', isArchived: true }
+            : m
+        )
+      );
+    }
+    return updated;
+  };
+
+  const handleRescheduleMeeting = async (meetingId, date, time, comments = '', duration = null, approverId = null, allowConflict = false) => {
+    const updated = await api.meetings.reschedule(meetingId, date, time, comments, currentUser?.name, duration, approverId, allowConflict);
     setMeetings((prev) =>
       prev.map((m) =>
         m.id === meetingId || m._id === meetingId ? updated : m
@@ -1399,7 +1916,13 @@ export function AppProvider({ children }) {
     setProjects([newProj, ...projects]);
     const sourceTemplate = template || selectedTemplateForWorkflow;
     if (sourceTemplate?.tasksTree && sourceTemplate.tasksTree.length > 0) {
-      const generatedTasks = flattenTreeToTasks(sourceTemplate.tasksTree, newProj.id, newProj.code);
+      const generatedTasks = flattenTreeToTasks(
+        sourceTemplate.tasksTree,
+        newProj.id,
+        newProj.code,
+        newProj.defaultStartDate || '2026-09-15',
+        newProj.defaultDueDate || '2026-10-30'
+      );
       setTasks((prev) => [...generatedTasks, ...prev]);
     }
     handleSelectProject(newProj);
@@ -1446,39 +1969,16 @@ export function AppProvider({ children }) {
     setIsCreateTemplateOpen(true);
   };
 
-  // Blueprint Category Master Handlers
-  const saveBlueprintCategories = (updated) => {
-    setBlueprintCategories(updated);
-    try {
-      localStorage.setItem('pulsepm_master_blueprint_cats_v1', JSON.stringify(updated));
-    } catch (e) {
-      console.error('Failed to save blueprint categories', e);
-    }
-  };
-
-  const handleAddBlueprintCategory = (newCat) => {
-    const updated = [...blueprintCategories, newCat];
-    saveBlueprintCategories(updated);
-  };
-
-  const handleUpdateBlueprintCategory = (updatedCat) => {
-    const updated = blueprintCategories.map((c) => (c.id === updatedCat.id ? updatedCat : c));
-    saveBlueprintCategories(updated);
-  };
-
-  const handleDeleteBlueprintCategory = (catId) => {
-    const updated = blueprintCategories.filter((c) => c.id !== catId);
-    saveBlueprintCategories(updated);
-  };
-
   // User CRUD Handlers
   const handleAddUser = async (newUser) => {
     setUsers((prev) => [newUser, ...prev]);
+    broadcastLocalEvent('user_created', newUser);
     showSuccess('User Added!', `${newUser.name} added to directory.`);
     try {
       const created = await api.users.create(newUser);
       if (created) {
         setUsers((prev) => prev.map((u) => (u.id === newUser.id ? { ...newUser, ...created } : u)));
+        broadcastLocalEvent('user_created', { ...newUser, ...created });
       }
     } catch (e) {
       console.error('Failed to create user in MongoDB', e);
@@ -1487,13 +1987,22 @@ export function AppProvider({ children }) {
 
   const handleUpdateUser = async (updatedUser) => {
     const targetId = updatedUser.id || updatedUser._id;
+    const targetEmail = updatedUser.email ? updatedUser.email.toLowerCase() : '';
+
+    // Quick local reflect: 0ms UI update
     setUsers((prev) =>
-      prev.map((u) => (u.id === targetId || u._id === targetId ? { ...u, ...updatedUser } : u))
+      prev.map((u) => {
+        const isMatch =
+          (targetId && (u.id === targetId || u._id === targetId)) ||
+          (targetEmail && u.email && u.email.toLowerCase() === targetEmail);
+        return isMatch ? { ...u, ...updatedUser } : u;
+      })
     );
+
+    // Reflect to user session immediately if self is updated
     const isSelf =
-      currentUser.id === targetId ||
-      currentUser._id === targetId ||
-      (currentUser.email && updatedUser.email && currentUser.email.toLowerCase() === updatedUser.email.toLowerCase());
+      (targetId && (currentUser.id === targetId || currentUser._id === targetId)) ||
+      (targetEmail && currentUser.email && currentUser.email.toLowerCase() === targetEmail);
 
     if (isSelf) {
       setCurrentUser((prev) => {
@@ -1502,9 +2011,24 @@ export function AppProvider({ children }) {
         return merged;
       });
     }
+
+    // Broadcast immediately across all open tabs/windows
+    broadcastLocalEvent('user_updated', { id: targetId, _id: targetId, ...updatedUser });
+
     showSuccess('User Updated', `${updatedUser.name} details saved.`);
     try {
-      await api.users.update(targetId, updatedUser);
+      const serverUpdated = await api.users.update(targetId, updatedUser);
+      if (serverUpdated) {
+        setUsers((prev) =>
+          prev.map((u) => {
+            const isMatch =
+              (targetId && (u.id === targetId || u._id === targetId)) ||
+              (serverUpdated.id && (u.id === serverUpdated.id || u._id === serverUpdated.id)) ||
+              (serverUpdated.email && u.email && u.email.toLowerCase() === serverUpdated.email.toLowerCase());
+            return isMatch ? { ...u, ...serverUpdated } : u;
+          })
+        );
+      }
     } catch (e) {
       console.error('Failed to update user in MongoDB', e);
     }
@@ -1521,6 +2045,7 @@ export function AppProvider({ children }) {
 
     // OPTIMISTIC UPDATE: Instantly remove from UI table (0ms lag)
     setUsers((prev) => prev.filter((u) => u.id !== userId && u._id !== userId));
+    broadcastLocalEvent('user_deleted', { id: userId });
     showSuccess('User Removed', `${targetUser?.name || 'User'} has been removed.`);
 
     try {
@@ -1541,6 +2066,7 @@ export function AppProvider({ children }) {
     if (currentUser.id === userId || currentUser._id === userId) {
       setCurrentUser((prev) => ({ ...prev, status: newStatus }));
     }
+    broadcastLocalEvent('user_updated', { id: userId, status: newStatus });
     try {
       await api.users.update(userId, { status: newStatus });
     } catch (e) {
@@ -1572,19 +2098,31 @@ export function AppProvider({ children }) {
     setAccessAuditLog((prev) => [entry, ...prev].slice(0, 100));
   };
 
+  const checkPermissionValue = (container, key) => {
+    if (!container) return undefined;
+    if (container[key] !== undefined) return container[key];
+    if (key === 'meetings.create' && container['meetings.schedule'] !== undefined) return container['meetings.schedule'];
+    if (key === 'meetings.schedule' && container['meetings.create'] !== undefined) return container['meetings.create'];
+    if (key === 'meetings.delete' && container['meetings.cancel'] !== undefined) return container['meetings.cancel'];
+    if (key === 'meetings.cancel' && container['meetings.delete'] !== undefined) return container['meetings.delete'];
+    return undefined;
+  };
+
   const hasPermission = (user, permissionKey) => {
     if (!user) return false;
     const uid = user.id || (user._id ? String(user._id) : '');
 
     // 1. Check user-specific custom override
-    if (userOverrides[uid] && userOverrides[uid][permissionKey] !== undefined) {
-      return !!userOverrides[uid][permissionKey];
+    const overrideVal = checkPermissionValue(userOverrides[uid], permissionKey);
+    if (overrideVal !== undefined) {
+      return !!overrideVal;
     }
 
     // 2. Check role permissions matrix
     const roleName = user.role;
-    if (rolePermissions[roleName] && rolePermissions[roleName][permissionKey] !== undefined) {
-      return !!rolePermissions[roleName][permissionKey];
+    const roleVal = checkPermissionValue(rolePermissions[roleName], permissionKey);
+    if (roleVal !== undefined) {
+      return !!roleVal;
     }
 
     // 3. Fallback for Super Admin: full access unless explicitly revoked
@@ -1601,10 +2139,10 @@ export function AppProvider({ children }) {
   const getUserPermissionStatus = (user, permissionKey) => {
     if (!user) return { allowed: false, isOverridden: false, type: 'inherited' };
     const uid = user.id || (user._id ? String(user._id) : '');
-    const hasOverride = userOverrides[uid] && userOverrides[uid][permissionKey] !== undefined;
+    const overrideVal = checkPermissionValue(userOverrides[uid], permissionKey);
 
-    if (hasOverride) {
-      const val = !!userOverrides[uid][permissionKey];
+    if (overrideVal !== undefined) {
+      const val = !!overrideVal;
       return {
         allowed: val,
         isOverridden: true,
@@ -1613,8 +2151,9 @@ export function AppProvider({ children }) {
     }
 
     const roleName = user.role;
-    const roleAllowed = rolePermissions[roleName] && rolePermissions[roleName][permissionKey] !== undefined
-      ? !!rolePermissions[roleName][permissionKey]
+    const roleVal = checkPermissionValue(rolePermissions[roleName], permissionKey);
+    const roleAllowed = roleVal !== undefined
+      ? !!roleVal
       : (roleName === 'Super Admin');
 
     return {
@@ -1745,14 +2284,6 @@ export function AppProvider({ children }) {
     addAuditEntry('System Reset', 'All roles and permissions reset to factory defaults');
   };
 
-  const saveRoles = (newRoles) => {
-    setRolesList(newRoles);
-    try {
-      localStorage.setItem('pulsepm_master_roles_v2', JSON.stringify(newRoles));
-    } catch (e) {
-      console.error('Failed to save master roles', e);
-    }
-  };
 
   const addCustomRole = (newRole) => {
     const updated = [...rolesList, newRole];
@@ -1959,6 +2490,7 @@ export function AppProvider({ children }) {
     handleUpdateMeeting,
     handleApproveMeeting,
     handleDeclineMeeting,
+    handleCancelMeeting,
     handleRescheduleMeeting,
     handleRestoreMeeting,
     handleDeleteMeeting,
@@ -1991,18 +2523,48 @@ export function AppProvider({ children }) {
     handleDeleteBlueprintCategory,
     handleDeleteTemplateCategory: handleDeleteBlueprintCategory,
 
+    // Master Brands / Projects
+    masterBrands,
+    setMasterBrands,
+    saveMasterBrands,
+    handleAddMasterBrand,
+    handleUpdateMasterBrand,
+    handleDeleteMasterBrand,
+
+    // Master Departments
+    masterDepartments,
+    setMasterDepartments,
+    saveMasterDepartments,
+    handleAddMasterDepartment,
+    handleUpdateMasterDepartment,
+    handleDeleteMasterDepartment,
+
     // Master Statuses & Completion Automation
     masterStatuses,
     setMasterStatuses,
     saveMasterStatuses,
+    handleAddMasterStatus,
+    handleUpdateMasterStatus,
+    handleDeleteMasterStatus,
     isCompletedStatus,
     getTaskStatuses,
     toggleTaskComplete,
 
-    // Tit-to-Bit Access Control & RBAC
+    // Master Link Categories
+    masterLinkCategories,
+    setMasterLinkCategories,
+    saveMasterLinkCategories,
+    handleAddLinkCategory,
+    handleUpdateLinkCategory,
+    handleDeleteLinkCategory,
+
+    // Master Roles
     rolesList,
     setRolesList,
     saveRoles,
+    handleAddRole,
+    handleUpdateRole,
+    handleDeleteRole,
     addCustomRole,
     updateCustomRole,
     deleteCustomRole,

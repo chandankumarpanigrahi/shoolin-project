@@ -17,6 +17,7 @@ import { PriorityBadge } from '@/components/common/Badges';
 import { UserAvatar, resolveUserObject, isTaskAssignee } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { showError } from '@/lib/swal';
+import { formatDate } from '@/lib/dateUtils';
 
 const COLUMNS = [
   {
@@ -121,7 +122,7 @@ export function KanbanBoardView({
               ) : (
                 colTasks.map((t) => {
                   const project = (projects || []).find((p) => p.id === t.projectId || p._id === t.projectId || p.code === t.projectId);
-                  const assignee = resolveUserObject(t.assigneeId || t.assignedTo, users);
+                  const assignee = t.assignedTo ? resolveUserObject(t.assigneeId || t.assignedTo, users) : null;
                   const subtasks = tasks.filter((st) => st.parentId === t.id);
                   const isCompleted = isCompletedStatus ? isCompletedStatus(t.status) : t.status === 'Completed';
                   const completedSubtasks = subtasks.filter(s => isCompletedStatus ? isCompletedStatus(s.status) : s.status === 'Completed').length;
@@ -197,12 +198,12 @@ export function KanbanBoardView({
                         </div>
                       )}
 
-                      {/* Footer: Due Date & Assignee */}
-                      <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 pl-1">
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="w-3 h-3 text-slate-400" />
-                          <span className="font-medium text-slate-600 dark:text-slate-400">
-                            {t.targetDate || t.dueDate || 'Sprint'}
+                      {/* Footer: Date (From → To) & Assignee */}
+                      <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400 pl-1 font-mono">
+                        <div className="flex items-center gap-1.5 truncate mr-2" title={`From: ${formatDate(t.startDate || t.fromDate)} | To: ${formatDate(t.dueDate || t.toDate || t.targetDate || t.endDate)}`}>
+                          <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate text-slate-600 dark:text-slate-300 font-medium">
+                            {t.startDate || t.fromDate ? `${formatDate(t.startDate || t.fromDate)} → ` : ''}{formatDate(t.dueDate || t.toDate || t.targetDate || t.endDate, 'Sprint')}
                           </span>
                         </div>
 
