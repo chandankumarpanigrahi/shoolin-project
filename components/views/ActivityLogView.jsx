@@ -324,7 +324,7 @@ export function ActivityLogView() {
             </div>
             <div>
               <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
-                Activity Log &amp; Session Monitor
+                Activity Log
               </h1>
             </div>
           </div>
@@ -393,7 +393,7 @@ export function ActivityLogView() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
-            <span>Active Member Sessions</span>
+            <span>Active Member</span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">{stats.active}</div>
@@ -439,7 +439,7 @@ export function ActivityLogView() {
             }`}
         >
           <Laptop className="w-4 h-4" />
-          <span>Active Member Sessions ({sessions.length})</span>
+          <span>Active Member ({sessions.length})</span>
         </button>
 
         <button
@@ -537,8 +537,8 @@ export function ActivityLogView() {
                         <tr
                           key={session.id || session._id || session.sessionId}
                           className={`transition-colors ${isCurrent
-                              ? 'bg-brand/5 dark:bg-brand/10 border-l-4 border-brand'
-                              : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
+                            ? 'bg-brand/5 dark:bg-brand/10 border-l-4 border-brand'
+                            : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
                             }`}
                         >
                           <td className="py-3.5 px-4">

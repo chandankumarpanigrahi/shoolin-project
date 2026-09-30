@@ -450,14 +450,11 @@ export function RoadmapTimelineView({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 border border-slate-200/90 dark:border-slate-800 rounded-sm shadow-2xs">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-3 sm:mb-0">
             <Calendar className="w-5 h-5 text-brand" />
             <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-              Interactive {currentYear} Project Roadmap
+              {currentYear} Roadmap
             </h1>
-            <span className="text-[11px] px-2 py-0.5 bg-brand-light/30 text-brand font-mono font-semibold rounded-xs border border-brand/30">
-              Live Gantt • Realtime Sync
-            </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Full scrollable calendar. Project spans auto-wrap deliverables. Assigned members can drag task bars to adjust Date From &amp; Date To.
@@ -519,7 +516,7 @@ export function RoadmapTimelineView({
             title={`Center roadmap on today: ${todayLabel}, ${currentYear}`}
           >
             <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-            <span>Today ({todayLabel})</span>
+            <span>Today</span>
           </button>
           <button
             type="button"
@@ -563,10 +560,10 @@ export function RoadmapTimelineView({
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-sm shadow-2xs overflow-hidden flex flex-col">
         <div className="flex flex-row overflow-hidden">
           {/* Sticky Left Column: Project & Deliverable Titles */}
-          <div className="w-[300px] sm:w-[340px] shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-20 flex flex-col shadow-sm">
+          <div className="w-[180px] sm:w-[320px] shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-20 flex flex-col shadow-sm">
             {/* Left Header matching 2-row calendar height */}
             <div className="h-16 px-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/90 flex items-center justify-between font-bold text-xs text-slate-600 dark:text-slate-300">
-              <span className="uppercase tracking-wider text-[11px]">Project / Deliverable</span>
+              <span className="uppercase tracking-wider text-[11px]">Project</span>
               <span className="text-[11px] text-slate-400">Progress</span>
             </div>
 

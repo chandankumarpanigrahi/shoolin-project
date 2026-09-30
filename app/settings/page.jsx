@@ -43,6 +43,8 @@ import {
   MessageSquare,
   Volume2,
   VolumeX,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Tabs ──────────────────────────────────────────────────
@@ -1529,6 +1531,9 @@ function PasswordOtpCard({ toast }) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showCurrentPwd, setShowCurrentPwd] = useState(false);
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [showConfirmPwd, setShowConfirmPwd] = useState(false);
 
   const handleSendOtp = async () => {
     setLoading(true);
@@ -1642,38 +1647,68 @@ function PasswordOtpCard({ toast }) {
           ) : (
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Current Password</label>
-              <input
-                type="password"
-                required
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
-              />
+              <div className="relative">
+                <input
+                  type={showCurrentPwd ? 'text' : 'password'}
+                  required
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full pl-3 pr-10 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrentPwd(!showCurrentPwd)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                  title={showCurrentPwd ? 'Hide password' : 'Show password'}
+                >
+                  {showCurrentPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
           )}
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">New Password</label>
-            <input
-              type="password"
-              required
-              minLength={6}
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
-            />
+            <div className="relative">
+              <input
+                type={showNewPwd ? 'text' : 'password'}
+                required
+                minLength={6}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full pl-3 pr-10 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPwd(!showNewPwd)}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                title={showNewPwd ? 'Hide password' : 'Show password'}
+              >
+                {showNewPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
           </div>
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Confirm New Password</label>
-            <input
-              type="password"
-              required
-              minLength={6}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
-            />
+            <div className="relative">
+              <input
+                type={showConfirmPwd ? 'text' : 'password'}
+                required
+                minLength={6}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full pl-3 pr-10 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPwd(!showConfirmPwd)}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                title={showConfirmPwd ? 'Hide password' : 'Show password'}
+              >
+                {showConfirmPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
           </div>
 
           <button
@@ -1947,12 +1982,9 @@ export default function SettingsPage() {
               <Settings className="w-4 h-4 text-brand" />
             </div>
             <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-              Settings &amp; Preferences
+              Settings
             </h1>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 ml-10.5">
-            Manage your workspace configuration, security safeguards, interface appearance, and account preferences.
-          </p>
         </div>
 
         {/* Global Tab Indicator */}

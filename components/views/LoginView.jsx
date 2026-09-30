@@ -81,8 +81,12 @@ export function LoginView() {
       if (notice) {
         setErrorMsg(notice);
         sessionStorage.removeItem('pulsepm_termination_notice');
+      } else if (params.get('reason') === 'restricted') {
+        setErrorMsg('Your account has been restricted or deactivated by an administrator. Please contact your manager.');
       } else if (params.get('reason') === 'terminated' || params.get('terminated') === 'true') {
         setErrorMsg('Your session was remotely terminated by an administrator. Please sign in again.');
+      } else if (params.get('reason') === 'expired') {
+        setErrorMsg('Your session has expired. Please sign in again.');
       }
     }
   }, []);

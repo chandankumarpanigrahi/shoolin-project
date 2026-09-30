@@ -191,9 +191,8 @@ export function ProjectsView({
             <button
               type="button"
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-xs transition-colors ${
-                viewMode === 'table' ? 'bg-white dark:bg-slate-900 text-brand shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
+              className={`p-1.5 rounded-xs transition-colors ${viewMode === 'table' ? 'bg-white dark:bg-slate-900 text-brand shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
               title="Table View (Default)"
             >
               <TableIcon className="w-3.5 h-3.5" />
@@ -201,9 +200,8 @@ export function ProjectsView({
             <button
               type="button"
               onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-xs transition-colors ${
-                viewMode === 'grid' ? 'bg-white dark:bg-slate-900 text-brand shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
+              className={`p-1.5 rounded-xs transition-colors ${viewMode === 'grid' ? 'bg-white dark:bg-slate-900 text-brand shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
               title="Card Grid View"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
@@ -217,7 +215,7 @@ export function ProjectsView({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-brand-text bg-brand-subtle hover:bg-brand-light rounded-sm border border-brand-border transition-colors"
             >
               <Layers className="w-3.5 h-3.5 text-brand" />
-              From Template
+              Template
             </button>
           )}
 
@@ -228,7 +226,7 @@ export function ProjectsView({
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-brand hover:bg-brand-hover active:bg-brand-hover rounded-sm shadow-xs transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-              New Project
+              New
             </button>
           )}
         </div>
@@ -239,20 +237,18 @@ export function ProjectsView({
         <button
           type="button"
           onClick={() => setActiveTab('active')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold border-b-2 transition-all ${
-            activeTab === 'active'
-              ? 'border-brand text-brand bg-white dark:bg-slate-900 rounded-t-sm shadow-2xs'
-              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold border-b-2 transition-all ${activeTab === 'active'
+            ? 'border-brand text-brand bg-white dark:bg-slate-900 rounded-t-sm shadow-2xs'
+            : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+            }`}
         >
           <Briefcase className="w-3.5 h-3.5" />
           <span>Active Projects</span>
           <span
-            className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-              activeTab === 'active'
-                ? 'bg-brand text-white font-bold'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-            }`}
+            className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${activeTab === 'active'
+              ? 'bg-brand text-white font-bold'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}
           >
             {activeProjectsList.length}
           </span>
@@ -262,20 +258,18 @@ export function ProjectsView({
           <button
             type="button"
             onClick={() => setActiveTab('deleted')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold border-b-2 transition-all ${
-              activeTab === 'deleted'
-                ? 'border-rose-600 text-rose-600 bg-white dark:bg-slate-900 rounded-t-sm shadow-2xs'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40'
-            }`}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold border-b-2 transition-all ${activeTab === 'deleted'
+              ? 'border-rose-600 text-rose-600 bg-white dark:bg-slate-900 rounded-t-sm shadow-2xs'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+              }`}
           >
             <Trash2 className="w-3.5 h-3.5 text-rose-500" />
             <span>Deleted Projects</span>
             <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                activeTab === 'deleted'
-                  ? 'bg-rose-600 text-white font-bold'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-              }`}
+              className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${activeTab === 'deleted'
+                ? 'bg-rose-600 text-white font-bold'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                }`}
             >
               {deletedProjectsList.length}
             </span>
@@ -298,7 +292,7 @@ export function ProjectsView({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="w-full sm:w-fit grid grid-cols-2 sm:flex items-center gap-2 flex-wrap">
           {/* Brand Filter */}
           <select
             value={selectedBrand}
@@ -382,8 +376,8 @@ export function ProjectsView({
               {searchQuery
                 ? 'No project matches your search criteria.'
                 : activeTab === 'active'
-                ? 'No active projects in portfolio.'
-                : 'Recycle bin is clean. No soft-deleted projects here.'}
+                  ? 'No active projects in portfolio.'
+                  : 'Recycle bin is clean. No soft-deleted projects here.'}
             </p>
           </div>
           {activeTab === 'active' && can('projects.create') && (
@@ -450,12 +444,12 @@ export function ProjectsView({
                   const liveStatus = activeTab === 'deleted'
                     ? 'Deleted'
                     : projTasks.length > 0 && projCompletedCount === projTasks.length
-                    ? 'Completed'
-                    : hasBlockedOrRisk
-                    ? 'At Risk'
-                    : allReview
-                    ? 'Review'
-                    : (p.status || 'In Progress');
+                      ? 'Completed'
+                      : hasBlockedOrRisk
+                        ? 'At Risk'
+                        : allReview
+                          ? 'Review'
+                          : (p.status || 'In Progress');
 
                   return (
                     <tr

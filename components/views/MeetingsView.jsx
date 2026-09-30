@@ -510,7 +510,7 @@ export function MeetingsView({
               <Video className="w-4 h-4" />
             </div>
             <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-              Meetings &amp; Video Syncs
+              Video Syncs
             </h1>
             <span className="text-xs px-2.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-mono font-bold rounded-full border border-emerald-300 dark:border-emerald-700/80">
               {filteredMeetings.length} syncs
@@ -528,7 +528,7 @@ export function MeetingsView({
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:from-emerald-700 active:to-teal-700 rounded-lg shadow-sm transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            Schedule Meeting
+            New
           </button>
         )}
       </div>
@@ -545,7 +545,7 @@ export function MeetingsView({
               }`}
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>Active &amp; Upcoming</span>
+            <span>Active</span>
             <span
               className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${activeTab !== 'archive'
                 ? 'bg-emerald-600 text-white'
@@ -565,7 +565,7 @@ export function MeetingsView({
               }`}
           >
             <Archive className="w-3.5 h-3.5 text-slate-500" />
-            <span>Archive &amp; Past</span>
+            <span>Past</span>
             <span
               className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${activeTab === 'archive'
                 ? 'bg-slate-700 dark:bg-slate-300 text-white dark:text-slate-900'
@@ -599,7 +599,7 @@ export function MeetingsView({
               }`}
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>Visual Calendar</span>
+            <span>Calendar</span>
           </button>
         </div>
       </div>
@@ -654,7 +654,7 @@ export function MeetingsView({
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/80 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  <th className="py-2.5 px-3">Meeting &amp; Agenda</th>
+                  <th className="py-2.5 px-3">Meetings</th>
                   <th className="py-2.5 px-3">Project</th>
                   <th className="py-2.5 px-3">Schedule</th>
                   <th className="py-2.5 px-3">Host</th>
@@ -963,10 +963,10 @@ export function MeetingsView({
           onClick={(e) => {
             if (e.target === e.currentTarget) setCancelTarget(null);
           }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto"
         >
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100 animate-in zoom-in-95 duration-100">
-            <div className="px-5 py-3.5 border-b border-rose-100 dark:border-rose-950/60 bg-rose-50/70 dark:bg-rose-950/40 flex items-center justify-between">
+          <div className="w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100 animate-in zoom-in-95 duration-100 my-auto">
+            <div className="px-5 py-3.5 border-b border-rose-100 dark:border-rose-950/60 bg-rose-50/70 dark:bg-rose-950/40 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
                 <h3 className="text-sm font-bold text-rose-950 dark:text-rose-100">
@@ -982,7 +982,7 @@ export function MeetingsView({
               </button>
             </div>
 
-            <form onSubmit={handleConfirmCancel} className="p-5 space-y-3.5 text-xs">
+            <form onSubmit={handleConfirmCancel} className="p-5 space-y-3.5 text-xs flex-1 overflow-y-auto">
               {cancelError && (
                 <div className="p-2.5 rounded border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300 text-[11px]">
                   {cancelError}
@@ -1051,10 +1051,10 @@ export function MeetingsView({
           onClick={(e) => {
             if (e.target === e.currentTarget) setRescheduleTarget(null);
           }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto"
         >
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100 animate-in zoom-in-95 duration-100">
-            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/60 flex items-center justify-between">
+          <div className="w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100 animate-in zoom-in-95 duration-100 my-auto">
+            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/60 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-500" />
                 <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -1070,7 +1070,7 @@ export function MeetingsView({
               </button>
             </div>
 
-            <form onSubmit={handleConfirmReschedule} className="p-5 space-y-3.5 text-xs">
+            <form onSubmit={handleConfirmReschedule} className="p-5 space-y-3.5 text-xs flex-1 overflow-y-auto">
               <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded text-amber-900 dark:text-amber-200 text-[11px]">
                 <p className="font-bold flex items-center gap-1">
                   <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />

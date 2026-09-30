@@ -739,6 +739,12 @@ export function AppProvider({ children }) {
             (targetId && (prev.id === targetId || prev._id === targetId || (updatedUser.clientTempId && prev.id === updatedUser.clientTempId))) ||
             (targetEmail && prev.email && prev.email.toLowerCase() === targetEmail);
           if (isMatch) {
+            // If the current user's account has been restricted, log them out
+            const restrictedStatuses = ['Deactivated', 'Archived', 'Inactive', 'Disabled'];
+            if (updatedUser.status && restrictedStatuses.includes(updatedUser.status)) {
+              logout(`Your account has been ${updatedUser.status.toLowerCase()} by an administrator.`);
+              return prev;
+            }
             const merged = { ...prev, ...updatedUser };
             try { localStorage.setItem('pulsepm_current_user', JSON.stringify(merged)); } catch (e) {}
             return merged;
@@ -747,8 +753,35 @@ export function AppProvider({ children }) {
         });
       });
 
-      const unsubUserDeleted = subscribeToRealtimeEvent('user_deleted', ({ id }) => {
-        setUsers((prev) => prev.filter((u) => u.id !== id && u._id !== id));
+      const unsubUserDeleted = subscribeToRealtimeEvent('user_deleted', (payload) => {
+        const deletedId = payload?.id || payload?._id;
+        const deletedEmail = payload?.userEmail;
+        setUsers((prev) => prev.filter((u) => u.id !== deletedId && u._id !== deletedId));
+        // If the currently logged-in user was deleted, log them out immediately
+        setCurrentUser((prev) => {
+          if (!prev) return prev;
+          const isMe = (deletedId && (prev.id === deletedId || prev._id === deletedId)) ||
+            (deletedEmail && prev.email && prev.email.toLowerCase() === deletedEmail.toLowerCase());
+          if (isMe) {
+            logout('Your account has been removed by an administrator.');
+          }
+          return prev;
+        });
+      });
+
+      const unsubUserSessionTerminated = subscribeToRealtimeEvent('user_session_terminated', (payload) => {
+        if (!payload) return;
+        setCurrentUser((prev) => {
+          if (!prev) return prev;
+          const targetId = payload.userId;
+          const targetEmail = payload.userEmail;
+          const isMe = (targetId && (prev.id === targetId || prev._id === targetId)) ||
+            (targetEmail && prev.email && prev.email.toLowerCase() === targetEmail.toLowerCase());
+          if (isMe) {
+            logout(payload.reason || 'Your account has been restricted by an administrator.');
+          }
+          return prev;
+        });
       });
 
       const unsubMasterBrands = subscribeToRealtimeEvent('MASTER_BRANDS_UPDATED', async () => {
@@ -843,6 +876,7 @@ export function AppProvider({ children }) {
         unsubUserCreated();
         unsubUserUpdated();
         unsubUserDeleted();
+        unsubUserSessionTerminated();
         unsubMasterBrands();
         unsubMasterDepartments();
         unsubMasterStatuses();
@@ -934,7 +968,6 @@ export function AppProvider({ children }) {
       if (isChecking) return;
 
       const sessId = typeof window !== 'undefined' ? localStorage.getItem('pulsepm_session_id') : null;
-      if (!sessId) return;
 
       isChecking = true;
       lastCheckTime = now;
@@ -942,11 +975,18 @@ export function AppProvider({ children }) {
       try {
         const res = await api.sessions.check(sessId);
         if (res && res.active === false) {
-          logout('Your session was remotely terminated by an administrator or has expired.');
+          logout(res.message || 'Your session was remotely terminated by an administrator or has expired.');
         }
       } catch (err) {
-        if (err?.message?.includes('401') || err?.message?.includes('terminated') || err?.message?.includes('expired')) {
-          logout('Your session was remotely terminated by an administrator or has expired.');
+        if (
+          err?.message?.includes('401') ||
+          err?.message?.includes('403') ||
+          err?.message?.toLowerCase().includes('terminated') ||
+          err?.message?.toLowerCase().includes('expired') ||
+          err?.message?.toLowerCase().includes('restricted') ||
+          err?.message?.toLowerCase().includes('deactivated')
+        ) {
+          logout(err.message || 'Your session was remotely terminated by an administrator or has expired.');
         }
       } finally {
         isChecking = false;
@@ -2001,8 +2041,14 @@ export function AppProvider({ children }) {
 
     // Reflect to user session immediately if self is updated
     const isSelf =
-      (targetId && (currentUser.id === targetId || currentUser._id === targetId)) ||
-      (targetEmail && currentUser.email && currentUser.email.toLowerCase() === targetEmail);
+      (targetId && (currentUser?.id === targetId || currentUser?._id === targetId)) ||
+      (targetEmail && currentUser?.email && currentUser.email.toLowerCase() === targetEmail);
+
+    const restrictedStatuses = ['Deactivated', 'Archived', 'Inactive', 'Disabled'];
+    if (isSelf && updatedUser.status && restrictedStatuses.includes(updatedUser.status)) {
+      logout(`Your account has been ${updatedUser.status.toLowerCase()} by an administrator.`);
+      return;
+    }
 
     if (isSelf) {
       setCurrentUser((prev) => {
@@ -2013,7 +2059,7 @@ export function AppProvider({ children }) {
     }
 
     // Broadcast immediately across all open tabs/windows
-    broadcastLocalEvent('user_updated', { id: targetId, _id: targetId, ...updatedUser });
+    broadcastLocalEvent('user_updated', { id: targetId, _id: targetId, userEmail: targetEmail, email: targetEmail, ...updatedUser });
 
     showSuccess('User Updated', `${updatedUser.name} details saved.`);
     try {
@@ -2045,8 +2091,19 @@ export function AppProvider({ children }) {
 
     // OPTIMISTIC UPDATE: Instantly remove from UI table (0ms lag)
     setUsers((prev) => prev.filter((u) => u.id !== userId && u._id !== userId));
-    broadcastLocalEvent('user_deleted', { id: userId });
+    broadcastLocalEvent('user_deleted', { id: userId, _id: userId, userEmail: targetUser?.email, email: targetUser?.email });
     showSuccess('User Removed', `${targetUser?.name || 'User'} has been removed.`);
+
+    const isSelf = currentUser && (
+      currentUser.id === userId ||
+      currentUser._id === userId ||
+      (targetUser && currentUser.email && targetUser.email && currentUser.email.toLowerCase() === targetUser.email.toLowerCase())
+    );
+
+    if (isSelf) {
+      logout('Your account has been removed by an administrator.');
+      return;
+    }
 
     try {
       await api.users.delete(userId);
@@ -2060,13 +2117,35 @@ export function AppProvider({ children }) {
   };
 
   const handleToggleUserStatus = async (userId, newStatus) => {
+    const targetUser = users.find((u) => u.id === userId || u._id === userId);
     setUsers((prev) =>
       prev.map((u) => (u.id === userId || u._id === userId ? { ...u, status: newStatus } : u))
     );
-    if (currentUser.id === userId || currentUser._id === userId) {
+
+    const isSelf = currentUser && (
+      currentUser.id === userId ||
+      currentUser._id === userId ||
+      (targetUser && currentUser.email && targetUser.email && currentUser.email.toLowerCase() === targetUser.email.toLowerCase())
+    );
+
+    const restrictedStatuses = ['Deactivated', 'Archived', 'Inactive', 'Disabled'];
+    if (isSelf && restrictedStatuses.includes(newStatus)) {
+      logout(`Your account has been ${newStatus.toLowerCase()} by an administrator.`);
+      return;
+    } else if (isSelf) {
       setCurrentUser((prev) => ({ ...prev, status: newStatus }));
     }
-    broadcastLocalEvent('user_updated', { id: userId, status: newStatus });
+
+    broadcastLocalEvent('user_updated', {
+      id: userId,
+      _id: userId,
+      email: targetUser?.email,
+      userEmail: targetUser?.email,
+      status: newStatus
+    });
+
+    showSuccess('User Status Changed', `${targetUser?.name || 'User'} is now ${newStatus}.`);
+
     try {
       await api.users.update(userId, { status: newStatus });
     } catch (e) {

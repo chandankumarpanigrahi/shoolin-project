@@ -105,9 +105,9 @@ export function AuthModal({ isOpen, onClose, onLoginAsUser }) {
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
     >
-      <div className="relative w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-sm shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-sm shadow-2xl overflow-hidden my-auto">
         {/* Close Button */}
         <button
           type="button"
@@ -118,7 +118,7 @@ export function AuthModal({ isOpen, onClose, onLoginAsUser }) {
         </button>
 
         {/* Modal Top Header */}
-        <div className="pt-7 pb-4 px-6 text-center border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+        <div className="pt-7 pb-4 px-6 text-center border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
           <div className="w-10 h-10 mx-auto rounded-sm bg-brand flex items-center justify-center text-white font-bold text-lg shadow-sm mb-3">
             P
           </div>
@@ -126,7 +126,7 @@ export function AuthModal({ isOpen, onClose, onLoginAsUser }) {
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">High-Performance Enterprise Project Management</p>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 flex-1 overflow-y-auto">
           {errorMsg && (
             <div className="mb-4 p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-sm text-xs text-rose-600 dark:text-rose-400 font-medium">
               {errorMsg}

@@ -126,10 +126,9 @@ export function Sidebar({
             />
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5">
-                <span className="font-bold text-slate-100 text-xs tracking-tight truncate max-w-[130px]">
+                <span className="font-bold text-slate-100 text-sm sm:text-xs tracking-tight truncate max-w-[130px]">
                   Shoolin Innovations
                 </span>
-                <span className="text-[9px] px-1 bg-brand-light/20 text-brand-text rounded-sm font-mono font-medium">OS</span>
               </div>
               <span className="text-[10px] text-slate-400 -mt-0.5">Enterprise Operations</span>
             </div>
@@ -167,7 +166,7 @@ export function Sidebar({
                   key={item.id}
                   type="button"
                   onClick={() => handleNavClick(item)}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-sm text-xs font-medium transition-colors cursor-pointer ${active
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-sm text-md sm:text-xs font-medium transition-colors cursor-pointer ${active
                     ? 'bg-brand text-white shadow-sm font-semibold'
                     : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
                     }`}
@@ -209,8 +208,8 @@ export function Sidebar({
             <div className="flex items-center gap-2.5 min-w-0">
               <UserAvatar user={currentUser} size="sm" />
               <div className="min-w-0 flex flex-col">
-                <span className="text-xs font-semibold text-slate-200 truncate">{currentUser.name}</span>
-                <span className="text-[11px] text-slate-400 truncate">{currentUser.role}</span>
+                <span className="text-md sm:text-xs font-semibold text-slate-200 truncate">{currentUser.name}</span>
+                <span className="text-sm sm:text-[11px] text-slate-400 truncate">{currentUser.role}</span>
               </div>
             </div>
 

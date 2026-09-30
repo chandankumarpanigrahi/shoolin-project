@@ -67,11 +67,11 @@ export function ChangeDpModal({ isOpen, onClose, currentUser, onUpdateAvatar }) 
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto"
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-sm shadow-2xl w-full max-w-md overflow-hidden text-xs">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-sm shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden text-xs my-auto">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/50">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 shrink-0">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-sm bg-brand-light text-brand">
               <Camera className="w-4 h-4" />
@@ -95,7 +95,7 @@ export function ChangeDpModal({ isOpen, onClose, currentUser, onUpdateAvatar }) 
         </div>
 
         {/* Content */}
-        <div className="p-5 space-y-5">
+        <div className="p-5 space-y-5 flex-1 overflow-y-auto">
           {/* Live Preview */}
           <div className="flex items-center gap-4 p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 rounded-sm">
             <div className="relative w-16 h-16 shrink-0">

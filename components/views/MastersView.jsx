@@ -509,7 +509,7 @@ export function MastersView() {
 
   const handleToggleUserArchive = (user) => {
     const nextStatus = user.status === 'Active' ? 'Deactivated' : user.status === 'Deactivated' ? 'Archived' : 'Active';
-    if (handleToggleUserStatus) handleToggleUserStatus(user.id, nextStatus);
+    if (handleToggleUserStatus) handleToggleUserStatus(user.id || user._id, nextStatus);
   };
 
   // =========================================================================
@@ -2316,9 +2316,9 @@ export function MastersView() {
       {/* MODAL: ADD / EDIT USER */}
       {/* ========================================================================= */}
       {isUserModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-lg p-5 space-y-4 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col p-5 space-y-4 animate-in fade-in duration-150 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 shrink-0">
               <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 {editingUser ? <Pencil className="w-4 h-4 text-brand" /> : <Plus className="w-4 h-4 text-brand" />}
                 <span>{editingUser ? 'Edit User Master' : 'Add User Master'}</span>
@@ -2332,7 +2332,7 @@ export function MastersView() {
               </button>
             </div>
 
-            <form onSubmit={handleUserSubmit} className="space-y-3.5">
+            <form onSubmit={handleUserSubmit} className="space-y-3.5 flex-1 overflow-y-auto pr-1">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
@@ -2497,9 +2497,9 @@ export function MastersView() {
       {/* MODAL: ADD / EDIT ROLE */}
       {/* ========================================================================= */}
       {isRoleModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col p-5 space-y-4 animate-in fade-in duration-150 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 shrink-0">
               <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-brand" />
                 <span>{editingRole ? 'Edit Custom Role' : 'Add Custom Role'}</span>
@@ -2513,7 +2513,7 @@ export function MastersView() {
               </button>
             </div>
 
-            <form onSubmit={handleRoleSubmit} className="space-y-3.5">
+            <form onSubmit={handleRoleSubmit} className="space-y-3.5 flex-1 overflow-y-auto pr-1">
               <div>
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                   Role Title <span className="text-rose-500">*</span>
@@ -2580,9 +2580,9 @@ export function MastersView() {
       {/* MODAL: ADD / EDIT STATUS */}
       {/* ========================================================================= */}
       {isStatusModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-lg p-5 space-y-4 animate-in fade-in duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-2xl p-5 space-y-4 animate-in fade-in duration-150 max-h-[90vh] flex flex-col my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 shrink-0">
               <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <Tag className="w-4 h-4 text-brand" />
                 <span>{editingStatus ? 'Edit Master Status Configuration' : 'Add Master Status Configuration'}</span>
@@ -2596,7 +2596,7 @@ export function MastersView() {
               </button>
             </div>
 
-            <form onSubmit={handleStatusSubmit} className="space-y-4">
+            <form onSubmit={handleStatusSubmit} className="space-y-4 flex-1 overflow-y-auto pr-1">
               {/* Name & Scope */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -2793,9 +2793,9 @@ export function MastersView() {
       {/* MODAL: ADD / EDIT BRAND */}
       {/* ========================================================================= */}
       {isBrandModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col p-5 space-y-4 animate-in fade-in duration-150 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 shrink-0">
               <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <FolderGit2 className="w-4 h-4 text-brand" />
                 <span>{editingBrand ? 'Edit Project Brand' : 'Add Project Brand'}</span>
@@ -2809,7 +2809,7 @@ export function MastersView() {
               </button>
             </div>
 
-            <form onSubmit={handleBrandSubmit} className="space-y-3.5">
+            <form onSubmit={handleBrandSubmit} className="space-y-3.5 flex-1 overflow-y-auto pr-1">
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
@@ -2945,9 +2945,9 @@ export function MastersView() {
       {/* MODAL: ADD / EDIT LINK CATEGORY */}
       {/* ========================================================================= */}
       {isCatModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col p-5 space-y-4 animate-in fade-in duration-150 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 shrink-0">
               <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <Link2 className="w-4 h-4 text-brand" />
                 <span>{editingCat ? 'Edit Link Category' : 'Add Link Category'}</span>
@@ -2961,7 +2961,7 @@ export function MastersView() {
               </button>
             </div>
 
-            <form onSubmit={handleCatSubmit} className="space-y-3.5">
+            <form onSubmit={handleCatSubmit} className="space-y-3.5 flex-1 overflow-y-auto pr-1">
               <div>
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                   Category Title <span className="text-rose-500">*</span>
@@ -3028,9 +3028,9 @@ export function MastersView() {
       {/* MODAL: ADD / EDIT DEPARTMENT */}
       {/* ========================================================================= */}
       {isDepModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col p-5 space-y-4 animate-in fade-in duration-150 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 shrink-0">
               <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-brand" />
                 <span>{editingDep ? 'Edit Department' : 'Add Department'}</span>
@@ -3044,7 +3044,7 @@ export function MastersView() {
               </button>
             </div>
 
-            <form onSubmit={handleDepSubmit} className="space-y-3.5">
+            <form onSubmit={handleDepSubmit} className="space-y-3.5 flex-1 overflow-y-auto pr-1">
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
@@ -3115,9 +3115,9 @@ export function MastersView() {
       {/* MODAL: ADD / EDIT TEMPLATE CATEGORY */}
       {/* ========================================================================= */}
       {isBlueprintCatModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-md p-5 space-y-4 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col p-5 space-y-4 animate-in fade-in duration-150 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 shrink-0">
               <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <Layers className="w-4 h-4 text-brand" />
                 <span>{editingBlueprintCat ? 'Edit Template Category' : 'Add Template Category'}</span>
@@ -3131,7 +3131,7 @@ export function MastersView() {
               </button>
             </div>
 
-            <form onSubmit={handleBlueprintCatSubmit} className="space-y-3.5">
+            <form onSubmit={handleBlueprintCatSubmit} className="space-y-3.5 flex-1 overflow-y-auto pr-1">
               <div className="grid grid-cols-3 gap-2.5">
                 <div className="col-span-1">
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">

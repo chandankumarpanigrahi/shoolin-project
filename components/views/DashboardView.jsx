@@ -240,7 +240,7 @@ export function DashboardView({
   return (
     <div className="space-y-6 pb-12">
       {/* Top Banner: Greeting & Quick Action Triggers */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 sm:p-5 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs">
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
@@ -278,17 +278,17 @@ export function DashboardView({
       </div>
 
       {/* 4 Synchronized Key Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
         {/* Active Projects */}
         <div
           onClick={() => handleNavigate('projects')}
-          className="p-4 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl hover:border-brand hover:shadow-md cursor-pointer transition-all shadow-xs group"
+          className="p-4 bg-gradient-to-br from-blue-500/20 via-indigo-500/2 to-white dark:from-blue-950/20 dark:via-slate-900 dark:to-slate-900 border-2 border-blue-200 dark:border-blue-900/40 rounded-xl hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md cursor-pointer transition-all shadow-xs group"
         >
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2.5">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+            <span className="text-[12px] font-black uppercase tracking-wider text-blue-900 dark:text-blue-300">
               Active Projects
             </span>
-            <div className="w-8 h-8 rounded-lg bg-brand-subtle text-brand flex items-center justify-center group-hover:scale-110 transition-transform">
+            <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Briefcase className="w-4 h-4" />
             </div>
           </div>
@@ -296,7 +296,7 @@ export function DashboardView({
             <span className="text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
               {activeProjects.length}
             </span>
-            <span className="text-[10px] text-brand font-semibold bg-brand-subtle px-2 py-0.5 rounded-full border border-brand-border">
+            <span className="text-[10px] text-blue-700 dark:text-blue-300 font-semibold bg-blue-100/90 dark:bg-blue-950/80 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
               {activeProjects.length === 1 ? '1 Active' : `${activeProjects.length} Active`}
             </span>
           </div>
@@ -305,13 +305,13 @@ export function DashboardView({
         {/* Tasks Due Today */}
         <div
           onClick={() => handleNavigate('tasks')}
-          className="p-4 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md cursor-pointer transition-all shadow-xs group"
+          className="p-4 bg-gradient-to-br from-amber-500/20 via-orange-500/2 to-white dark:from-amber-950/20 dark:via-slate-900 dark:to-slate-900 border-2 border-amber-200 dark:border-amber-900/40 rounded-xl hover:border-amber-400 dark:hover:border-amber-500 hover:shadow-md cursor-pointer transition-all shadow-xs group"
         >
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2.5">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+            <span className="text-[12px] font-black uppercase tracking-wider text-amber-900 dark:text-amber-300">
               Due Today
             </span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Clock className="w-4 h-4" />
             </div>
           </div>
@@ -321,8 +321,8 @@ export function DashboardView({
             </span>
             <span
               className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${dueTodayTasks.length > 0
-                ? 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800'
-                : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800'
+                ? 'text-amber-800 dark:text-amber-200 bg-amber-100/90 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700'
+                : 'text-emerald-700 dark:text-emerald-300 bg-emerald-100/90 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800'
                 }`}
             >
               {dueTodayTasks.length > 0 ? 'Requires Action' : 'All Clear'}
@@ -333,13 +333,13 @@ export function DashboardView({
         {/* Completed Tasks */}
         <div
           onClick={() => handleNavigate('tasks')}
-          className="p-4 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl hover:border-emerald-400 dark:hover:border-emerald-500 hover:shadow-md cursor-pointer transition-all shadow-xs group"
+          className="p-4 bg-gradient-to-br from-emerald-500/20 via-teal-50/2 to-white dark:from-emerald-950/20 dark:via-slate-900 dark:to-slate-900 border-2 border-emerald-200 dark:border-emerald-900/40 rounded-xl hover:border-emerald-400 dark:hover:border-emerald-500 hover:shadow-md cursor-pointer transition-all shadow-xs group"
         >
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2.5">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+            <span className="text-[12px] font-black uppercase tracking-wider text-emerald-900 dark:text-emerald-300">
               Completed Tasks
             </span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
@@ -347,7 +347,7 @@ export function DashboardView({
             <span className="text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
               {completedTasks.length}
             </span>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+            <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold bg-emerald-100/90 dark:bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
               {activeTasks.length > 0 ? `${Math.round((completedTasks.length / activeTasks.length) * 100)}% velocity` : '0%'}
             </span>
           </div>
@@ -356,13 +356,13 @@ export function DashboardView({
         {/* My Meetings KPI */}
         <div
           onClick={() => handleNavigate('meetings')}
-          className="p-4 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-md cursor-pointer transition-all shadow-xs group"
+          className="p-4 bg-gradient-to-br from-purple-500/20 via-fuchsia-500/2 to-white dark:from-purple-950/20 dark:via-slate-900 dark:to-slate-900 border-2 border-purple-200 dark:border-purple-900/40 rounded-xl hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-md cursor-pointer transition-all shadow-xs group"
         >
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2.5">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+            <span className="text-[12px] font-black uppercase tracking-wider text-purple-900 dark:text-purple-300">
               My Meetings
             </span>
-            <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-950/80 text-purple-600 dark:text-purple-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Video className="w-4 h-4" />
             </div>
           </div>
@@ -370,7 +370,7 @@ export function DashboardView({
             <span className="text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
               {myMeetings.length}
             </span>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+            <span className="text-[10px] text-purple-700 dark:text-purple-300 font-semibold bg-purple-100/90 dark:bg-purple-950/80 px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800">
               Active Syncs
             </span>
           </div>
@@ -380,13 +380,13 @@ export function DashboardView({
       {/* Main Grid: Project Progress & My Tasks (Synchronized Dynamic View) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Left 7 Columns: Active Project Progress Overview */}
-        <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3 sm:p-3 sm:p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 sm:pb-3">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-brand-subtle text-brand flex items-center justify-center">
                 <Briefcase className="w-4 h-4" />
               </div>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
                 Project Progress
               </h2>
             </div>
@@ -395,7 +395,7 @@ export function DashboardView({
               onClick={() => handleNavigate('projects')}
               className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-1 cursor-pointer transition-colors"
             >
-              <span>View all projects</span>
+              <span>View all</span>
               <ArrowRight className="w-3 h-3" />
             </button>
           </div>
@@ -408,21 +408,21 @@ export function DashboardView({
                 <div
                   key={p.id || p._id || p.code}
                   onClick={() => onSelectProject && onSelectProject(p)}
-                  className="py-3 hover:bg-slate-50/80 border border-gray-200 dark:border-slate-800 hover:!border-brand dark:hover:bg-slate-800/50 px-2.5 rounded-lg cursor-pointer group transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  className="py-3 hover:bg-slate-50/80 border border-gray-200 dark:border-slate-800 hover:!border-brand dark:hover:bg-slate-800/50 px-2.5 rounded-lg cursor-pointer group transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-3"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-xs font-bold text-brand bg-brand-subtle px-1.5 py-0.5 rounded border border-brand-border">
+                      <span className="font-mono text-xs font-black text-brand bg-brand-subtle px-1.5 py-0.5 rounded border border-brand-border">
                         {p.code}
                       </span>
                       <span className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-brand dark:group-hover:text-white transition-colors truncate">
                         {p.name}
                       </span>
-                      <ProjectTypeBadge type={p.type} size="xs" />
+                      {/* <ProjectTypeBadge type={p.type} size="xs" /> */}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 shrink-0">
+                  <div className="flex justify-between sm:justify-normal items-center gap-4 shrink-0">
                     {/* Dynamic Progress Bar */}
                     <div className="w-32 flex flex-col gap-1">
                       <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400">
@@ -444,8 +444,8 @@ export function DashboardView({
         </div>
 
         {/* Right 5 Columns: My Tasks List */}
-        <div className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3 sm:p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 sm:pb-3">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
                 <CheckSquare className="w-4 h-4" />
@@ -507,14 +507,14 @@ export function DashboardView({
       </div>
 
       {/* Middle Row: My Meetings & Video Syncs */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3 sm:p-5 shadow-xs space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 sm:pb-3">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <Video className="w-4 h-4" />
             </div>
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-              My Meetings &amp; Video Syncs
+              Meetings
             </h2>
             <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
               {myMeetings.length}
@@ -524,7 +524,7 @@ export function DashboardView({
             <button
               type="button"
               onClick={onOpenScheduleMeeting}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-xs cursor-pointer"
+              className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-xs cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Schedule</span>
@@ -534,7 +534,7 @@ export function DashboardView({
               onClick={() => handleNavigate('meetings')}
               className="text-[11px] font-semibold text-brand hover:text-brand-dark flex items-center gap-1 cursor-pointer transition-colors"
             >
-              <span>View all syncs</span>
+              <span>View all</span>
               <ArrowRight className="w-3 h-3" />
             </button>
           </div>

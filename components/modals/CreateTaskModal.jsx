@@ -185,11 +185,11 @@ export function CreateTaskModal({
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto"
     >
-      <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-sm shadow-2xl overflow-hidden">
+      <div className="w-full max-w-2xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-sm shadow-2xl overflow-hidden my-auto">
         {/* Header */}
-        <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/60 flex items-center justify-between">
+        <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/60 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <CheckSquare className="w-4 h-4 text-brand" />
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -207,7 +207,7 @@ export function CreateTaskModal({
 
         {/* Parent Task Context Callout */}
         {parentTask && (
-          <div className="px-5 py-2 bg-brand-subtle border-b border-brand-border flex items-center gap-2 text-xs text-brand-text">
+          <div className="px-5 py-2 bg-brand-subtle border-b border-brand-border flex items-center gap-2 text-xs text-brand-text shrink-0">
             <AlertCircle className="w-3.5 h-3.5 text-brand shrink-0" />
             <span className="truncate">
               <strong>Parent:</strong> <span className="font-mono font-semibold">{parentTask.code}</span> — {parentTask.title}
@@ -216,7 +216,7 @@ export function CreateTaskModal({
         )}
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-3.5 text-xs">
+        <form onSubmit={handleSubmit} className="p-5 space-y-3.5 text-xs flex-1 overflow-y-auto">
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Task Title <span className="text-rose-500">*</span>

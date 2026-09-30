@@ -1073,9 +1073,9 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
       {/* CUSTOM ROLE MODAL */}
       {/* ========================================================================= */}
       {isRoleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-md overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden my-auto">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 shrink-0">
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                 {editingRole ? 'Edit Operational Role' : 'Create Custom Operational Role'}
               </h3>
@@ -1088,7 +1088,7 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
               </button>
             </div>
 
-            <form onSubmit={handleRoleSubmit} className="p-5 space-y-4">
+            <form onSubmit={handleRoleSubmit} className="p-5 space-y-4 flex-1 overflow-y-auto">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Role Title *
@@ -1154,8 +1154,8 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
       {/* CONFIRMATION MODAL */}
       {/* ========================================================================= */}
       {confirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-sm p-5 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-sm p-5 space-y-4 my-auto">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center shrink-0">
                 <AlertCircle className="w-5 h-5" />

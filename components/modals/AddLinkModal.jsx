@@ -255,10 +255,10 @@ export function AddLinkModal({
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto"
     >
-      <div className="w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-sm shadow-2xl overflow-hidden text-xs">
-        <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 flex items-center justify-between">
+      <div className="w-full max-w-2xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-sm shadow-2xl overflow-hidden text-xs my-auto">
+        <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <Link2 className="w-4 h-4 text-brand" />
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -270,7 +270,7 @@ export function AddLinkModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-3.5">
+        <form onSubmit={handleSubmit} className="p-5 space-y-3.5 flex-1 overflow-y-auto">
           <div className="grid grid-cols-3 gap-2.5">
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Project Folder</label>

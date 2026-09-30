@@ -106,9 +106,11 @@ const getAuthenticatedUser = async (request) => {
     user = await User.findOne({ email: String(claims.email).toLowerCase() });
   }
 
-  if (!user || user.status === 'Inactive' || user.status === 'Disabled') {
-    const error = new Error('Your account is no longer active.');
+  const inactiveStatuses = ['Inactive', 'Disabled', 'Deactivated', 'Archived'];
+  if (!user || inactiveStatuses.includes(user.status)) {
+    const error = new Error('Your account has been restricted or deactivated. Please contact an administrator.');
     error.status = 403;
+    error.active = false;
     throw error;
   }
 
@@ -1548,6 +1550,21 @@ async function handleRequest(request, context) {
           );
         }
 
+        // If user status changed to Deactivated or Archived, terminate all their active sessions immediately
+        const restrictedStatuses = ['Deactivated', 'Archived', 'Inactive', 'Disabled'];
+        if (body.status && restrictedStatuses.includes(body.status)) {
+          await Session.updateMany(
+            { $or: [{ userId: updated._id }, { userEmail: updated.email }], status: 'Active' },
+            { status: 'Terminated', terminatedAt: new Date(), terminationReason: `Account ${body.status} by administrator` }
+          );
+          // Broadcast termination so the affected user's browser detects it within 2s
+          await recordRealtimeEvent('user_session_terminated', updated._id, {
+            userId: String(updated._id),
+            userEmail: updated.email,
+            reason: `Your account has been ${body.status.toLowerCase()} by an administrator.`,
+          });
+        }
+
         await AuditLog.create({
           action: 'USER_UPDATED',
           details: `User "${updated.name}" (${updated.email}) updated (Role: ${updated.role}, Status: ${updated.status}, DOB: ${updated.dob || 'NA'})`,
@@ -1570,23 +1587,54 @@ async function handleRequest(request, context) {
         return NextResponse.json(transformedUpdated);
       }
       if (method === 'DELETE') {
-        const userQuery = isObjectId(id) ? { _id: id } : { $or: [{ _id: id }, { email: id }] };
+        const userQuery = isObjectId(id)
+          ? { _id: id }
+          : { $or: [{ _id: id }, { email: { $regex: new RegExp(`^${escapeRegex(id)}$`, 'i') } }] };
         const deleted = await User.findOneAndDelete(userQuery);
-        if (!deleted) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-        await AuditLog.create({
-          action: 'USER_DELETED',
-          details: `User "${deleted.name}" (${deleted.email}) removed from workspace`,
-          module: 'USER_MGMT',
-          performedBy: actor?.name || 'Administrator',
-          performedByEmail: actor?.email || '',
-          performedByRole: actor?.role || 'Admin',
-          target: deleted.email,
-          device,
-          timestamp: new Date(),
+        const conditions = [];
+        if (deleted?._id) conditions.push({ userId: deleted._id });
+        if (deleted?.email) conditions.push({ userEmail: { $regex: new RegExp(`^${escapeRegex(deleted.email)}$`, 'i') } });
+        if (isObjectId(id)) conditions.push({ userId: id });
+        conditions.push({ userEmail: { $regex: new RegExp(`^${escapeRegex(id)}$`, 'i') } });
+
+        // Immediately terminate all active sessions for the deleted user
+        await Session.updateMany(
+          { $or: conditions, status: 'Active' },
+          { status: 'Terminated', terminatedAt: new Date(), terminationReason: 'User account deleted by administrator' }
+        );
+
+        const targetId = deleted?._id ? String(deleted._id) : id;
+        const targetEmail = deleted?.email || (id.includes('@') ? id : '');
+
+        // Broadcast deletion & session termination so the affected user's browser immediately detects it
+        await recordRealtimeEvent('user_session_terminated', targetId, {
+          userId: targetId,
+          userEmail: targetEmail,
+          reason: 'Your account has been deleted by an administrator.',
         });
 
-        await recordRealtimeEvent('user_deleted', id, { id });
+        await recordRealtimeEvent('user_deleted', targetId, {
+          id: targetId,
+          _id: targetId,
+          userEmail: targetEmail,
+          reason: 'Your account has been deleted by an administrator.',
+        });
+
+        if (deleted) {
+          await AuditLog.create({
+            action: 'USER_DELETED',
+            details: `User "${deleted.name}" (${deleted.email}) removed from workspace and active sessions terminated`,
+            module: 'USER_MGMT',
+            performedBy: actor?.name || 'Administrator',
+            performedByEmail: actor?.email || '',
+            performedByRole: actor?.role || 'Admin',
+            target: deleted.email,
+            device,
+            timestamp: new Date(),
+          });
+        }
+
         return NextResponse.json({ success: true, id });
       }
     }
@@ -1830,6 +1878,56 @@ async function handleRequest(request, context) {
           { status: 'Expired' }
         );
 
+        // Auto-terminate active sessions belonging to deleted or restricted users
+        try {
+          const activeSessions = await Session.find({ status: 'Active' });
+          if (activeSessions.length > 0) {
+            const userEmails = [...new Set(activeSessions.map((s) => s.userEmail).filter(Boolean))];
+            const userIds = [...new Set(activeSessions.map((s) => s.userId).filter(Boolean))];
+            const existingUsers = await User.find({
+              $or: [
+                { _id: { $in: userIds } },
+                { email: { $in: userEmails.map((em) => new RegExp(`^${escapeRegex(em)}$`, 'i')) } }
+              ]
+            }).select('_id email status');
+
+            const userStatusMap = new Map();
+            existingUsers.forEach((u) => {
+              if (u._id) userStatusMap.set(String(u._id), u.status);
+              if (u.email) userStatusMap.set(String(u.email).toLowerCase(), u.status);
+            });
+
+            const restrictedStatuses = ['Deactivated', 'Archived', 'Inactive', 'Disabled'];
+            const toTerminateIds = [];
+            for (const sess of activeSessions) {
+              const statusById = sess.userId ? userStatusMap.get(String(sess.userId)) : null;
+              const statusByEmail = sess.userEmail ? userStatusMap.get(String(sess.userEmail).toLowerCase()) : null;
+              const userStatus = statusById || statusByEmail;
+
+              if (!userStatus) {
+                // User was deleted!
+                toTerminateIds.push(sess._id);
+              } else if (restrictedStatuses.includes(userStatus)) {
+                // User is restricted!
+                toTerminateIds.push(sess._id);
+              }
+            }
+
+            if (toTerminateIds.length > 0) {
+              await Session.updateMany(
+                { _id: { $in: toTerminateIds } },
+                {
+                  status: 'Terminated',
+                  terminatedAt: new Date(),
+                  terminationReason: 'User deleted or restricted in workspace'
+                }
+              );
+            }
+          }
+        } catch (e) {
+          console.error('Session sync error:', e);
+        }
+
         const incomingSessionId = request.headers.get('x-session-id');
         let tokenSessionId = null;
         let authEmail = null;
@@ -1998,13 +2096,61 @@ async function handleRequest(request, context) {
 
     if (path === 'sessions/check' && method === 'GET') {
       const sessionId = url.searchParams.get('sessionId') || request.headers.get('x-session-id');
+      const restrictedStatuses = ['Deactivated', 'Archived', 'Inactive', 'Disabled'];
+
       if (!sessionId) {
+        // Fallback: Check user from Authorization Bearer token
+        try {
+          const authHeader = request.headers.get('authorization');
+          if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.substring(7);
+            const decoded = jwt.decode(token);
+            if (decoded) {
+              let userCheck = null;
+              if (decoded.id && isObjectId(decoded.id)) {
+                userCheck = await User.findById(decoded.id);
+              }
+              if (!userCheck && decoded.email) {
+                userCheck = await User.findOne({ email: { $regex: new RegExp(`^${escapeRegex(decoded.email)}$`, 'i') } });
+              }
+              if (!userCheck || restrictedStatuses.includes(userCheck.status)) {
+                return NextResponse.json(
+                  { active: false, status: 'Terminated', message: 'Your account has been restricted or removed. Please contact an administrator.' },
+                  { status: 401 }
+                );
+              }
+            }
+          }
+        } catch (e) {}
         return NextResponse.json({ active: true, status: 'Active' });
       }
+
       const session = await Session.findOne({ sessionId });
       if (!session || session.status === 'Terminated' || session.status === 'Expired' || new Date() > new Date(session.expiresAt)) {
         return NextResponse.json(
           { active: false, status: session?.status || 'NotFound', message: 'Your session was terminated or has expired.' },
+          { status: 401 }
+        );
+      }
+
+      // Also verify the user's current account status in DB
+      let sessionUser = null;
+      if (session.userId && isObjectId(session.userId)) {
+        sessionUser = await User.findById(session.userId);
+      }
+      if (!sessionUser && session.userEmail) {
+        sessionUser = await User.findOne({ email: { $regex: new RegExp(`^${escapeRegex(session.userEmail)}$`, 'i') } });
+      }
+
+      if (!sessionUser || restrictedStatuses.includes(sessionUser.status)) {
+        // Terminate the session since the user is restricted/deleted
+        await Session.findByIdAndUpdate(session._id, {
+          status: 'Terminated',
+          terminatedAt: new Date(),
+          terminationReason: sessionUser ? `Account ${sessionUser.status}` : 'User account deleted'
+        });
+        return NextResponse.json(
+          { active: false, status: 'Terminated', message: 'Your account has been restricted or removed. Please contact an administrator.' },
           { status: 401 }
         );
       }
@@ -2057,8 +2203,9 @@ async function handleRequest(request, context) {
         }
       }
 
-      if (user.status === 'Inactive' || user.status === 'Disabled') {
-        return NextResponse.json({ error: 'This account is inactive. Contact an administrator.' }, { status: 403 });
+      const blockedStatuses = ['Inactive', 'Disabled', 'Deactivated', 'Archived'];
+      if (blockedStatuses.includes(user.status)) {
+        return NextResponse.json({ error: 'This account is restricted or inactive. Contact an administrator.' }, { status: 403 });
       }
 
       // Verify password
