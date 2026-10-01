@@ -8,6 +8,7 @@ const linkSchema = new mongoose.Schema(
     type: { type: String, default: 'Tool' },
     subCategory: { type: String, default: '' },
     brand: { type: String, default: 'All' },
+    projectId: { type: String, default: 'general' },
     addedBy: { type: String },
     description: { type: String, default: '' },
   },

@@ -8,6 +8,10 @@ export default function LinksPage() {
   const {
     links,
     users,
+    currentUser,
+    masterBrands,
+    projects,
+    masterLinkCategories,
     handleAddLink,
     handleUpdateLink,
     handleDeleteLink,
@@ -18,6 +22,10 @@ export default function LinksPage() {
     <LinksView
       links={links}
       users={users}
+      currentUser={currentUser}
+      masterBrands={masterBrands}
+      projects={projects}
+      masterLinkCategories={masterLinkCategories}
       onOpenAddLink={() => setIsAddLinkOpen(true)}
       onAddLink={handleAddLink}
       onUpdateLink={handleUpdateLink}

@@ -136,7 +136,7 @@ const findUserByIdentifier = async (identifier) => {
 const isUserAdminRole = (user) => {
   if (!user) return false;
   const role = String(user.role || '').toLowerCase();
-  return role === 'super admin' || role === 'admin' || role === 'superadmin' || role.includes('admin');
+  return role === 'super admin' || role === 'superadmin';
 };
 
 const isMeetingActor = (meeting, user, field) => {
@@ -2680,11 +2680,9 @@ async function handleRequest(request, context) {
         let docs = await MasterBrand.find().sort({ order: 1, createdAt: 1 });
         if (docs.length === 0) {
           const defaults = [
-            { code: 'PMV', name: 'PMV Maritime', color: '#2563EB', status: 'Active', desc: 'Shipping fleet & logistics', order: 1 },
-            { code: 'FPD', name: "Captain's Cafe", color: '#452700', status: 'Active', desc: 'Produce delivery mobile application', order: 2 },
-            { code: 'LMA', name: 'Lagos Maritime Academy', color: '#FF6500', status: 'Active', desc: 'Lagos Maritime Institute in Nigeria', order: 3 },
-            { code: 'INT', name: 'Internal', color: '#9333EA', status: 'Active', desc: 'Internal engineering & HR operations', order: 4 },
-            { code: 'SOMS', name: 'School of Maritime Studies', color: '#2563EB', status: 'Active', desc: 'Maritime Institute', order: 5 }
+            { code: 'TCC', name: 'Captains Cafe', color: '#572700', status: 'Active', desc: 'Captains Cafe Master Brand', order: 1 },
+            { code: 'INT', name: 'Internal', color: '#516506', status: 'Active', desc: 'Internal engineering & operations', order: 2 },
+            { code: 'PMV', name: 'PMV Maritime Solutions', color: '#ad1d41', status: 'Active', desc: 'PMV Maritime Solutions', order: 3 }
           ];
           docs = await MasterBrand.insertMany(defaults);
         }

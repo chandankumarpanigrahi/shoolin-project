@@ -390,6 +390,14 @@ export const GRANULAR_PERMISSIONS = [
     risk: "High",
     defaultRoles: { "Super Admin": true, "Admin": false, "Manager / TL": false, "User": false }
   },
+  {
+    id: "activity_log.view",
+    moduleId: "access_control",
+    name: "View Security Activity Log & Live Sessions",
+    description: "Access live security audit logs, member active session tracking, and remote termination panel",
+    risk: "High",
+    defaultRoles: { "Super Admin": true, "Admin": false, "Manager / TL": false, "User": false }
+  },
 
   // 12. Settings & Preferences
   {

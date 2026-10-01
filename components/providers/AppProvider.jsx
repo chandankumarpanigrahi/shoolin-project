@@ -35,11 +35,9 @@ export const BRAND_COLOR_PRESETS = [
 ];
 
 export const DEFAULT_MASTER_BRANDS = [
-  { id: 'br-1', code: 'PMV', name: 'PMV Maritime', color: '#2563EB', status: 'Active', desc: 'Shipping fleet & logistics' },
-  { id: 'br-2', code: 'FPD', name: 'Captain\'s Cafe', color: '#452700', status: 'Active', desc: 'Produce delivery mobile application' },
-  { id: 'br-3', code: 'LMA', name: 'Lagos Maritime Academy', color: '#FF6500', status: 'Active', desc: 'Lagos Maritime Institute in Nigeria' },
-  { id: 'br-4', code: 'INT', name: 'Internal', color: '#9333EA', status: 'Active', desc: 'Internal engineering & HR operations' },
-  { id: 'br-5', code: 'SOMS', name: 'School of Maritime Studies', color: '#2563EB', status: 'Active', desc: 'Maritime Institute' },
+  { id: 'br-1', code: 'TCC', name: 'Captains Cafe', color: '#572700', status: 'Active', desc: 'Captains Cafe Master Brand' },
+  { id: 'br-2', code: 'INT', name: 'Internal', color: '#516506', status: 'Active', desc: 'Internal engineering & operations' },
+  { id: 'br-3', code: 'PMV', name: 'PMV Maritime Solutions', color: '#ad1d41', status: 'Active', desc: 'PMV Maritime Solutions' },
 ];
 
 export const DEFAULT_MASTER_DEPARTMENTS = [
@@ -188,7 +186,7 @@ export function AppProvider({ children }) {
   const [masterLinkCategories, setMasterLinkCategories] = useState([]);
   const [masterBrands, setMasterBrands] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('pulsepm_master_brands_v2');
+      const saved = localStorage.getItem('pulsepm_master_brands_v3');
       if (saved) {
         try { return JSON.parse(saved); } catch (e) {}
       }
@@ -245,7 +243,7 @@ export function AppProvider({ children }) {
 
   const saveMasterBrands = (items) => {
     setMasterBrands(items);
-    if (typeof window !== 'undefined') localStorage.setItem('pulsepm_master_brands_v2', JSON.stringify(items));
+    if (typeof window !== 'undefined') localStorage.setItem('pulsepm_master_brands_v3', JSON.stringify(items));
   };
 
   const handleAddMasterDepartment = async (depData) => {
@@ -416,6 +414,62 @@ export function AppProvider({ children }) {
     setMasterLinkCategories(items);
   };
 
+  // Links CRUD Handlers (Dynamically DB Synced)
+  const handleAddLink = async (linkData) => {
+    try {
+      const created = await api.links.create(linkData);
+      const linkItem = created || linkData;
+      setLinks((prev) => [linkItem, ...prev]);
+      broadcastLocalEvent('link_created', linkItem);
+      showSuccess(`Resource link "${linkItem.name}" pinned successfully.`);
+      return linkItem;
+    } catch (err) {
+      console.error('Failed to create link in DB:', err);
+      setLinks((prev) => [linkData, ...prev]);
+      broadcastLocalEvent('link_created', linkData);
+      return linkData;
+    }
+  };
+
+  const handleUpdateLink = async (linkData) => {
+    const targetId = linkData.id || linkData._id;
+    try {
+      const updated = await api.links.update(targetId, linkData);
+      const linkItem = updated || linkData;
+      setLinks((prev) =>
+        prev.map((l) => (l.id === targetId || l._id === targetId ? { ...l, ...linkItem } : l))
+      );
+      broadcastLocalEvent('link_updated', linkItem);
+      showSuccess(`Link "${linkItem.name}" updated.`);
+      return linkItem;
+    } catch (err) {
+      console.error('Failed to update link in DB:', err);
+      setLinks((prev) =>
+        prev.map((l) => (l.id === targetId || l._id === targetId ? { ...l, ...linkData } : l))
+      );
+      return linkData;
+    }
+  };
+
+  const handleDeleteLink = async (linkId) => {
+    const confirmed = await showConfirm({
+      title: 'Delete Resource Link?',
+      text: 'This link will be permanently removed.',
+      confirmButtonText: 'Yes, Delete Link',
+    });
+    if (!confirmed) return;
+
+    try {
+      await api.links.delete(linkId);
+      setLinks((prev) => prev.filter((l) => l.id !== linkId && l._id !== linkId));
+      broadcastLocalEvent('link_deleted', { id: linkId });
+      showSuccess('Resource link deleted.');
+    } catch (err) {
+      console.error('Failed to delete link from DB:', err);
+      setLinks((prev) => prev.filter((l) => l.id !== linkId && l._id !== linkId));
+    }
+  };
+
   const handleAddRole = async (roleData) => {
     try {
       const created = await api.masters.createRole(roleData);
@@ -460,8 +514,41 @@ export function AppProvider({ children }) {
 
   // Tit-to-Bit Access Control & Roles State
   const [rolesList, setRolesList] = useState(INITIAL_ROLES);
-  const [rolePermissions, setRolePermissions] = useState(DEFAULT_ROLE_PERMISSIONS);
-  const [userOverrides, setUserOverrides] = useState({});
+  const [rolePermissions, setRolePermissionsState] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('pulsepm_role_permissions_v3');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return DEFAULT_ROLE_PERMISSIONS;
+  });
+  const [userOverrides, setUserOverridesState] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('pulsepm_user_overrides_v3');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {};
+  });
+
+  const setRolePermissions = (val) => {
+    setRolePermissionsState((prev) => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      try { localStorage.setItem('pulsepm_role_permissions_v3', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
+  const setUserOverrides = (val) => {
+    setUserOverridesState((prev) => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      try { localStorage.setItem('pulsepm_user_overrides_v3', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
   const [accessAuditLog, setAccessAuditLog] = useState([]);
 
   const [notifications, setNotificationsState] = useState([]);
@@ -473,10 +560,28 @@ export function AppProvider({ children }) {
     });
   };
 
-  // Active User & Session
-  const [currentUser, setCurrentUser] = useState(INITIAL_USERS[0] || { id: 'admin-1', name: 'Primary Admin', email: 'admin@shoolin.co.uk', role: 'Super Admin' });
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authLoaded, setAuthLoaded] = useState(false);
+  // Active User & Session (Zero-flash synchronous hydration)
+  const [currentUser, setCurrentUser] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedUser = localStorage.getItem('pulsepm_current_user');
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser);
+          if (parsed && (parsed.id || parsed._id)) return parsed;
+        }
+      } catch (e) {}
+    }
+    return INITIAL_USERS[0] || { id: 'admin-1', name: 'Primary Admin', email: 'admin@shoolin.co.uk', role: 'Super Admin' };
+  });
+
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('pulsepm_is_authenticated') === 'true';
+    }
+    return false;
+  });
+
+  const [authLoaded, setAuthLoaded] = useState(() => typeof window !== 'undefined');
 
   // Theme State (Dark / Light)
   const [theme, setTheme] = useState('light');
@@ -570,7 +675,7 @@ export function AppProvider({ children }) {
           if (Array.isArray(dbDeps) && dbDeps.length > 0) {
             setDependencies(dbDeps);
           }
-          if (Array.isArray(dbLinks) && dbLinks.length > 0) {
+          if (Array.isArray(dbLinks)) {
             setLinks(dbLinks);
           }
           if (Array.isArray(dbUsers) && dbUsers.length > 0) {
@@ -594,7 +699,10 @@ export function AppProvider({ children }) {
             setTemplates(dbTemplates);
           }
           if (Array.isArray(dbStatuses) && dbStatuses.length > 0) setMasterStatuses(dbStatuses);
-          if (Array.isArray(dbBrands) && dbBrands.length > 0) setMasterBrands(dbBrands);
+          if (Array.isArray(dbBrands) && dbBrands.length > 0) {
+            setMasterBrands(dbBrands);
+            try { localStorage.setItem('pulsepm_master_brands_v3', JSON.stringify(dbBrands)); } catch (e) {}
+          }
           if (Array.isArray(dbDepartments) && dbDepartments.length > 0) setMasterDepartments(dbDepartments);
           if (Array.isArray(dbRoles) && dbRoles.length > 0) setRolesList(dbRoles);
           if (Array.isArray(dbTemplateCategories) && dbTemplateCategories.length > 0) setBlueprintCategories(dbTemplateCategories);
@@ -1392,7 +1500,7 @@ export function AppProvider({ children }) {
     if (!project) return false;
     if (!user) return true;
     const role = (user.role || '').toLowerCase();
-    if (role.includes('admin') || role === 'super admin') return true;
+    if (role === 'super admin' || role === 'superadmin') return true;
 
     const uId = String(user.id || user._id || '').toLowerCase();
     const uEmail = String(user.email || '').toLowerCase();
@@ -1915,37 +2023,6 @@ export function AppProvider({ children }) {
     });
   };
 
-  // Link Handlers
-  const handleAddLink = (newLink) => {
-    setLinks((prev) => {
-      const updated = [newLink, ...prev];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pulsepm_links_v1', JSON.stringify(updated));
-      }
-      return updated;
-    });
-  };
-
-  const handleUpdateLink = (updatedLink) => {
-    setLinks((prev) => {
-      const updated = prev.map((l) => (l.id === updatedLink.id ? updatedLink : l));
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pulsepm_links_v1', JSON.stringify(updated));
-      }
-      return updated;
-    });
-  };
-
-  const handleDeleteLink = (linkId) => {
-    setLinks((prev) => {
-      const updated = prev.filter((l) => l.id !== linkId);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('pulsepm_links_v1', JSON.stringify(updated));
-      }
-      return updated;
-    });
-  };
-
   // Template Handlers
   const handleOpenCreateFromTemplate = (tmpl = null) => {
     setSelectedTemplateForWorkflow(tmpl);
@@ -2456,17 +2533,20 @@ export function AppProvider({ children }) {
     return set;
   }, [activeProjects]);
 
-  const visibleTasks = useMemo(() => {
-    return (tasks || []).filter((t) => t && (!t.projectId || activeProjectIdsSet.has(String(t.projectId))));
-  }, [tasks, activeProjectIdsSet]);
+  const visibleUsers = useMemo(() => {
+    return (users || []).filter(
+      (u) => u && String(u.role || '').toLowerCase() !== 'super admin' && String(u.role || '').toLowerCase() !== 'superadmin'
+    );
+  }, [users]);
 
   const value = {
     // Data
     projects,
     activeProjects,
-    tasks: visibleTasks,
+    tasks,
     allTasks: tasks,
-    users,
+    users: visibleUsers,
+    allUsers: users,
     setUsers,
     handleAddUser,
     handleUpdateUser,
@@ -2483,6 +2563,12 @@ export function AppProvider({ children }) {
     handleAddMeetingComment,
     dependencies,
     links,
+    setLinks,
+    handleAddLink,
+    handleUpdateLink,
+    handleDeleteLink,
+    masterBrands,
+    masterLinkCategories,
     templates,
     setTemplates,
     myProjects,

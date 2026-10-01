@@ -265,18 +265,29 @@ export function ActivityLogView() {
     document.body.removeChild(link);
   };
 
+  // Visible non-super-admin sessions
+  const nonSuperAdminSessions = useMemo(() => {
+    return sessions.filter(
+      (s) =>
+        s.userRole !== 'Super Admin' &&
+        s.userRole !== 'super_admin' &&
+        s.userEmail?.toLowerCase() !== 'admin@shoolin.co.uk' &&
+        s.userName?.toLowerCase() !== 'admin shoolin'
+    );
+  }, [sessions]);
+
   // Stats calculation
   const stats = useMemo(() => {
-    const total = sessions.length;
-    const active = sessions.filter((s) => s.status === 'Active').length;
-    const terminated = sessions.filter((s) => s.status === 'Terminated').length;
-    const uniqueUsers = new Set(sessions.map((s) => s.userEmail)).size;
+    const total = nonSuperAdminSessions.length;
+    const active = nonSuperAdminSessions.filter((s) => s.status === 'Active').length;
+    const terminated = nonSuperAdminSessions.filter((s) => s.status === 'Terminated').length;
+    const uniqueUsers = new Set(nonSuperAdminSessions.map((s) => s.userEmail)).size;
     return { total, active, terminated, uniqueUsers };
-  }, [sessions]);
+  }, [nonSuperAdminSessions]);
 
   // Filtered Sessions
   const filteredSessions = useMemo(() => {
-    return sessions.filter((s) => {
+    return nonSuperAdminSessions.filter((s) => {
       const matchStatus = sessionFilter === 'ALL' || s.status === sessionFilter;
       const q = sessionSearch.toLowerCase().trim();
       const matchQuery =
@@ -287,11 +298,18 @@ export function ActivityLogView() {
         s.userRole?.toLowerCase().includes(q);
       return matchStatus && matchQuery;
     });
-  }, [sessions, sessionFilter, sessionSearch]);
+  }, [nonSuperAdminSessions, sessionFilter, sessionSearch]);
 
-  // Filtered Audit Logs
+  // Filtered Audit Logs (hiding Super Admin activity)
   const filteredAuditLogs = useMemo(() => {
     return auditLogs.filter((log) => {
+      const isSuperAdmin =
+        log.performedByRole === 'Super Admin' ||
+        log.performedByRole === 'super_admin' ||
+        log.performedByEmail?.toLowerCase() === 'admin@shoolin.co.uk' ||
+        log.performedBy?.toLowerCase() === 'admin shoolin';
+      if (isSuperAdmin) return false;
+
       const matchModule = auditModuleFilter === 'ALL' || log.module === auditModuleFilter;
       const q = auditSearch.toLowerCase().trim();
       const matchQuery =

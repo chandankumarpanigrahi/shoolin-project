@@ -8,7 +8,15 @@ import { useAppContext } from '@/components/providers/AppProvider';
 export default function KpiPage() {
   const { projects, tasks, users, can, authLoaded } = useAppContext();
 
-  if (authLoaded && !can('kpi.view')) {
+  if (!authLoaded) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!can('kpi.view')) {
     return (
       <AccessDeniedView
         moduleName="KPI Analytics & Telemetry"

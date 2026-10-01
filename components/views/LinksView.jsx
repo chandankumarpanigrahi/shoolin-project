@@ -85,7 +85,7 @@ import {
   Stripe as StripeSvg
 } from '@thesvg/react';
 
-import { UserAvatar } from '@/components/common/UserAvatar';
+import { UserAvatar, resolveUserObject } from '@/components/common/UserAvatar';
 import {
   CATEGORIES_CONFIG,
   AddLinkModal,
@@ -206,63 +206,72 @@ const SUB_CATEGORY_ICON_MAP = {
   'Supabase': { icon: SupabaseSvg, textColor: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800' }
 };
 
-const PROJECT_FOLDERS = [
-  {
-    brand: 'PMV',
-    name: 'PMV Maritime',
-    code: 'PMV',
-    bgColor: 'bg-blue-600',
-    backTab: "after:bg-blue-600 before:bg-blue-600",
-    frontGradient: 'from-blue-600 to-blue-500',
-    frontTab: 'after:bg-blue-500 before:bg-blue-500',
-    shadowInset: 'group-hover:shadow-[inset_0_20px_40px_#60a5fa,_inset_0_-20px_40px_#2563eb]',
-    badgeBg: 'bg-blue-900/50 text-blue-100 border-blue-400/40'
-  },
-  {
-    brand: 'FreshPod',
-    name: 'FreshPod App',
-    code: 'FPD',
-    bgColor: 'bg-emerald-600',
-    backTab: "after:bg-emerald-600 before:bg-emerald-600",
-    frontGradient: 'from-emerald-600 to-emerald-500',
-    frontTab: 'after:bg-emerald-500 before:bg-emerald-500',
-    shadowInset: 'group-hover:shadow-[inset_0_20px_40px_#34d399,_inset_0_-20px_40px_#059669]',
-    badgeBg: 'bg-emerald-900/50 text-emerald-100 border-emerald-400/40'
-  },
-  {
-    brand: 'Lagos',
-    name: 'Lagos Logistics',
-    code: 'LGS',
-    bgColor: 'bg-amber-600',
-    backTab: "after:bg-amber-600 before:bg-amber-600",
-    frontGradient: 'from-amber-500 to-amber-400',
-    frontTab: 'after:bg-amber-400 before:bg-amber-400',
-    shadowInset: 'group-hover:shadow-[inset_0_20px_40px_#fbbf24,_inset_0_-20px_40px_#d97706]',
-    badgeBg: 'bg-amber-900/50 text-amber-100 border-amber-400/40'
-  },
-  {
-    brand: 'Internal',
-    name: 'Internal Org',
-    code: 'INT',
-    bgColor: 'bg-purple-600',
-    backTab: "after:bg-purple-600 before:bg-purple-600",
-    frontGradient: 'from-purple-600 to-purple-500',
-    frontTab: 'after:bg-purple-500 before:bg-purple-500',
-    shadowInset: 'group-hover:shadow-[inset_0_20px_40px_#c084fc,_inset_0_-20px_40px_#9333ea]',
-    badgeBg: 'bg-purple-900/50 text-purple-100 border-purple-400/40'
+function lightenHex(hex, percent = 18) {
+  if (!hex) return '#3B82F6';
+  let cleanHex = hex.trim();
+  if (!cleanHex.startsWith('#')) {
+    const presetMap = {
+      blue: '#2563EB',
+      emerald: '#059669',
+      amber: '#D97706',
+      purple: '#9333EA',
+      rose: '#E11D48',
+      indigo: '#4F46E5',
+      teal: '#0D9488',
+    };
+    cleanHex = presetMap[cleanHex.toLowerCase()] || '#2563EB';
   }
-];
+  if (cleanHex.length === 4) {
+    cleanHex = `#${cleanHex[1]}${cleanHex[1]}${cleanHex[2]}${cleanHex[2]}${cleanHex[3]}${cleanHex[3]}`;
+  }
+  if (cleanHex.length !== 7) return '#3B82F6';
 
-// Exact UIVerse 3D Opening Folder Component (Responsive & Fluid)
+  let num = parseInt(cleanHex.slice(1), 16);
+  let r = (num >> 16) + Math.round(255 * (percent / 100));
+  let g = ((num >> 8) & 0x00ff) + Math.round(255 * (percent / 100));
+  let b = (num & 0x0000ff) + Math.round(255 * (percent / 100));
+
+  r = Math.min(255, Math.max(0, r));
+  g = Math.min(255, Math.max(0, g));
+  b = Math.min(255, Math.max(0, b));
+
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
+function resolveAddedByName(link, users = [], currentUser = null) {
+  if (link.addedByName) return link.addedByName;
+  if (link.sharedBy && !link.sharedBy.startsWith('usr-') && !link.sharedBy.startsWith('admin-')) {
+    return link.sharedBy;
+  }
+  const userIdentifier = link.addedBy || link.sharedBy;
+  if (userIdentifier) {
+    const matched = resolveUserObject(userIdentifier, users);
+    if (matched && matched.name) return matched.name;
+  }
+  if (currentUser && currentUser.name) return currentUser.name;
+  return 'Primary Admin';
+}
+
+// Exact UIVerse 3D Opening Folder Component (Responsive & Fluid & Dynamic Color)
 function ProjectFolder3DCard({ project, count, onClick }) {
+  const baseColor = project.color || '#2563EB';
+  const lightColor = lightenHex(baseColor, 18);
+
   return (
     <section className="relative group flex flex-col items-center justify-center w-full select-none py-2">
       <div
         onClick={onClick}
         className="file relative w-full max-w-[320px] aspect-[1.5/1] min-h-[165px] cursor-pointer origin-bottom [perspective:1500px] z-20"
+        style={{
+          '--folder-bg': baseColor,
+          '--folder-tab': lightColor,
+        }}
       >
         {/* Back Flap Cover (Work-5) */}
-        <div className={`work-5 ${project.bgColor} w-full h-full origin-top rounded-2xl rounded-tl-none group-hover:shadow-[0_20px_40px_rgba(0,0,0,.2)] transition-all ease duration-300 relative after:absolute after:content-[''] after:bottom-[99%] after:left-0 after:w-[35%] after:h-4 after:${project.bgColor} after:rounded-t-[10px] before:absolute before:content-[''] before:-top-[15px] before:left-[calc(35%-4.5px)] before:w-4 before:h-4 before:${project.bgColor} before:[clip-path:polygon(0_35%,0%_100%,50%_100%);]`} />
+        <div
+          className="work-5 w-full h-full origin-top rounded-2xl rounded-tl-none group-hover:shadow-[0_20px_40px_rgba(0,0,0,.2)] transition-all ease duration-300 relative after:absolute after:content-[''] after:bottom-[99%] after:left-0 after:w-[35%] after:h-4 after:bg-[var(--folder-bg)] after:rounded-t-[10px] before:absolute before:content-[''] before:-top-[15px] before:left-[calc(35%-4.5px)] before:w-4 before:h-4 before:bg-[var(--folder-bg)] before:[clip-path:polygon(0_35%,0%_100%,50%_100%);]"
+          style={{ backgroundColor: baseColor }}
+        />
 
         {/* Paper Sheet 3 (Work-4) */}
         <div className="work-4 absolute inset-1 bg-zinc-400 dark:bg-slate-600 rounded-2xl transition-all ease duration-300 origin-bottom select-none group-hover:[transform:rotateX(-20deg)] p-3.5 flex flex-col justify-between shadow-sm">
@@ -287,7 +296,12 @@ function ProjectFolder3DCard({ project, count, onClick }) {
         </div>
 
         {/* Front Opening Cover Flap (Work-1) */}
-        <div className={`work-1 absolute bottom-0 bg-gradient-to-t ${project.frontGradient} w-full h-[78%] rounded-2xl rounded-tr-none after:absolute after:content-[''] after:bottom-[99%] after:right-0 after:w-[61%] after:h-[20px] ${project.frontTab} after:rounded-t-[10px] before:absolute before:content-[''] before:-top-[10px] before:right-[calc(61%-4px)] before:size-3 ${project.frontTab} before:[clip-path:polygon(100%_14%,50%_100%,100%_100%);] transition-all ease duration-300 origin-bottom flex items-end ${project.shadowInset} group-hover:[transform:rotateX(-46deg)_translateY(1px)] p-3.5 sm:p-4`}>
+        <div
+          className="work-1 absolute bottom-0 w-full h-[78%] rounded-2xl rounded-tr-none after:absolute after:content-[''] after:bottom-[99%] after:right-0 after:w-[61%] after:h-[20px] after:bg-[var(--folder-tab)] after:rounded-t-[10px] before:absolute before:content-[''] before:-top-[10px] before:right-[calc(61%-4px)] before:size-3 before:bg-[var(--folder-tab)] before:[clip-path:polygon(100%_14%,50%_100%,100%_100%);] transition-all ease duration-300 origin-bottom flex items-end group-hover:[transform:rotateX(-46deg)_translateY(1px)] p-3.5 sm:p-4"
+          style={{
+            background: `linear-gradient(to top, ${baseColor}, ${lightColor})`,
+          }}
+        >
           <div className="w-full flex items-end justify-between text-white font-bold text-xs pointer-events-none gap-2">
             <div className="min-w-0 flex-1">
               <div className="font-mono text-[10px] font-bold opacity-90">[{project.code}]</div>
@@ -303,21 +317,80 @@ function ProjectFolder3DCard({ project, count, onClick }) {
   );
 }
 
+function findMatchingMasterFolder(brandInput, masterFolders) {
+  if (!brandInput || !Array.isArray(masterFolders) || masterFolders.length === 0) return null;
+  const inputStr = String(brandInput).toUpperCase().trim();
+
+  // 1. Direct code match (e.g. 'TCC' === 'TCC')
+  let match = masterFolders.find(m => m.code.toUpperCase() === inputStr);
+  if (match) return match;
+
+  // 2. Direct name match (e.g. 'CAPTAINS CAFE' === 'CAPTAINS CAFE')
+  match = masterFolders.find(m => m.name.toUpperCase().trim() === inputStr);
+  if (match) return match;
+
+  // 3. Partial substring match
+  match = masterFolders.find(m =>
+    inputStr.includes(m.code.toUpperCase()) ||
+    m.name.toUpperCase().includes(inputStr) ||
+    inputStr.includes(m.name.toUpperCase())
+  );
+  if (match) return match;
+
+  // 4. Legacy alias mapping (e.g. FPD/FreshPod -> TCC)
+  if (inputStr.includes('FPD') || inputStr.includes('FRESH')) {
+    return masterFolders.find(m => m.code === 'TCC' || m.name.toLowerCase().includes('captain')) || masterFolders[0];
+  }
+
+  return masterFolders[0];
+}
+
 export function LinksView({
   links = [],
   users = [],
+  currentUser,
+  masterBrands = [],
+  projects = [],
+  masterLinkCategories = [],
   onOpenAddLink,
   onAddLink,
   onUpdateLink,
   onDeleteLink
 }) {
-  // Navigation State: 'FOLDERS' | specific brand code (e.g. 'PMV')
+  // Navigation State: 'FOLDERS' | specific master brand code (e.g. 'PMV')
   const [activeFolderBrand, setActiveFolderBrand] = useUrlParam('brand', 'FOLDERS');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedSubCategory, setSelectedSubCategory] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState(null);
   const [editingLink, setEditingLink] = useState(null);
+
+  // 1. Dynamic Master Setup Folders - Strictly matching Master Setup (masterBrands)
+  const masterFolders = useMemo(() => {
+    if (Array.isArray(masterBrands) && masterBrands.length > 0) {
+      return masterBrands.map((b) => {
+        const code = (b.code || b.name || '').toUpperCase().trim();
+        return {
+          id: b.id || b._id || code,
+          brand: code,
+          code: code,
+          name: b.name || code,
+          color: b.color || '#2563EB',
+          desc: b.desc || ''
+        };
+      });
+    }
+
+    return [
+      { id: 'br-1', brand: 'TCC', code: 'TCC', name: 'Captains Cafe', color: '#572700' },
+      { id: 'br-2', brand: 'INT', code: 'INT', name: 'Internal', color: '#516506' },
+      { id: 'br-3', brand: 'PMV', code: 'PMV', name: 'PMV Maritime Solutions', color: '#ad1d41' }
+    ];
+  }, [masterBrands]);
+
+  const activeMasterFolder = useMemo(() => {
+    return masterFolders.find(p => p.brand === activeFolderBrand || p.code === activeFolderBrand);
+  }, [masterFolders, activeFolderBrand]);
 
   const handleCopy = (url, id) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -336,30 +409,43 @@ export function LinksView({
     };
   };
 
-  // Filter links based on search query and category/sub-category
+  // Filter links based on Master Brand, categories, and search
   const filteredLinks = useMemo(() => {
     return links.filter(l => {
-      if (activeFolderBrand !== 'FOLDERS' && l.brand !== activeFolderBrand) return false;
+      // 1. Master Brand Filter
+      if (activeFolderBrand !== 'FOLDERS') {
+        const activeFolder = masterFolders.find(m => m.code === activeFolderBrand || m.brand === activeFolderBrand);
+        const linkMatchedFolder = findMatchingMasterFolder(l.brand, masterFolders);
+
+        if (activeFolder) {
+          const isMatch = (linkMatchedFolder && linkMatchedFolder.code === activeFolder.code) ||
+            (l.brand && l.brand.toUpperCase() === activeFolder.code);
+          if (!isMatch) return false;
+        } else {
+          if (l.brand !== activeFolderBrand) return false;
+        }
+      }
+
+      // 2. Category Filter
       if (selectedCategory !== 'ALL' && !isCategoryMatch(l.category, selectedCategory)) return false;
 
+      // 3. Sub-category Filter
       const linkSubCat = l.subCategory || l.type;
       if (selectedSubCategory !== 'ALL' && linkSubCat !== selectedSubCategory) return false;
 
+      // 4. Search Filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchTitle = l.name.toLowerCase().includes(q);
-        const matchUrl = l.url.toLowerCase().includes(q);
+        const matchTitle = (l.name || '').toLowerCase().includes(q);
+        const matchUrl = (l.url || '').toLowerCase().includes(q);
         const matchDesc = (l.description || '').toLowerCase().includes(q);
         const matchBrand = (l.brand || '').toLowerCase().includes(q);
         if (!matchTitle && !matchUrl && !matchDesc && !matchBrand) return false;
       }
+
       return true;
     });
-  }, [links, activeFolderBrand, selectedCategory, selectedSubCategory, searchQuery]);
-
-  const activeProjectInfo = useMemo(() => {
-    return PROJECT_FOLDERS.find(p => p.brand === activeFolderBrand);
-  }, [activeFolderBrand]);
+  }, [links, activeFolderBrand, selectedCategory, selectedSubCategory, searchQuery, masterFolders]);
 
   const availableSubCategories = useMemo(() => {
     if (selectedCategory === 'ALL') {
@@ -378,7 +464,7 @@ export function LinksView({
               type="button"
               onClick={() => setActiveFolderBrand('FOLDERS')}
               className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-sm transition-colors"
-              title="Back to All Project Folders"
+              title="Back to All Master Brand Folders"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
@@ -387,7 +473,9 @@ export function LinksView({
             <div className="flex items-center gap-2">
               <Link2 className="w-5 h-5 text-brand" />
               <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-                {activeFolderBrand === 'FOLDERS' ? 'Project Link Folders Directory' : `${activeProjectInfo?.name} Links`}
+                {activeFolderBrand === 'FOLDERS'
+                  ? 'Master Brand Link Directory'
+                  : `${activeMasterFolder?.name || activeFolderBrand} Master Folder`}
               </h1>
               <span className="text-[11px] px-2 py-0.5 bg-brand-light/30 text-brand font-mono font-semibold rounded-xs border border-brand/30">
                 {filteredLinks.length} Links Pinned
@@ -395,8 +483,8 @@ export function LinksView({
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               {activeFolderBrand === 'FOLDERS'
-                ? 'Hover & click any 3D Project Folder below to enter and view categorized Kanban link boards.'
-                : `Kanban view of all pinned resources, social media handles, and docs for ${activeProjectInfo?.name}.`}
+                ? 'Master Brand folders. Click any Master Brand folder to enter and explore pinned resource links.'
+                : `Kanban view of all pinned resources for ${activeMasterFolder?.name || activeFolderBrand}.`}
             </p>
           </div>
         </div>
@@ -407,13 +495,13 @@ export function LinksView({
           className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-brand hover:bg-brand-hover active:bg-brand-active rounded-sm shadow-2xs transition-colors shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>Pin New Link</span>
+          <span>New Link</span>
         </button>
       </div>
 
       {/* Navigation Bar & Filters */}
       <div className="bg-white dark:bg-slate-900 p-3.5 border border-slate-200/90 dark:border-slate-800 rounded-sm shadow-2xs space-y-3">
-        {/* Project Folder Breadcrumb & Quick Tabs */}
+        {/* Top-Level Master Brand Tabs */}
         <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
           <div className="flex items-center gap-1.5">
             <FolderKanban className="w-4 h-4 text-slate-400 shrink-0" />
@@ -425,16 +513,21 @@ export function LinksView({
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
             >
-              All Project Folders ({links.length})
+              All Master Folders ({links.length})
             </button>
-            {PROJECT_FOLDERS.map(p => {
-              const count = links.filter(l => l.brand === p.brand).length;
+            {masterFolders.map(p => {
+              const count = links.filter(l => {
+                if (!l.brand) return false;
+                const match = findMatchingMasterFolder(l.brand, masterFolders);
+                return match ? (match.code === p.code) : (l.brand.toUpperCase() === p.code);
+              }).length;
+              const isActive = activeFolderBrand === p.brand || activeFolderBrand === p.code;
               return (
                 <button
-                  key={p.brand}
+                  key={p.brand || p.code}
                   type="button"
-                  onClick={() => setActiveFolderBrand(p.brand)}
-                  className={`px-2.5 py-1 rounded-xs font-semibold text-xs transition-all shrink-0 flex items-center gap-1.5 ${activeFolderBrand === p.brand
+                  onClick={() => setActiveFolderBrand(p.brand || p.code)}
+                  className={`px-2.5 py-1 rounded-xs font-semibold text-xs transition-all shrink-0 flex items-center gap-1.5 ${isActive
                     ? 'bg-brand text-white shadow-2xs'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                     }`}
@@ -497,51 +590,59 @@ export function LinksView({
         </div>
       </div>
 
-      {/* VIEW 1: EXACT 3D OPENING FOLDER CARDS GRID (When activeFolderBrand === 'FOLDERS') */}
+      {/* LEVEL 1 VIEW: MASTER BRAND FOLDERS GRID (When activeFolderBrand === 'FOLDERS') */}
       {activeFolderBrand === 'FOLDERS' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <Folder className="w-4 h-4 text-brand" />
-              <span>Interactive Project Folders ({PROJECT_FOLDERS.length})</span>
+              <span>Master Brand Folders ({masterFolders.length})</span>
             </h2>
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              Hover over folders to reveal 3D opening paper sheets · Click to enter
+              Click any Master Folder to view its pinned resource links
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-5 sm:gap-6 pt-2">
-            {PROJECT_FOLDERS.map((proj) => {
-              const projLinkCount = links.filter(l => l.brand === proj.brand).length;
+            {masterFolders.map((proj) => {
+              const projLinkCount = links.filter(l => {
+                if (!l.brand) return false;
+                const match = findMatchingMasterFolder(l.brand, masterFolders);
+                return match ? (match.code === proj.code) : (l.brand.toUpperCase() === proj.code);
+              }).length;
 
               return (
-                <ProjectFolder3DCard
-                  key={proj.brand}
-                  project={proj}
-                  count={projLinkCount}
-                  onClick={() => setActiveFolderBrand(proj.brand)}
-                />
+                <div key={proj.brand || proj.code} className="flex flex-col items-center">
+                  <ProjectFolder3DCard
+                    project={proj}
+                    count={projLinkCount}
+                    onClick={() => setActiveFolderBrand(proj.brand || proj.code)}
+                  />
+                </div>
               );
             })}
           </div>
         </div>
       )}
 
-      {/* VIEW 2: INSIDE OPEN PROJECT FOLDER - KANBAN CATEGORY COLUMNS */}
+      {/* LEVEL 2 VIEW: INSIDE MASTER BRAND FOLDER - PROJECT SUB-FOLDERS & KANBAN BOARD */}
       {activeFolderBrand !== 'FOLDERS' && (
         <div className="space-y-4">
-          {/* Active Folder Header Banner */}
-          <div className="flex items-center justify-between p-3.5 bg-slate-100/70 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-sm">
+          {/* Active Master Brand Banner Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-slate-100/70 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-sm gap-3">
             <div className="flex items-center gap-3">
-              <span className={`px-2.5 py-1 rounded-xs font-mono font-bold text-xs shadow-2xs ${activeProjectInfo?.bgColor} text-white`}>
-                {activeProjectInfo?.code}
+              <span
+                className="px-2.5 py-1 rounded-xs font-mono font-bold text-xs shadow-2xs text-white"
+                style={{ backgroundColor: activeMasterFolder?.color || '#2563EB' }}
+              >
+                {activeMasterFolder?.code}
               </span>
               <div>
                 <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <span>{activeProjectInfo?.name} Resource Kanban Board</span>
+                  <span>{activeMasterFolder?.name || activeFolderBrand} Master Folder</span>
                 </h2>
                 <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Categorized columns with brand icon indicators &amp; quick link actions
+                  {filteredLinks.length} Pinned links in {activeMasterFolder?.name || activeFolderBrand}
                 </span>
               </div>
             </div>
@@ -549,14 +650,14 @@ export function LinksView({
             <button
               type="button"
               onClick={() => setActiveFolderBrand('FOLDERS')}
-              className="text-xs font-semibold text-brand hover:underline flex items-center gap-1"
+              className="text-xs font-semibold text-brand hover:underline flex items-center gap-1 shrink-0"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to All Folders</span>
+              <span>Back to All Master Folders</span>
             </button>
           </div>
 
-          {/* Kanban Board Grid (Columns per Category) matching SS layout */}
+          {/* Kanban Board Grid (Columns per Category) */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 items-start">
             {Object.keys(CATEGORIES_CONFIG).map((catName, idx) => {
               if (selectedCategory !== 'ALL' && !isCategoryMatch(selectedCategory, catName)) return null;
@@ -626,14 +727,11 @@ export function LinksView({
                             <p className="text-[11px] p-1 border border-gray-200 bg-amber-50 rounded-sm line-clamp-1 overflow-hidden">{link.url}</p>
                             {/* Bottom Row: Metadata on Left & Action Icons on Right */}
                             <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[11px]">
-                              <div className="flex items-center gap-1 text-slate-400 dark:text-slate-500 min-w-0 flex-1">
-                                {/* {subCatName && (
-                                  <span className="font-medium text-slate-500 dark:text-slate-400 truncate max-w-[110px]">
-                                    {subCatName}
-                                  </span>
-                                )} */}
-                                {/* <span>•</span> */}
-                                <span className="truncate">{link.sharedBy || 'Sambit'}</span>
+                              <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 min-w-0 flex-1">
+                                <UserAvatar user={resolveUserObject(link.addedBy || link.sharedBy, users) || currentUser} size="xs" showName={false} />
+                                <span className="font-medium text-slate-700 dark:text-slate-300 truncate" title={`Added by ${resolveAddedByName(link, users, currentUser)}`}>
+                                  {resolveAddedByName(link, users, currentUser)}
+                                </span>
                               </div>
 
                               {/* Action Buttons Group */}
@@ -699,10 +797,15 @@ export function LinksView({
       <AddLinkModal
         isOpen={!!editingLink}
         onClose={() => setEditingLink(null)}
-        currentUser={users[0]}
+        currentUser={currentUser || users[0]}
         onUpdateLink={onUpdateLink}
         initialData={editingLink}
+        projectFolders={masterFolders}
+        masterBrands={masterBrands}
+        projects={projects}
       />
     </div>
   );
 }
+
+

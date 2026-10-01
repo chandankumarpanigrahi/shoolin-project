@@ -164,12 +164,52 @@ export function AddLinkModal({
   currentUser,
   onAddLink,
   onUpdateLink,
-  initialData = null
+  initialData = null,
+  projectFolders = [],
+  masterBrands = [],
+  projects = []
 }) {
+  let contextMasterBrands = masterBrands;
+  let contextProjects = projects;
+  try {
+    const ctx = useAppContext();
+    if (ctx) {
+      if ((!contextMasterBrands || contextMasterBrands.length === 0) && ctx.masterBrands) {
+        contextMasterBrands = ctx.masterBrands;
+      }
+      if ((!contextProjects || contextProjects.length === 0) && ctx.projects) {
+        contextProjects = ctx.projects;
+      }
+    }
+  } catch (e) { }
+
   const defaultCategory = Object.keys(CATEGORIES_CONFIG)[0] || 'Social';
+
+  const folderOptions = React.useMemo(() => {
+    if (Array.isArray(contextMasterBrands) && contextMasterBrands.length > 0) {
+      return contextMasterBrands.map((b) => ({
+        code: (b.code || b.name || 'BRD').toUpperCase().trim(),
+        name: b.name || b.code,
+      }));
+    }
+    if (Array.isArray(projectFolders) && projectFolders.length > 0) {
+      return projectFolders.map((f) => ({
+        code: f.code || f.brand || f.name,
+        name: f.name || f.code || f.brand,
+      }));
+    }
+    return [
+      { code: 'TCC', name: 'Captains Cafe' },
+      { code: 'INT', name: 'Internal' },
+      { code: 'PMV', name: 'PMV Maritime Solutions' },
+    ];
+  }, [contextMasterBrands, projectFolders]);
+
+  const defaultBrand = folderOptions[0]?.code || 'TCC';
+
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
-  const [brand, setBrand] = useState('PMV');
+  const [brand, setBrand] = useState(defaultBrand);
   const [category, setCategory] = useState(defaultCategory);
   const [subCategory, setSubCategory] = useState('Instagram');
 
@@ -179,18 +219,18 @@ export function AddLinkModal({
     if (initialData) {
       setName(initialData.name || '');
       setUrl(initialData.url || '');
-      setBrand(initialData.brand || 'PMV');
+      setBrand(initialData.brand || defaultBrand);
       setCategory(resolveCategoryKey(initialData.category));
       setSubCategory(initialData.subCategory || initialData.type || 'Instagram');
     } else {
       setName('');
       setUrl('');
-      setBrand('PMV');
+      setBrand(defaultBrand);
       setCategory(defaultCategory);
       const firstSub = getCategoryConfig(defaultCategory)[0]?.name || 'Instagram';
       setSubCategory(firstSub);
     }
-  }, [initialData, isOpen, defaultCategory]);
+  }, [initialData, isOpen, defaultCategory, defaultBrand]);
 
   if (!isOpen) return null;
 
@@ -262,7 +302,7 @@ export function AddLinkModal({
           <div className="flex items-center gap-2">
             <Link2 className="w-4 h-4 text-brand" />
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              {isEditMode ? 'Edit Resource Link' : 'Pin Project Resource Link'}
+              {isEditMode ? 'Edit Resource Link' : 'Pin Resource Link'}
             </h3>
           </div>
           <button type="button" onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-sm">
@@ -271,18 +311,19 @@ export function AddLinkModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-3.5 flex-1 overflow-y-auto">
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Project Folder</label>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Master Brand</label>
               <select
                 value={brand}
                 onChange={(e) => setBrand(e.target.value)}
                 className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium"
               >
-                <option value="PMV">PMV Maritime</option>
-                <option value="FreshPod">FreshPod App</option>
-                <option value="Lagos">Lagos Logistics</option>
-                <option value="Internal">Internal Org</option>
+                {folderOptions.map((opt) => (
+                  <option key={opt.code} value={opt.code}>
+                    {opt.name} ({opt.code})
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -340,7 +381,6 @@ export function AddLinkModal({
               className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-sm text-xs font-mono text-brand focus:outline-none focus:border-brand"
             />
           </div>
-
 
           <div className="pt-2 flex items-center justify-end gap-2">
             <button

@@ -142,6 +142,7 @@ export function ProjectDetailView({
   for (const item of rawTeamList) {
     const userObj = resolveUserObject(item, users);
     if (!userObj) continue;
+    if (userObj.role === 'Super Admin') continue;
     const key = String(userObj.id || userObj._id || userObj.email || userObj.name).toLowerCase();
     if (!seenTeamKeys.has(key)) {
       seenTeamKeys.add(key);

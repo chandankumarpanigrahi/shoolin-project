@@ -45,6 +45,8 @@ import { UserAvatar } from '@/components/common/UserAvatar';
 import { RoleBadge } from '@/components/common/Badges';
 import { formatDateTime } from '@/lib/dateUtils';
 
+import { AccessDeniedView } from '@/components/common/AccessDeniedView';
+
 const MODULE_ICONS = {
   dashboard: BarChart3,
   projects: Briefcase,
@@ -85,17 +87,37 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
     GRANULAR_PERMISSIONS
   } = useAppContext();
 
+  // Enforce access_control.view permission
+  const canViewAccessControl = currentUser?.role === 'Super Admin' || can('access_control.view');
+  if (!canViewAccessControl) {
+    return (
+      <AccessDeniedView
+        moduleName="Access Control & RBAC Governance"
+        requiredRole="Super Admin or Admin with access_control.view"
+        permissionKey="access_control.view"
+      />
+    );
+  }
+
+  // Granular capability permissions
+  const isSuperAdmin = currentUser?.role === 'Super Admin';
+  const canManageRoles = isSuperAdmin || can('access_control.manage_roles');
+  const canManageUsers = isSuperAdmin || can('access_control.manage_users');
+  const canResetGovernance = isSuperAdmin || can('access_control.reset');
+
   // Active Main SubTab: 'users' (To Whom What Access) | 'matrix' (Role Matrix) | 'audit' (Audit Log)
   const [activeTab, setActiveTab] = useState('users');
 
-  // User Selection state
+  // User Selection state (Filter out Super Admin so Super Admin is stealth)
+  const nonSuperAdminUsers = useMemo(() => {
+    return users.filter((u) => u.role !== 'Super Admin' && u.role !== 'super_admin');
+  }, [users]);
+
   const [selectedUserId, setSelectedUserId] = useState(() => {
-    if (initialUserId && users.find((u) => u.id === initialUserId)) {
+    if (initialUserId && nonSuperAdminUsers.find((u) => u.id === initialUserId)) {
       return initialUserId;
     }
-    // Default to first non-super-admin or first user
-    const firstNonAdmin = users.find((u) => u.role !== 'Super Admin');
-    return firstNonAdmin ? firstNonAdmin.id : users[0]?.id || 'usr-1';
+    return nonSuperAdminUsers[0]?.id || users.find((u) => u.role !== 'Super Admin')?.id || 'usr-1';
   });
 
   // User list filters
@@ -117,21 +139,18 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
   // Confirmation modal state
   const [confirmModal, setConfirmModal] = useState(null); // { title, message, onConfirm }
 
-  // Check if current active user is Super Admin
-  const isSuperAdmin = currentUser?.role === 'Super Admin' || can('access_control.manage_roles');
-
   const selectedUser = useMemo(() => {
-    return users.find((u) => u.id === selectedUserId) || users[0];
-  }, [users, selectedUserId]);
+    return nonSuperAdminUsers.find((u) => u.id === selectedUserId) || nonSuperAdminUsers[0];
+  }, [nonSuperAdminUsers, selectedUserId]);
 
   const departments = useMemo(() => {
-    const list = Array.from(new Set(users.map((u) => u.department).filter(Boolean)));
+    const list = Array.from(new Set(nonSuperAdminUsers.map((u) => u.department).filter(Boolean)));
     return ['ALL', ...list];
-  }, [users]);
+  }, [nonSuperAdminUsers]);
 
-  // Filtered Users List
+  // Filtered Users List (Super Admin explicitly hidden)
   const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
+    return nonSuperAdminUsers.filter((u) => {
       if (roleFilter !== 'ALL' && u.role !== roleFilter) return false;
       if (departmentFilter !== 'ALL' && u.department !== departmentFilter) return false;
       if (onlyOverridden) {
@@ -147,7 +166,7 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
       }
       return true;
     });
-  }, [users, roleFilter, departmentFilter, onlyOverridden, userSearch, userOverrides]);
+  }, [nonSuperAdminUsers, roleFilter, departmentFilter, onlyOverridden, userSearch, userOverrides]);
 
   // Selected User's Override Statistics
   const userStats = useMemo(() => {
@@ -287,6 +306,15 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
 
   const superAdminUser = users.find((u) => u.role === 'Super Admin') || users[0];
 
+  const filteredAuditLog = useMemo(() => {
+    return (accessAuditLog || []).filter((log) => {
+      const perfRole = String(log.performedByRole || log.performedBy?.role || log.performedBy || '').toLowerCase();
+      const targetRole = String(log.targetRole || log.target?.role || log.target || '').toLowerCase();
+      const isSA = perfRole.includes('super admin') || perfRole.includes('superadmin') || targetRole.includes('super admin') || targetRole.includes('superadmin') || String(log.performedBy || '').toLowerCase().includes('admin shoolin');
+      return !isSA;
+    });
+  }, [accessAuditLog]);
+
   return (
     <div className={`space-y-4 pb-12 text-xs ${isEmbedded ? 'pt-0' : ''}`}>
       {/* 1. TOP HEADER & GOVERNANCE STATUS */}
@@ -303,7 +331,7 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
                     Full Access Control
                   </h1>
                   <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                    SuperAdmin Master Authority
+                    Master RBAC Authority
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -320,10 +348,10 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
             <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold text-amber-900 dark:text-amber-200">
-                Access Restricted: Read-Only Governance View
+                Operational Governance View
               </span>
               <p className="text-amber-700 dark:text-amber-300 text-[11px] mt-0.5">
-                You are currently signed in as <strong className="font-semibold">{currentUser.name} ({currentUser.role})</strong>. User activity monitoring, permission matrix governance, and audit log tracking require Super Admin role authority.
+                Signed in as <strong className="font-semibold">{currentUser.name} ({currentUser.role})</strong>. User activity monitoring and permission matrix governance active.
               </p>
             </div>
           </div>
@@ -374,7 +402,7 @@ export function AccessControlView({ initialUserId = null, isEmbedded = false }) 
             <Key className="w-3.5 h-3.5" />
             <span>Audit Log</span>
             <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full font-mono">
-              {accessAuditLog.length}
+              {filteredAuditLog.length}
             </span>
           </button>
         </div>

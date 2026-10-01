@@ -197,10 +197,11 @@ export function AvatarGroup({ userIds = [], max = 3, size = 'sm' }) {
     })
     .filter(Boolean);
 
-  // Deduplicate by canonical user ID / name
+  // Deduplicate by canonical user ID / name & exclude Super Admin footprint
   const seenKeys = new Set();
   const validMembers = [];
   for (const m of rawMembers) {
+    if (m.role === 'Super Admin') continue;
     const key = String(m.id || m._id || m.email || m.name || '').toLowerCase();
     if (key && !seenKeys.has(key)) {
       seenKeys.add(key);

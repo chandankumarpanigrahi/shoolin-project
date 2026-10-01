@@ -8,7 +8,15 @@ import { useAppContext } from '@/components/providers/AppProvider';
 export default function TemplatesPage() {
   const { handleOpenCreateFromTemplate, can, authLoaded } = useAppContext();
 
-  if (authLoaded && !can('templates.view')) {
+  if (!authLoaded) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!can('templates.view')) {
     return (
       <AccessDeniedView
         moduleName="Project Templates Library"

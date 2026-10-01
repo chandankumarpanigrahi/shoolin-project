@@ -218,10 +218,10 @@ export function MeetingsView({
     );
   };
 
-  const isSuperAdminOrAdmin = (user = currentUser) => {
+  const isSuperAdmin = (user = currentUser) => {
     if (!user) return false;
     const role = String(user.role || '').toLowerCase();
-    return role === 'super admin' || role === 'admin' || role.includes('admin');
+    return role === 'super admin' || role === 'superadmin';
   };
 
   const isMeetingCreator = (m) => {

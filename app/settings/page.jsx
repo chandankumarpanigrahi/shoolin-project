@@ -1887,7 +1887,15 @@ function SecurityTab({ toast }) {
 // ─── Main Settings Page Component ─────────────────────────────────────────────
 export default function SettingsPage() {
   const { toast } = useToast();
-  const { can, currentUser } = useAppContext();
+  const { can, currentUser, authLoaded } = useAppContext();
+
+  if (!authLoaded) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const canAccessSettings = can ? can('settings.view') : true;
 

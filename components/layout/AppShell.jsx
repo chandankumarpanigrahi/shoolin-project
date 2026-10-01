@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -77,6 +77,7 @@ export function AppShell({ children }) {
     meetingToEdit,
     setMeetingToEdit,
     activeProjects,
+    masterBrands,
     handleAddDependency,
     handleAddLink,
     handleDeleteLink,
@@ -88,6 +89,21 @@ export function AppShell({ children }) {
     isAuthenticated,
     authLoaded,
   } = useAppContext();
+
+  const dynamicProjectFolders = useMemo(() => {
+    if (Array.isArray(masterBrands) && masterBrands.length > 0) {
+      return masterBrands.map((b) => {
+        const code = (b.code || b.name || 'BRD').toUpperCase().trim();
+        return { brand: code, code, name: b.name || code, color: b.color || '#2563EB' };
+      });
+    }
+
+    return [
+      { brand: 'TCC', code: 'TCC', name: 'Captains Cafe', color: '#572700' },
+      { brand: 'INT', code: 'INT', name: 'Internal', color: '#516506' },
+      { brand: 'PMV', code: 'PMV', name: 'PMV Maritime Solutions', color: '#ad1d41' },
+    ];
+  }, [masterBrands]);
 
   const pathname = usePathname();
   const router = useRouter();
@@ -374,6 +390,7 @@ export function AppShell({ children }) {
         isOpen={isAddLinkOpen}
         onClose={() => closeModal(() => setIsAddLinkOpen(false))}
         currentUser={currentUser}
+        projectFolders={dynamicProjectFolders}
         onAddLink={(l) => {
           handleAddLink(l);
           closeModal(() => setIsAddLinkOpen(false));

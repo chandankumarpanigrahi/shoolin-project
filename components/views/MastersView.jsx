@@ -108,6 +108,7 @@ export const getBrandColorStyle = (color) => {
 
 export function MastersView() {
   const {
+    can,
     users,
     currentUser,
     setCurrentUser,
@@ -145,6 +146,8 @@ export function MastersView() {
     templates
   } = useAppContext();
 
+  const canViewAccessControl = currentUser?.role === 'Super Admin' || (can ? can('access_control.view') : true);
+
   // Active Master Tab
   const [activeTab, setActiveTab] = useUrlTab('tab', 'users', [
     'users',
@@ -156,6 +159,13 @@ export function MastersView() {
     'blueprint-categories',
     'departments'
   ]);
+
+  // If activeTab is 'roles' (Access Control) but user lacks permission, fallback to 'users'
+  React.useEffect(() => {
+    if (activeTab === 'roles' && !canViewAccessControl) {
+      setActiveTab('users');
+    }
+  }, [activeTab, canViewAccessControl, setActiveTab]);
 
   // =========================================================================
   // 1. USERS MASTER STATE
@@ -261,17 +271,15 @@ export function MastersView() {
   const [brandsList, setBrandsList] = useState(() => {
     if (masterBrands && masterBrands.length > 0) return masterBrands;
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('pulsepm_master_brands_v2');
+      const saved = localStorage.getItem('pulsepm_master_brands_v3');
       if (saved) {
         try { return JSON.parse(saved); } catch (e) { }
       }
     }
     return [
-      { id: 'br-1', code: 'PMV', name: 'PMV Maritime', color: '#2563EB', status: 'Active', desc: 'Shipping fleet & logistics' },
-      { id: 'br-2', code: 'FPD', name: 'Captain\'s Cafe', color: '#452700', status: 'Active', desc: 'Produce delivery mobile application' },
-      { id: 'br-3', code: 'LMA', name: 'Lagos Maritime Academy', color: '#FF6500', status: 'Active', desc: 'Lagos Maritime Institute in Nigeria' },
-      { id: 'br-4', code: 'INT', name: 'Internal', color: '#9333EA', status: 'Active', desc: 'Internal engineering & HR operations' },
-      { id: 'br-5', code: 'SOMS', name: 'School of Maritime Studies', color: '#2563EB', status: 'Active', desc: 'Maritime Institute' },
+      { id: 'br-1', code: 'TCC', name: 'Captains Cafe', color: '#572700', status: 'Active', desc: 'Captains Cafe Master Brand' },
+      { id: 'br-2', code: 'INT', name: 'Internal', color: '#516506', status: 'Active', desc: 'Internal engineering & operations' },
+      { id: 'br-3', code: 'PMV', name: 'PMV Maritime Solutions', color: '#ad1d41', status: 'Active', desc: 'PMV Maritime Solutions' },
     ];
   });
 
@@ -389,7 +397,7 @@ export function MastersView() {
   const saveBrands = (items) => {
     setBrandsList(items);
     if (saveMasterBrands) saveMasterBrands(items);
-    if (typeof window !== 'undefined') localStorage.setItem('pulsepm_master_brands_v2', JSON.stringify(items));
+    if (typeof window !== 'undefined') localStorage.setItem('pulsepm_master_brands_v3', JSON.stringify(items));
   };
 
   const saveCats = (items) => {
@@ -408,6 +416,7 @@ export function MastersView() {
   // =========================================================================
   const filteredUsers = useMemo(() => {
     return (users || []).filter((u) => {
+      if (u.role === 'Super Admin' || u.role === 'super_admin') return false;
       if (userRoleFilter !== 'ALL' && u.role !== userRoleFilter) return false;
       if (userStatusFilter !== 'ALL' && (u.status || 'Active') !== userStatusFilter) return false;
       if (userSearch.trim()) {
@@ -1233,17 +1242,19 @@ export function MastersView() {
           <span>Users ({users?.length || 0})</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('roles')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${activeTab === 'roles'
-            ? 'bg-brand text-white shadow-xs'
-            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-            }`}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>Access Control ({rolesList.length})</span>
-        </button>
+        {canViewAccessControl && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('roles')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold text-xs transition-all shrink-0 ${activeTab === 'roles'
+              ? 'bg-brand text-white shadow-xs'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+              }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Access Control ({rolesList.length})</span>
+          </button>
+        )}
 
         <button
           type="button"

@@ -25,11 +25,9 @@ export function CreateProjectModal({
   } catch (e) { }
 
   const availableProjects = masterBrands.length > 0 ? masterBrands : [
-    { id: 'br-1', code: 'PMV', name: 'PMV Maritime', color: '#2563EB' },
-    { id: 'br-2', code: 'FPD', name: 'Captain\'s Cafe', color: '#452700' },
-    { id: 'br-3', code: 'LMA', name: 'Lagos Maritime Academy', color: '#FF6500' },
-    { id: 'br-4', code: 'INT', name: 'Internal', color: '#9333EA' },
-    { id: 'br-5', code: 'SOMS', name: 'School of Maritime Studies', color: '#2563EB' },
+    { id: 'br-1', code: 'TCC', name: 'Captains Cafe', color: '#572700' },
+    { id: 'br-2', code: 'INT', name: 'Internal', color: '#516506' },
+    { id: 'br-3', code: 'PMV', name: 'PMV Maritime Solutions', color: '#ad1d41' },
   ];
 
   const availableCategories = masterCategories.length > 0
@@ -86,6 +84,8 @@ export function CreateProjectModal({
     for (const entry of (rawList || [])) {
       const canonicalId = resolveUserKey(entry, users);
       if (canonicalId && !seen.has(canonicalId)) {
+        const userObj = resolveUserObject(canonicalId, users);
+        if (userObj && userObj.role === 'Super Admin') continue;
         seen.add(canonicalId);
         result.push(canonicalId);
       }
@@ -499,7 +499,7 @@ export function CreateProjectModal({
                   Select squad members to grant project visibility:
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto">
-                  {(users || []).map((u) => {
+                  {(users || []).filter((u) => u.role !== 'Super Admin').map((u) => {
                     const uId = u.id || u._id;
                     const uName = u.name || 'Member';
                     const isSelected = selectedTeam.some((item) => {
