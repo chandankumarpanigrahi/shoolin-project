@@ -403,7 +403,7 @@ export function ProjectsView({
                   <th className="py-2.5 px-3 w-10 text-center font-bold">#</th>
                   <th className="py-2.5 px-3">Project Code</th>
                   <th className="py-2.5 px-3">Project Name</th>
-                  <th className="py-2.5 px-3">Client / Brand</th>
+                  <th className="py-2.5 px-3">Project</th>
                   <th className="py-2.5 px-3">Type</th>
                   <th className="py-2.5 px-3">Owner</th>
                   <th className="py-2.5 px-3">Team</th>
@@ -418,7 +418,10 @@ export function ProjectsView({
                   const ownerUser = resolveUserObject(targetOwnerId, users) || (users && users[0]) || { name: 'Owner', role: 'Member' };
                   const ownerDisplayName = ownerUser?.name || 'Owner';
                   const rawTeam = (p.teamIds && p.teamIds.length > 0) ? p.teamIds : (p.team && p.team.length > 0) ? p.team : [targetOwnerId, p.managerId || p.manager].filter(Boolean);
-                  const teamIds = Array.from(new Set(rawTeam));
+                  const teamIds = Array.from(new Set(rawTeam.map((item) => {
+                    const uObj = resolveUserObject(item, users);
+                    return uObj ? (uObj.id || uObj._id) : item;
+                  }))).filter(Boolean);
 
                   const projTasks = (tasks || []).filter((t) => {
                     if (!t) return false;
@@ -607,7 +610,10 @@ export function ProjectsView({
             const ownerUser = resolveUserObject(targetOwnerId, users) || (users && users[0]) || { name: 'Owner', role: 'Member' };
             const ownerDisplayName = ownerUser?.name || 'Owner';
             const rawTeam = (p.teamIds && p.teamIds.length > 0) ? p.teamIds : (p.team && p.team.length > 0) ? p.team : [targetOwnerId, p.managerId || p.manager].filter(Boolean);
-            const teamIds = Array.from(new Set(rawTeam));
+            const teamIds = Array.from(new Set(rawTeam.map((item) => {
+              const uObj = resolveUserObject(item, users);
+              return uObj ? (uObj.id || uObj._id) : item;
+            }))).filter(Boolean);
 
             return (
               <div

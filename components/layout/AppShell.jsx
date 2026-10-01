@@ -426,9 +426,6 @@ export function AppShell({ children }) {
 
       {/* Mobile Bottom Navigation */}
       <MobileBottomNav />
-
-      {/* PWA Install Prompt */}
-      <InstallPromptBanner />
     </div>
     </ToastProvider>
   );

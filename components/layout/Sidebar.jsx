@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -21,7 +21,10 @@ import {
   Building2,
   ShieldCheck,
   Lock,
-  X
+  X,
+  Smartphone,
+  Download,
+  Share
 } from 'lucide-react';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { RoleBadge } from '@/components/common/Badges';
@@ -44,10 +47,57 @@ export function Sidebar({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { can, logout, projects = [], tasks = [], meetings = [], dependencies = [] } = useAppContext();
+  const { can, logout, projects = [], tasks = [], meetings = [], dependencies = [], isProjectAccessibleToUser } = useAppContext();
   const [workspace, setWorkspace] = useState('Shoolin Innovations Limited');
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
   const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
+
+  const activeProjects = (projects || []).filter(
+    (p) => p && !p.isDeleted && p.status !== 'Deleted' && (isProjectAccessibleToUser ? isProjectAccessibleToUser(p, currentUser) : true)
+  );
+
+  const activeTasks = (tasks || []).filter(
+    (t) => t && !t.isDeleted && t.status !== 'Deleted'
+  );
+
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    setIsStandalone(standalone);
+
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    setIsIOS(ios);
+
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      try {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          setDeferredPrompt(null);
+          setShowInstallGuide(false);
+        }
+      } catch (e) {
+        setShowInstallGuide((prev) => !prev);
+      }
+    } else {
+      setShowInstallGuide((prev) => !prev);
+    }
+  };
 
   const activeIsOpen = isSidebarOpen !== undefined ? isSidebarOpen : isMobileOpen;
   const setOpen = setIsSidebarOpen || setIsMobileOpen;
@@ -61,8 +111,8 @@ export function Sidebar({
 
   const navItems = [
     { id: 'dashboard', href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'projects', href: '/projects', label: 'Projects', icon: Briefcase, count: projects.length },
-    { id: 'tasks', href: '/tasks', label: 'Tasks', icon: CheckSquare, count: tasks.length },
+    { id: 'projects', href: '/projects', label: 'Projects', icon: Briefcase, count: activeProjects.length },
+    { id: 'tasks', href: '/tasks', label: 'Tasks', icon: CheckSquare, count: activeTasks.length },
     { id: 'roadmap', href: '/roadmap', label: 'Roadmap', icon: CalendarRange, badge: 'Q3-Q4' },
     { id: 'meetings', href: '/meetings', label: 'Meetings', icon: Video, badge: meetings.length ? `${meetings.length}` : undefined },
     { id: 'kpi', href: '/kpi', label: 'KPI Dashboard', icon: BarChart3, perm: 'kpi.view' },
@@ -166,7 +216,7 @@ export function Sidebar({
                   key={item.id}
                   type="button"
                   onClick={() => handleNavClick(item)}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-sm text-md sm:text-xs font-medium transition-colors cursor-pointer ${active
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-sm text-[14px] sm:text-xs font-medium transition-colors cursor-pointer ${active
                     ? 'bg-brand text-white shadow-sm font-semibold'
                     : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
                     }`}
@@ -202,14 +252,58 @@ export function Sidebar({
             })}
         </div>
 
+        {/* Mobile-Only Install App Button (Above User Details) */}
+        {!isStandalone && (
+          <div className="block lg:hidden px-3 py-2 border-t border-slate-800/80 bg-slate-900/90 shrink-0">
+            <button
+              type="button"
+              onClick={handleInstallClick}
+              className="w-full flex items-center justify-between px-3 py-2 bg-gradient-to-r from-brand via-blue-600 to-indigo-600 hover:from-brand-hover hover:to-indigo-700 text-white rounded-lg text-xs font-bold shadow-md transition-all active:scale-98 cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-white shrink-0" />
+                <span>Install App</span>
+              </div>
+              <Download className="w-3.5 h-3.5 opacity-90 shrink-0" />
+            </button>
+
+            {/* Android / iOS Step-by-Step Install Guide */}
+            {showInstallGuide && (
+              <div className="mt-2 p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] text-slate-300 space-y-1.5 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between font-bold text-white text-xs">
+                  <span>Install on {isIOS ? 'iOS (Safari)' : 'Android / Chrome'}</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowInstallGuide(false)}
+                    className="text-slate-400 hover:text-white p-0.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {isIOS ? (
+                  <p className="leading-snug text-slate-300">
+                    1. Tap <Share className="inline w-3.5 h-3.5 mx-0.5 text-brand" /> <strong>Share</strong> in Safari.<br />
+                    2. Scroll &amp; tap <strong className="text-white font-semibold">Add to Home Screen</strong>.
+                  </p>
+                ) : (
+                  <p className="leading-snug text-slate-300">
+                    1. Tap the browser menu (<strong className="text-white">⋮</strong>) at top right.<br />
+                    2. Select <strong className="text-white font-semibold">Add to Home screen</strong> or <strong className="text-white font-semibold">Install App</strong>.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Bottom Section: Profile & Auth */}
         <div className="p-3 border-t border-slate-800/80 bg-slate-950/60 shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5 min-w-0">
               <UserAvatar user={currentUser} size="sm" />
               <div className="min-w-0 flex flex-col">
-                <span className="text-md sm:text-xs font-semibold text-slate-200 truncate">{currentUser.name}</span>
-                <span className="text-sm sm:text-[11px] text-slate-400 truncate">{currentUser.role}</span>
+                <span className="text-[12px] sm:text-xs font-semibold text-slate-200 truncate">{currentUser.name}</span>
+                <span className="text-[10px] sm:text-[11px] text-slate-400 truncate">{currentUser.role}</span>
               </div>
             </div>
 

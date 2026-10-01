@@ -48,7 +48,7 @@ export default function OfflinePage() {
         </button>
 
         <p className="text-[10px] text-slate-400 dark:text-slate-600">
-          © 2026 Shoolin Innovations Limited
+          © 2026 Shoolin Innovations Private Limited
         </p>
       </div>
     </div>

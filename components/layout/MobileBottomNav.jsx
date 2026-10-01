@@ -16,6 +16,7 @@ import {
   CheckSquare,
   CalendarRange,
   BarChart3,
+  Settings,
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { showError } from '@/lib/swal';
@@ -24,8 +25,9 @@ const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/projects', label: 'Projects', icon: Briefcase },
   { href: '/tasks', label: 'Tasks', icon: CheckSquare },
-  { href: '/roadmap', label: 'Roadmap', icon: CalendarRange },
+  // { href: '/roadmap', label: 'Roadmap', icon: CalendarRange },
   { href: '/kpi', label: 'KPIs', icon: BarChart3, perm: 'kpi.view' },
+  { href: '/settings', label: 'Settings', icon: Settings, perm: 'kpi.view' },
 ];
 
 export function MobileBottomNav() {
@@ -65,23 +67,22 @@ export function MobileBottomNav() {
               onClick={() => handleNav(item)}
               aria-label={`Navigate to ${item.label}`}
               aria-current={active ? 'page' : undefined}
-              className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-1 text-[10px] font-semibold transition-colors min-w-0 ${
-                active
-                  ? 'text-brand'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
+              className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-1 text-[10px] font-semibold transition-colors min-w-0 ${active
+                ? 'text-brand'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
             >
-            {/* Active indicator dot above icon */}
-            <div className="relative">
-              <Icon className={`w-5 h-5 transition-transform ${active ? 'scale-110' : 'scale-100'}`} />
-              {active && (
-                <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-brand" />
-              )}
-            </div>
-            <span className="truncate leading-none">{item.label}</span>
-          </button>
-        );
-      })}
+              {/* Active indicator dot above icon */}
+              <div className="relative">
+                <Icon className={`w-5 h-5 transition-transform ${active ? 'scale-110' : 'scale-100'}`} />
+                {active && (
+                  <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-brand" />
+                )}
+              </div>
+              <span className="truncate leading-none">{item.label}</span>
+            </button>
+          );
+        })}
     </nav>
   );
 }

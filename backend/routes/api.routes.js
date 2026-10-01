@@ -112,7 +112,8 @@ router.post('/projects', async (req, res) => {
 router.put('/projects/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const updated = await Project.findByIdAndUpdate(id, req.body, { new: true });
+    const projectLookup = (targetId) => isObjectId(targetId) ? { $or: [{ _id: targetId }, { code: targetId }] } : { code: targetId };
+    const updated = await Project.findOneAndUpdate(projectLookup(id), req.body, { new: true });
     if (!updated) return res.status(404).json({ error: 'Project not found' });
     const result = transform(updated);
     broadcastRealtimeEvent('project_updated', result);
@@ -333,7 +334,7 @@ router.patch('/meetings/:id/approve', async (req, res) => {
         title: 'Meeting Approved! 🎉',
         detail: `"${meeting.title}" was approved for ${meeting.date} at ${meeting.time}.`,
         link: '/meetings?tab=upcoming',
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
 
@@ -365,7 +366,7 @@ router.patch('/meetings/:id/decline', async (req, res) => {
         title: 'Meeting Declined',
         detail: `"${meeting.title}" was declined. Reason: ${comments || 'No reason provided'}`,
         link: '/meetings?tab=pending',
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     res.json(result);
@@ -1484,52 +1485,51 @@ router.post('/meetings/:id/comments', async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-// Personal Todos
-router.get('/personal-todos', async (req, res) => {
-  try {
-    const { userId, userEmail } = req.query;
-    const query = {};
-    if (userId) query.userId = userId;
-    else if (userEmail) query.userEmail = userEmail;
-    const todos = await PersonalTodo.find(query).sort({ createdAt: -1 });
-    res.json(transformArr(todos));
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  // Personal Todos
+  router.get('/personal-todos', async (req, res) => {
+    try {
+      const { userId, userEmail } = req.query;
+      const query = {};
+      if (userId) query.userId = userId;
+      else if (userEmail) query.userEmail = userEmail;
+      const todos = await PersonalTodo.find(query).sort({ createdAt: -1 });
+      res.json(transformArr(todos));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
-router.post('/personal-todos', async (req, res) => {
-  try {
-    const created = await PersonalTodo.create(req.body);
-    broadcastRealtimeEvent('PERSONAL_TODO_CREATED', transform(created));
-    res.status(201).json(transform(created));
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  router.post('/personal-todos', async (req, res) => {
+    try {
+      const created = await PersonalTodo.create(req.body);
+      broadcastRealtimeEvent('PERSONAL_TODO_CREATED', transform(created));
+      res.status(201).json(transform(created));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
-router.put('/personal-todos/:id', async (req, res) => {
-  try {
-    const updated = await PersonalTodo.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!updated) return res.status(404).json({ error: 'Todo not found' });
-    broadcastRealtimeEvent('PERSONAL_TODO_UPDATED', transform(updated));
-    res.json(transform(updated));
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  router.put('/personal-todos/:id', async (req, res) => {
+    try {
+      const updated = await PersonalTodo.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      if (!updated) return res.status(404).json({ error: 'Todo not found' });
+      broadcastRealtimeEvent('PERSONAL_TODO_UPDATED', transform(updated));
+      res.json(transform(updated));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
-router.delete('/personal-todos/:id', async (req, res) => {
-  try {
-    const deleted = await PersonalTodo.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ error: 'Todo not found' });
-    broadcastRealtimeEvent('PERSONAL_TODO_DELETED', { id: req.params.id });
-    res.json({ success: true, id: req.params.id });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  router.delete('/personal-todos/:id', async (req, res) => {
+    try {
+      const deleted = await PersonalTodo.findByIdAndDelete(req.params.id);
+      if (!deleted) return res.status(404).json({ error: 'Todo not found' });
+      broadcastRealtimeEvent('PERSONAL_TODO_DELETED', { id: req.params.id });
+      res.json({ success: true, id: req.params.id });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 });
 
 export default router;
-
-

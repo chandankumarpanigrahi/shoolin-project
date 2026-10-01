@@ -187,7 +187,7 @@ export function TasksView({
     return (
       <React.Fragment key={task.id}>
         <tr className="hover:bg-slate-50/80 dark:hover:bg-slate-800/60 cursor-pointer group transition-colors border-b border-slate-100 dark:border-slate-800">
-          <td className="py-2.5 px-3">
+          <td className="py-2.5 px-3 whitespace-nowrap">
             <div className="flex items-center gap-1.5" style={{ paddingLeft: isFiltering ? 0 : `${level * 22}px` }}>
               {!isFiltering && hasChildren ? (
                 <button
@@ -252,7 +252,7 @@ export function TasksView({
 
               <span
                 onClick={() => onSelectTask(task)}
-                className={`font-medium transition-colors truncate max-w-sm ml-1 ${
+                className={`font-medium transition-colors whitespace-nowrap ml-1 ${
                   isCompleted
                     ? 'line-through text-slate-400 dark:text-slate-500 opacity-75'
                     : 'text-slate-900 dark:text-slate-100 group-hover:text-brand'
@@ -268,7 +268,7 @@ export function TasksView({
             <span className="font-mono text-[11px] font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1 py-0.2 rounded-xs mr-1">
               {project.code}
             </span>
-            <span className="text-slate-700 dark:text-slate-300 text-xs truncate max-w-[120px] inline-block align-middle">
+            <span className="text-slate-700 dark:text-slate-300 text-xs font-medium truncate max-w-[220px] inline-block align-middle">
               {project.name}
             </span>
           </td>
@@ -535,13 +535,13 @@ export function TasksView({
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/80 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider select-none">
-                  <th className="py-3 px-3.5">Deliverable &amp; Task Hierarchy</th>
-                  <th className="py-3 px-3.5">Project</th>
-                  <th className="py-3 px-3.5">Assignee</th>
-                  <th className="py-3 px-3.5">Priority</th>
-                  <th className="py-3 px-3.5">Status</th>
-                  <th className="py-3 px-3.5">Timeline (From – To)</th>
-                  <th className="py-3 px-3.5 text-right">Actions</th>
+                  <th className="py-3 px-3.5 whitespace-nowrap">Deliverable &amp; Task Hierarchy</th>
+                  <th className="py-3 px-3.5 whitespace-nowrap">Project</th>
+                  <th className="py-3 px-3.5 whitespace-nowrap">Assignee</th>
+                  <th className="py-3 px-3.5 whitespace-nowrap">Priority</th>
+                  <th className="py-3 px-3.5 whitespace-nowrap">Status</th>
+                  <th className="py-3 px-3.5 whitespace-nowrap">Timeline (From – To)</th>
+                  <th className="py-3 px-3.5 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">

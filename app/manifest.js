@@ -6,9 +6,9 @@
 export default function manifest() {
   return {
     name: 'Shoolin Innovations Limited',
-    short_name: 'Shoolin OS',
+    short_name: 'Shoolin PMS',
     description:
-      'Enterprise Project Operations OS — Manage projects, tasks, meetings, dependencies, and KPIs for Shoolin Innovations Limited.',
+      'Shoolin PMS — Manage projects, tasks, meetings, dependencies, and KPIs for Shoolin Innovations Limited.',
     start_url: '/',
     scope: '/',
     display: 'standalone',

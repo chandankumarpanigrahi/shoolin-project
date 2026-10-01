@@ -1672,13 +1672,20 @@ async function handleRequest(request, context) {
       const id = path.replace(/^masters\/brands\//, '').replace(/^brands\//, '');
       if (method === 'PUT') {
         const body = await request.json();
-        const updated = await MasterBrand.findByIdAndUpdate(id, body, { new: true });
+        const conditions = [{ id }, { code: id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        let updated = await MasterBrand.findOneAndUpdate({ $or: conditions }, body, { new: true });
+        if (!updated) {
+          updated = await MasterBrand.create({ ...body, code: body.code || id, name: body.name || body.code || id });
+        }
         const transformed = transform(updated);
         await recordRealtimeEvent('master_brands_updated', id, transformed);
         return NextResponse.json(transformed);
       }
       if (method === 'DELETE') {
-        await MasterBrand.findByIdAndDelete(id);
+        const conditions = [{ id }, { code: id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        await MasterBrand.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('master_brands_updated', id, { id, deleted: true });
         return NextResponse.json({ success: true, id });
       }
@@ -1701,13 +1708,18 @@ async function handleRequest(request, context) {
       const id = path.replace(/^masters\/departments\//, '').replace(/^departments\//, '');
       if (method === 'PUT') {
         const body = await request.json();
-        const updated = await MasterDepartment.findByIdAndUpdate(id, body, { new: true });
+        const conditions = [{ id }, { code: id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const updated = await MasterDepartment.findOneAndUpdate({ $or: conditions }, body, { new: true });
+        if (!updated) return NextResponse.json({ error: 'Department not found' }, { status: 404 });
         const transformed = transform(updated);
         await recordRealtimeEvent('master_departments_updated', id, transformed);
         return NextResponse.json(transformed);
       }
       if (method === 'DELETE') {
-        await MasterDepartment.findByIdAndDelete(id);
+        const conditions = [{ id }, { code: id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        await MasterDepartment.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('master_departments_updated', id, { id, deleted: true });
         return NextResponse.json({ success: true, id });
       }
@@ -1730,13 +1742,18 @@ async function handleRequest(request, context) {
       const id = path.replace(/^masters\/statuses\//, '').replace(/^statuses\//, '');
       if (method === 'PUT') {
         const body = await request.json();
-        const updated = await MasterStatus.findByIdAndUpdate(id, body, { new: true });
+        const conditions = [{ id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const updated = await MasterStatus.findOneAndUpdate({ $or: conditions }, body, { new: true });
+        if (!updated) return NextResponse.json({ error: 'Status not found' }, { status: 404 });
         const transformed = transform(updated);
         await recordRealtimeEvent('master_statuses_updated', id, transformed);
         return NextResponse.json(transformed);
       }
       if (method === 'DELETE') {
-        await MasterStatus.findByIdAndDelete(id);
+        const conditions = [{ id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        await MasterStatus.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('master_statuses_updated', id, { id, deleted: true });
         return NextResponse.json({ success: true, id });
       }
@@ -2685,23 +2702,19 @@ async function handleRequest(request, context) {
       const id = path.split('/')[2];
       if (method === 'PUT' || method === 'PATCH') {
         const updates = await request.json();
-        let updated = await MasterBrand.findByIdAndUpdate(id, updates, { new: true });
+        const conditions = [{ id }, { code: id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        let updated = await MasterBrand.findOneAndUpdate({ $or: conditions }, updates, { new: true });
         if (!updated) {
-          const conditions = [{ code: id }, { name: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          updated = await MasterBrand.findOneAndUpdate({ $or: conditions }, updates, { new: true });
+          updated = await MasterBrand.create({ ...updates, code: updates.code || id, name: updates.name || updates.code || id });
         }
-        if (!updated) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
         await recordRealtimeEvent('MASTER_BRANDS_UPDATED', id, transform(updated));
         return NextResponse.json(transform(updated));
       }
       if (method === 'DELETE') {
-        let deleted = await MasterBrand.findByIdAndDelete(id);
-        if (!deleted) {
-          const conditions = [{ code: id }, { name: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          deleted = await MasterBrand.findOneAndDelete({ $or: conditions });
-        }
+        const conditions = [{ id }, { code: id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const deleted = await MasterBrand.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('MASTER_BRANDS_UPDATED', id, { id });
         return NextResponse.json({ success: true, id });
       }
@@ -2736,23 +2749,17 @@ async function handleRequest(request, context) {
       const id = path.split('/')[2];
       if (method === 'PUT' || method === 'PATCH') {
         const updates = await request.json();
-        let updated = await MasterDepartment.findByIdAndUpdate(id, updates, { new: true });
-        if (!updated) {
-          const conditions = [{ code: id }, { name: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          updated = await MasterDepartment.findOneAndUpdate({ $or: conditions }, updates, { new: true });
-        }
+        const conditions = [{ id }, { code: id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const updated = await MasterDepartment.findOneAndUpdate({ $or: conditions }, updates, { new: true });
         if (!updated) return NextResponse.json({ error: 'Department not found' }, { status: 404 });
         await recordRealtimeEvent('MASTER_DEPARTMENTS_UPDATED', id, transform(updated));
         return NextResponse.json(transform(updated));
       }
       if (method === 'DELETE') {
-        let deleted = await MasterDepartment.findByIdAndDelete(id);
-        if (!deleted) {
-          const conditions = [{ code: id }, { name: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          deleted = await MasterDepartment.findOneAndDelete({ $or: conditions });
-        }
+        const conditions = [{ id }, { code: id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const deleted = await MasterDepartment.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('MASTER_DEPARTMENTS_UPDATED', id, { id });
         return NextResponse.json({ success: true, id });
       }
@@ -2780,23 +2787,17 @@ async function handleRequest(request, context) {
       const id = parts[parts.length - 1];
       if (method === 'PUT' || method === 'PATCH') {
         const updates = await request.json();
-        let updated = await MasterStatus.findByIdAndUpdate(id, updates, { new: true });
-        if (!updated) {
-          const conditions = [{ name: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          updated = await MasterStatus.findOneAndUpdate({ $or: conditions }, updates, { new: true });
-        }
+        const conditions = [{ id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const updated = await MasterStatus.findOneAndUpdate({ $or: conditions }, updates, { new: true });
         if (!updated) return NextResponse.json({ error: 'Status not found' }, { status: 404 });
         await recordRealtimeEvent('MASTER_STATUSES_UPDATED', id, transform(updated));
         return NextResponse.json(transform(updated));
       }
       if (method === 'DELETE') {
-        let deleted = await MasterStatus.findByIdAndDelete(id);
-        if (!deleted) {
-          const conditions = [{ name: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          deleted = await MasterStatus.findOneAndDelete({ $or: conditions });
-        }
+        const conditions = [{ id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const deleted = await MasterStatus.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('MASTER_STATUSES_UPDATED', id, { id });
         return NextResponse.json({ success: true, id });
       }
@@ -2829,23 +2830,17 @@ async function handleRequest(request, context) {
       const id = parts[parts.length - 1];
       if (method === 'PUT' || method === 'PATCH') {
         const updates = await request.json();
-        let updated = await TemplateCategory.findByIdAndUpdate(id, updates, { new: true });
-        if (!updated) {
-          const conditions = [{ name: id }, { code: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          updated = await TemplateCategory.findOneAndUpdate({ $or: conditions }, updates, { new: true });
-        }
+        const conditions = [{ id }, { name: id }, { code: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const updated = await TemplateCategory.findOneAndUpdate({ $or: conditions }, updates, { new: true });
         if (!updated) return NextResponse.json({ error: 'Template category not found' }, { status: 404 });
         await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', id, transform(updated));
         return NextResponse.json(transform(updated));
       }
       if (method === 'DELETE') {
-        let deleted = await TemplateCategory.findByIdAndDelete(id);
-        if (!deleted) {
-          const conditions = [{ name: id }, { code: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          deleted = await TemplateCategory.findOneAndDelete({ $or: conditions });
-        }
+        const conditions = [{ id }, { name: id }, { code: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const deleted = await TemplateCategory.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', id, { id });
         return NextResponse.json({ success: true, id });
       }
@@ -2879,23 +2874,17 @@ async function handleRequest(request, context) {
       const id = parts[parts.length - 1];
       if (method === 'PUT' || method === 'PATCH') {
         const updates = await request.json();
-        let updated = await LinkCategory.findByIdAndUpdate(id, updates, { new: true });
-        if (!updated) {
-          const conditions = [{ name: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          updated = await LinkCategory.findOneAndUpdate({ $or: conditions }, updates, { new: true });
-        }
+        const conditions = [{ id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const updated = await LinkCategory.findOneAndUpdate({ $or: conditions }, updates, { new: true });
         if (!updated) return NextResponse.json({ error: 'Link category not found' }, { status: 404 });
         await recordRealtimeEvent('LINK_CATEGORIES_UPDATED', id, transform(updated));
         return NextResponse.json(transform(updated));
       }
       if (method === 'DELETE') {
-        let deleted = await LinkCategory.findByIdAndDelete(id);
-        if (!deleted) {
-          const conditions = [{ name: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          deleted = await LinkCategory.findOneAndDelete({ $or: conditions });
-        }
+        const conditions = [{ id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const deleted = await LinkCategory.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('LINK_CATEGORIES_UPDATED', id, { id });
         return NextResponse.json({ success: true, id });
       }
@@ -2929,23 +2918,17 @@ async function handleRequest(request, context) {
       const id = parts[parts.length - 1];
       if (method === 'PUT' || method === 'PATCH') {
         const updates = await request.json();
-        let updated = await Role.findByIdAndUpdate(id, updates, { new: true });
-        if (!updated) {
-          const conditions = [{ name: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          updated = await Role.findOneAndUpdate({ $or: conditions }, updates, { new: true });
-        }
+        const conditions = [{ id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const updated = await Role.findOneAndUpdate({ $or: conditions }, updates, { new: true });
         if (!updated) return NextResponse.json({ error: 'Role not found' }, { status: 404 });
         await recordRealtimeEvent('ROLES_UPDATED', id, transform(updated));
         return NextResponse.json(transform(updated));
       }
       if (method === 'DELETE') {
-        let deleted = await Role.findByIdAndDelete(id);
-        if (!deleted) {
-          const conditions = [{ name: id }];
-          if (isObjectId(id)) conditions.unshift({ _id: id });
-          deleted = await Role.findOneAndDelete({ $or: conditions });
-        }
+        const conditions = [{ id }, { name: id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const deleted = await Role.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('ROLES_UPDATED', id, { id });
         return NextResponse.json({ success: true, id });
       }

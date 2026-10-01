@@ -22,7 +22,7 @@ export function CreateProjectModal({
       if (ctx.masterBrands && ctx.masterBrands.length > 0) masterBrands = ctx.masterBrands;
       if (ctx.blueprintCategories && ctx.blueprintCategories.length > 0) masterCategories = ctx.blueprintCategories;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   const availableProjects = masterBrands.length > 0 ? masterBrands : [
     { id: 'br-1', code: 'PMV', name: 'PMV Maritime', color: '#2563EB' },
@@ -42,6 +42,8 @@ export function CreateProjectModal({
   const [brand, setBrand] = useState(availableProjects[0]?.code || 'PMV');
   const [category, setCategory] = useState(availableCategories[0] || 'Website Development');
   const [selectedTeam, setSelectedTeam] = useState([]);
+  const [owner, setOwner] = useState('');
+  const [manager, setManager] = useState('');
   const [priority, setPriority] = useState('High');
 
   const [status, setStatus] = useState('In Progress');
@@ -100,8 +102,8 @@ export function CreateProjectModal({
     const currentKey = projectToEdit
       ? (projectToEdit.id || projectToEdit._id)
       : initialTemplate
-      ? `template-${initialTemplate.id}`
-      : 'new';
+        ? `template-${initialTemplate.id}`
+        : 'new';
 
     // Prevent re-initialization from wiping in-progress user edits while modal is open
     if (lastInitializedKeyRef.current === currentKey) {
@@ -126,6 +128,11 @@ export function CreateProjectModal({
       const resolvedExisting = deduplicateTeam(rawTeam);
       setSelectedTeam(resolvedExisting);
 
+      const targetOwner = resolveUserKey(projectToEdit.ownerId || projectToEdit.owner, users) || creatorId;
+      const targetManager = resolveUserKey(projectToEdit.managerId || projectToEdit.manager, users) || creatorId;
+      setOwner(targetOwner);
+      setManager(targetManager);
+
       setPriority(projectToEdit.priority || 'High');
       setStatus(projectToEdit.status || 'In Progress');
       setDescription(projectToEdit.description || '');
@@ -145,7 +152,9 @@ export function CreateProjectModal({
       setSelectedMasterProject(defaultProj?.name || 'PMV Maritime');
       setBrand(defaultProj?.code || 'PMV');
       setCategory(initialTemplate.category || availableCategories[0] || 'Website Development');
-      setSelectedTeam([]);
+      setSelectedTeam([creatorId].filter(Boolean));
+      setOwner(creatorId);
+      setManager(creatorId);
       setPriority('High');
       setStatus('In Progress');
       setStartDate(defaultStartIso);
@@ -159,7 +168,9 @@ export function CreateProjectModal({
       setSelectedMasterProject(defaultProj?.name || 'PMV Maritime');
       setBrand(defaultProj?.code || 'PMV');
       setCategory(availableCategories[0] || 'Website Development');
-      setSelectedTeam([]);
+      setSelectedTeam([creatorId].filter(Boolean));
+      setOwner(creatorId);
+      setManager(creatorId);
       setPriority('High');
       setStatus('In Progress');
       setStartDate(defaultStartIso);
@@ -171,13 +182,19 @@ export function CreateProjectModal({
 
   const handleToggleTeamMember = (userKey) => {
     if (!userKey) return;
-    const targetCanonical = resolveUserKey(userKey, users);
+    const targetCanonical = resolveUserKey(userKey, users) || userKey;
     if (!targetCanonical) return;
 
-    const isPresent = selectedTeam.some(item => resolveUserKey(item, users) === targetCanonical);
+    const isPresent = selectedTeam.some(item => {
+      const canonical = resolveUserKey(item, users) || item;
+      return String(canonical).toLowerCase() === String(targetCanonical).toLowerCase();
+    });
 
     if (isPresent) {
-      setSelectedTeam(prev => deduplicateTeam(prev.filter(item => resolveUserKey(item, users) !== targetCanonical)));
+      setSelectedTeam(prev => prev.filter(item => {
+        const canonical = resolveUserKey(item, users) || item;
+        return String(canonical).toLowerCase() !== String(targetCanonical).toLowerCase();
+      }));
     } else {
       setSelectedTeam(prev => deduplicateTeam([...prev, targetCanonical]));
     }
@@ -210,9 +227,7 @@ export function CreateProjectModal({
     const managerId = resolveUserKey(manager, users) || creatorId;
 
     const resolvedSelected = deduplicateTeam(selectedTeam);
-    const finalTeam = !projectToEdit
-      ? Array.from(new Set([creatorId, ownerId, managerId, ...resolvedSelected])).filter(Boolean)
-      : (resolvedSelected.length > 0 ? resolvedSelected : [ownerId, managerId]);
+    const finalTeam = Array.from(new Set([creatorId, ownerId, managerId, ...resolvedSelected])).filter(Boolean);
 
     const payload = {
       name: name.trim(),
@@ -220,12 +235,12 @@ export function CreateProjectModal({
       client: selectedMasterProject,
       brand,
       category,
-      ownerId: creatorId,
-      owner: creatorId,
-      managerId: creatorId,
-      manager: creatorId,
-      teamIds: resolvedSelected,
-      team: resolvedSelected,
+      ownerId: ownerId,
+      owner: ownerId,
+      managerId: managerId,
+      manager: managerId,
+      teamIds: finalTeam,
+      team: finalTeam,
       priority,
       status,
       startDate: startDate || defaultStartIso,
@@ -275,8 +290,8 @@ export function CreateProjectModal({
                 {projectToEdit
                   ? `Edit Project: ${projectToEdit.name}`
                   : initialTemplate
-                  ? `Create Project from Template: ${initialTemplate.name}`
-                  : "Create New Project Mandate"}
+                    ? `Create Project from Template: ${initialTemplate.name}`
+                    : "Create New Project Mandate"}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Set budget, accountable leadership, delivery cadence, and target dates
@@ -302,8 +317,8 @@ export function CreateProjectModal({
                 type="button"
                 onClick={() => setType('one-time')}
                 className={`p-3.5 border rounded-xl text-left transition-all ${type === 'one-time'
-                    ? 'border-brand bg-brand-subtle text-brand-text ring-2 ring-brand/30'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                  ? 'border-brand bg-brand-subtle text-brand-text ring-2 ring-brand/30'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
                   }`}
               >
                 <div className="flex items-center justify-between mb-1">
@@ -319,8 +334,8 @@ export function CreateProjectModal({
                 type="button"
                 onClick={() => setType('recurring')}
                 className={`p-3.5 border rounded-xl text-left transition-all ${type === 'recurring'
-                    ? 'border-cyan-500 bg-cyan-50/60 dark:bg-cyan-950/40 text-cyan-900 dark:text-cyan-200 ring-2 ring-cyan-400/30'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                  ? 'border-cyan-500 bg-cyan-50/60 dark:bg-cyan-950/40 text-cyan-900 dark:text-cyan-200 ring-2 ring-cyan-400/30'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
                   }`}
               >
                 <div className="flex items-center justify-between mb-1">
@@ -349,7 +364,7 @@ export function CreateProjectModal({
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Lagos Port Telemetry Integration"
+                  placeholder="The complete project name"
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-brand text-slate-900 dark:text-slate-100 placeholder-slate-400"
                 />
               </div>
@@ -478,44 +493,39 @@ export function CreateProjectModal({
                 })()}
               </div>
 
-              {/* Add / Remove Checkbox Selector (Excludes Super Admin) */}
+              {/* Add / Remove Checkbox Selector */}
               <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
                 <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1.5">
                   Select squad members to grant project visibility:
                 </span>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-32 overflow-y-auto">
-                  {(users || [])
-                    .filter((u) => {
-                      const role = String(u.role || '').toLowerCase();
-                      return role !== 'super admin' && role !== 'superadmin';
-                    })
-                    .map((u) => {
-                      const uId = u.id || u._id;
-                      const uName = u.name;
-                      const isSelected = selectedTeam.some((item) => {
-                        const itemCanonical = resolveUserKey(item, users);
-                        return itemCanonical === uId || item === uId || item === uName || String(item).toLowerCase() === String(uId).toLowerCase();
-                      });
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto">
+                  {(users || []).map((u) => {
+                    const uId = u.id || u._id;
+                    const uName = u.name || 'Member';
+                    const isSelected = selectedTeam.some((item) => {
+                      const itemCanonical = resolveUserKey(item, users);
+                      return itemCanonical === uId || item === uId || item === uName || String(item).toLowerCase() === String(uId).toLowerCase();
+                    });
 
-                      return (
-                        <label
-                          key={uId}
-                          className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${isSelected
-                              ? 'bg-brand-light/30 border-brand/40 text-brand font-semibold'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                            }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleTeamMember(uId)}
-                            className="rounded border-slate-300 text-brand focus:ring-brand"
-                          />
-                          <UserAvatar user={u} size="xs" />
-                          <span className="truncate">{u.name.split(' ')[0]}</span>
-                        </label>
-                      );
-                    })}
+                    return (
+                      <label
+                        key={uId}
+                        className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${isSelected
+                          ? 'bg-brand-light/30 border-brand/40 text-brand font-semibold'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleTeamMember(uId)}
+                          className="rounded border-slate-300 text-brand focus:ring-brand"
+                        />
+                        <UserAvatar user={u} size="xs" />
+                        <span className="truncate">{uName}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             </div>

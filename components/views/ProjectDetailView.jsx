@@ -310,10 +310,10 @@ export function ProjectDetailView({
       isDragOver && dragOverPos === 'child'
         ? 'outline outline-2 outline-brand/60 bg-brand-light/10'
         : isDragOver && dragOverPos === 'above'
-        ? 'border-t-2 border-t-brand'
-        : isDragOver && dragOverPos === 'below'
-        ? 'border-b-2 border-b-brand'
-        : '';
+          ? 'border-t-2 border-t-brand'
+          : isDragOver && dragOverPos === 'below'
+            ? 'border-b-2 border-b-brand'
+            : '';
 
     return (
       <React.Fragment key={task.id}>
@@ -328,7 +328,7 @@ export function ProjectDetailView({
         >
           {/* Drag handle — only for assignee */}
           <td className={`py-2.5 pl-2 pr-0 w-5 select-none ${isAssignee ? 'text-slate-300 dark:text-slate-700 cursor-grab active:cursor-grabbing' : 'text-slate-200 dark:text-slate-800 cursor-not-allowed opacity-40'}`} title={isAssignee ? 'Drag to reorder or reparent' : `Only ${assigneeDisplayName} can reorder this task`}>
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5" /><circle cx="15" cy="5" r="1.5" /><circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" /><circle cx="9" cy="19" r="1.5" /><circle cx="15" cy="19" r="1.5" /></svg>
           </td>
           <td className="py-2.5 px-3">
             <div className="flex items-center gap-1.5" style={{ paddingLeft: `${level * 22}px` }}>
@@ -413,15 +413,13 @@ export function ProjectDetailView({
                       ? `Only the assigned member (${assigneeDisplayName}) can reassign this task`
                       : 'Click to reassign'
                   }
-                  className={`text-xs font-medium bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-brand rounded-sm px-0.5 py-0 max-w-[120px] truncate ${
-                    !assignee
-                      ? 'text-slate-400 italic'
-                      : 'text-slate-700 dark:text-slate-300'
-                  } ${
-                    isAssignee
+                  className={`text-xs font-medium bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-brand rounded-sm px-0.5 py-0 max-w-[120px] truncate ${!assignee
+                    ? 'text-slate-400 italic'
+                    : 'text-slate-700 dark:text-slate-300'
+                    } ${isAssignee
                       ? 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800'
                       : 'cursor-not-allowed opacity-70'
-                  }`}
+                    }`}
                 >
                   <option value="">Unassigned (None)</option>
                   <optgroup label="Project Squad">
@@ -527,14 +525,14 @@ export function ProjectDetailView({
             <button
               type="button"
               onClick={onBack}
-              className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-sm transition-colors"
+              className="hidden sm:inline-block p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-sm transition-colors"
               title="Back to all projects"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono text-sm font-bold text-brand bg-brand-light/30 border border-brand/30 px-2 py-0.5 rounded-sm">
+                <span className="font-mono text-[10px] sm:text-sm font-bold text-brand bg-brand-light/30 border border-brand/30 px-2 py-0.5 rounded-sm">
                   {project.code}
                 </span>
                 <h1 className="text-base font-bold text-slate-900 dark:text-slate-100 tracking-tight">{project.name}</h1>
@@ -543,37 +541,35 @@ export function ProjectDetailView({
                 <PriorityBadge priority={livePriority} size="xs" />
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2">
-                <span>{project.client}</span>
-                <span>·</span>
                 <span>Category: {project.category}</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex justify-end items-center gap-2">
             <button
               type="button"
               onClick={() => (onEditProject || handleOpenEditProject)(project)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-sm border border-slate-200 dark:border-slate-700 transition-colors"
+              className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-sm border border-slate-200 dark:border-slate-700 transition-colors"
             >
-              <Edit className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-              Edit Project
-            </button>
-            <button
-              type="button"
-              onClick={() => onOpenCreateTask(null)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-brand hover:bg-brand-hover active:bg-brand-active rounded-sm shadow-xs transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add Task
+              <Edit className="w-4 sm:w-3.5 h-4 sm:h-3.5 text-slate-500 dark:text-slate-400" />
+              <span className="hidden sm:inline">Edit Project</span>
             </button>
             <button
               type="button"
               onClick={onOpenScheduleMeeting}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-sm border border-slate-200 dark:border-slate-700 transition-colors"
+              className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-sm border border-slate-200 dark:border-slate-700 transition-colors"
             >
-              <Video className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-              Sync Meet
+              <Video className="w-4 sm:w-3.5 h-4 sm:h-3.5 text-slate-500 dark:text-slate-400" />
+              <span className="hidden sm:inline">Sync Meet</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenCreateTask(null)}
+              className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 text-xs font-semibold text-white bg-brand hover:bg-brand-hover active:bg-brand-active rounded-sm shadow-xs transition-colors"
+            >
+              <Plus className="w-4 sm:w-3.5 h-4 sm:h-3.5" />
+              <span className="hidden sm:inline">Add Task</span>
             </button>
           </div>
         </div>
@@ -643,7 +639,7 @@ export function ProjectDetailView({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             <div className="lg:col-span-8 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-sm p-4 shadow-2xs space-y-3">
               <h3 className="font-bold text-slate-900 dark:text-slate-100 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Scope Description &amp; Objectives
+                Scope Description
               </h3>
               <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
                 {project.description}
@@ -664,7 +660,7 @@ export function ProjectDetailView({
 
             <div className="lg:col-span-4 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-sm p-4 shadow-2xs space-y-3">
               <h3 className="font-bold text-slate-900 dark:text-slate-100 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Key Stakeholders &amp; Assigned Squad
+                Project Stakeholders
               </h3>
 
               <div className="space-y-2">
@@ -763,78 +759,70 @@ export function ProjectDetailView({
           </div>
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-sm shadow-2xs overflow-hidden">
-          <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <CheckSquare className="w-4 h-4 text-brand" />
-              <h3 className="font-bold text-slate-900 dark:text-slate-100 text-xs">All Tasks</h3>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400">({projectTasks.length} total)</span>
+            <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <CheckSquare className="w-4 h-4 text-brand" />
+                <h3 className="font-bold text-slate-900 dark:text-slate-100 text-xs">All Tasks</h3>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">({projectTasks.length} total)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={expandAll}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-sm transition-colors"
+                  title="Expand all tasks and subtasks"
+                >
+                  <ChevronDown className="w-3 h-3" />
+                  Expand All
+                </button>
+                <button
+                  type="button"
+                  onClick={collapseAll}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-sm transition-colors"
+                  title="Collapse all tasks and subtasks"
+                >
+                  <ChevronRight className="w-3 h-3" />
+                  Collapse All
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={expandAll}
-                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-sm transition-colors"
-                title="Expand all tasks and subtasks"
-              >
-                <ChevronDown className="w-3 h-3" />
-                Expand All
-              </button>
-              <button
-                type="button"
-                onClick={collapseAll}
-                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-sm transition-colors"
-                title="Collapse all tasks and subtasks"
-              >
-                <ChevronRight className="w-3 h-3" />
-                Collapse All
-              </button>
-              <button
-                type="button"
-                onClick={() => onOpenCreateTask(null)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-brand hover:bg-brand-hover active:bg-brand-active rounded-sm shadow-xs transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add Task
-              </button>
-            </div>
-          </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/80 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  <th className="py-2.5 pl-2 pr-0 w-5"></th>
-                  <th className="py-2.5 px-3">Task ID &amp; Tasks</th>
-                  <th className="py-2.5 px-3">Assignee</th>
-                  <th className="py-2.5 px-3">Priority</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3">Timeline (From &#8211; To)</th>
-                  <th className="py-2.5 px-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {(() => {
-                  // Apply filters: when filtering, show all matching tasks flat; otherwise tree
-                  const q = taskSearch.trim().toLowerCase();
-                  const filtered = projectTasks.filter(t => {
-                    if (q && !(t.title || '').toLowerCase().includes(q) && !(t.code || '').toLowerCase().includes(q)) return false;
-                    if (taskFilterStatus !== 'ALL' && t.status !== taskFilterStatus) return false;
-                    if (taskFilterPriority !== 'ALL' && t.priority !== taskFilterPriority) return false;
-                    if (taskFilterAssignee !== 'ALL' && String(t.assignedTo || '') !== taskFilterAssignee) return false;
-                    return true;
-                  });
-                  if (isFiltering) {
-                    return filtered.length > 0
-                      ? filtered.map(t => renderTaskNode(t, 0))
-                      : (<tr><td colSpan={7} className="py-8 text-center text-slate-400 dark:text-slate-500">No tasks match the current filters.</td></tr>);
-                  }
-                  return rootTasks.length > 0
-                    ? rootTasks.map(t => renderTaskNode(t, 0))
-                    : (<tr><td colSpan={7} className="py-8 text-center text-slate-400 dark:text-slate-500">No tasks found in this project. Click &ldquo;Add Task&rdquo; to begin breaking down work.</td></tr>);
-                })()}
-              </tbody>
-            </table>
-          </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/80 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="py-2.5 pl-2 pr-0 w-5"></th>
+                    <th className="py-2.5 px-3">Task ID &amp; Tasks</th>
+                    <th className="py-2.5 px-3">Assignee</th>
+                    <th className="py-2.5 px-3">Priority</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3">Timeline (From &#8211; To)</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {(() => {
+                    // Apply filters: when filtering, show all matching tasks flat; otherwise tree
+                    const q = taskSearch.trim().toLowerCase();
+                    const filtered = projectTasks.filter(t => {
+                      if (q && !(t.title || '').toLowerCase().includes(q) && !(t.code || '').toLowerCase().includes(q)) return false;
+                      if (taskFilterStatus !== 'ALL' && t.status !== taskFilterStatus) return false;
+                      if (taskFilterPriority !== 'ALL' && t.priority !== taskFilterPriority) return false;
+                      if (taskFilterAssignee !== 'ALL' && String(t.assignedTo || '') !== taskFilterAssignee) return false;
+                      return true;
+                    });
+                    if (isFiltering) {
+                      return filtered.length > 0
+                        ? filtered.map(t => renderTaskNode(t, 0))
+                        : (<tr><td colSpan={7} className="py-8 text-center text-slate-400 dark:text-slate-500">No tasks match the current filters.</td></tr>);
+                    }
+                    return rootTasks.length > 0
+                      ? rootTasks.map(t => renderTaskNode(t, 0))
+                      : (<tr><td colSpan={7} className="py-8 text-center text-slate-400 dark:text-slate-500">No tasks found in this project. Click &ldquo;Add Task&rdquo; to begin breaking down work.</td></tr>);
+                  })()}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -844,16 +832,8 @@ export function ProjectDetailView({
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
             <div className="flex items-center gap-2">
               <Video className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <h3 className="font-bold text-slate-900 dark:text-slate-100 text-xs">Project Calendar &amp; Google Meet Syncs</h3>
+              <h3 className="font-bold text-slate-900 dark:text-slate-100 text-xs">Meetings</h3>
             </div>
-            <button
-              type="button"
-              onClick={onOpenScheduleMeeting}
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800 rounded-sm transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Schedule Sync
-            </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
