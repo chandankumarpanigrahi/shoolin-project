@@ -26,10 +26,16 @@
     "thesvg": "^3.3.6"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.22.0",
-    "eslint-config-next": "^16.3.4",
+    "eslint-config-next": "^14.2.35",
     "postcss": "^8.5.3",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^4.3.3"
+  },
+  "overrides": {
+    "glob": "^13.0.0",
+    "browserslist": "^4.29.3",
+    "braces": "^3.0.3"
   }
 }
