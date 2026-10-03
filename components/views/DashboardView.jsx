@@ -85,13 +85,29 @@ export function DashboardView({
   };
 
   // Synchronized Dynamic Filtering: Active non-deleted projects ONLY
-  const activeProjects = (projects || []).filter(
-    (p) => p && !p.isDeleted && p.status !== 'Deleted'
-  );
+  const activeProjects = React.useMemo(() => {
+    return (projects || []).filter(
+      (p) => p && !p.isDeleted && p.status !== 'Deleted'
+    );
+  }, [projects]);
 
-  const activeTasks = (tasks || []).filter(
-    (t) => t && !t.isDeleted && t.status !== 'Deleted'
-  );
+  const activeProjectIdsSet = React.useMemo(() => {
+    const set = new Set();
+    activeProjects.forEach((p) => {
+      if (p.id) set.add(String(p.id));
+      if (p._id) set.add(String(p._id));
+      if (p.code) set.add(String(p.code));
+    });
+    return set;
+  }, [activeProjects]);
+
+  const activeTasks = React.useMemo(() => {
+    return (tasks || []).filter((t) => {
+      if (!t || t.isDeleted || t.status === 'Deleted') return false;
+      if (t.projectId && !activeProjectIdsSet.has(String(t.projectId))) return false;
+      return true;
+    });
+  }, [tasks, activeProjectIdsSet]);
 
   const completedTasks = activeTasks.filter((t) => checkIsCompleted(t?.status));
 

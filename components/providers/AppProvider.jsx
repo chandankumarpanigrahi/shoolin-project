@@ -581,7 +581,7 @@ export function AppProvider({ children }) {
     return false;
   });
 
-  const [authLoaded, setAuthLoaded] = useState(() => typeof window !== 'undefined');
+  const [authLoaded, setAuthLoaded] = useState(false);
 
   // Theme State (Dark / Light)
   const [theme, setTheme] = useState('light');
@@ -590,6 +590,7 @@ export function AppProvider({ children }) {
   const [brandColor, setBrandColorState] = useState('indigo');
 
   useEffect(() => {
+    setAuthLoaded(true);
     try {
       const savedTheme = localStorage.getItem('pulsepm_theme');
       if (savedTheme) {
@@ -2746,7 +2747,15 @@ export function AppProvider({ children }) {
     resetUserPermissions,
     setRolePermission,
     bulkSetRolePermissions,
-    resetAllPermissionsToDefault,
+    // Theme & Brand Color Architecture
+    theme,
+    setTheme,
+    toggleTheme,
+    brandColor,
+    setBrandColorState,
+    changeBrandColor,
+    BRAND_COLOR_PRESETS,
+
     PERMISSION_MODULES,
     GRANULAR_PERMISSIONS,
   };

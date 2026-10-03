@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -52,13 +52,29 @@ export function Sidebar({
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
   const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
 
-  const activeProjects = (projects || []).filter(
-    (p) => p && !p.isDeleted && p.status !== 'Deleted' && (isProjectAccessibleToUser ? isProjectAccessibleToUser(p, currentUser) : true)
-  );
+  const activeProjects = useMemo(() => {
+    return (projects || []).filter(
+      (p) => p && !p.isDeleted && p.status !== 'Deleted' && (isProjectAccessibleToUser ? isProjectAccessibleToUser(p, currentUser) : true)
+    );
+  }, [projects, isProjectAccessibleToUser, currentUser]);
 
-  const activeTasks = (tasks || []).filter(
-    (t) => t && !t.isDeleted && t.status !== 'Deleted'
-  );
+  const activeProjectIdsSet = useMemo(() => {
+    const set = new Set();
+    activeProjects.forEach((p) => {
+      if (p.id) set.add(String(p.id));
+      if (p._id) set.add(String(p._id));
+      if (p.code) set.add(String(p.code));
+    });
+    return set;
+  }, [activeProjects]);
+
+  const activeTasks = useMemo(() => {
+    return (tasks || []).filter((t) => {
+      if (!t || t.isDeleted || t.status === 'Deleted') return false;
+      if (t.projectId && !activeProjectIdsSet.has(String(t.projectId))) return false;
+      return true;
+    });
+  }, [tasks, activeProjectIdsSet]);
 
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isStandalone, setIsStandalone] = useState(false);
