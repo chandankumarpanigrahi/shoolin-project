@@ -25,7 +25,7 @@ export const metadata = {
     title: 'Shoolin OS',
   },
   openGraph: {
-    title: 'Shoolin Innovations Limited - Enterprise Project Operations OS',
+    title: 'Shoolin Innovations Limited - Project Management System',
     description:
       'High-velocity enterprise project operations platform for managing projects, hierarchical tasks, meetings, dependencies, links, and KPI dashboards for Shoolin Innovations Limited.',
     type: 'website',

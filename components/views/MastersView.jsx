@@ -2134,11 +2134,10 @@ export function MastersView() {
                           </td>
 
                           <td className="py-3 px-4 whitespace-nowrap">
-                            <span className={`font-mono text-[11px] px-2 py-0.5 rounded font-semibold border ${
-                              count > 0
-                                ? 'bg-brand-light/30 text-brand border-brand/30'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                            }`}>
+                            <span className={`font-mono text-[11px] px-2 py-0.5 rounded font-semibold border ${count > 0
+                              ? 'bg-brand-light/30 text-brand border-brand/30'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                              }`}>
                               {count} {count === 1 ? 'template' : 'templates'} using this
                             </span>
                           </td>
@@ -2442,7 +2441,7 @@ export function MastersView() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     Phone Contact

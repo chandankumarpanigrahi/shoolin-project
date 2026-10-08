@@ -298,8 +298,8 @@ function AppearanceTab({ toast }) {
                 }
               }}
               className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between w-full text-left group ${theme === opt.id
-                ? 'border-brand bg-brand-subtle dark:bg-slate-800 shadow-xs ring-1 ring-brand/20'
-                : 'border-slate-200 dark:border-slate-800 hover:border-brand/40 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                ? 'border-brand bg-brand-subtle dark:!bg-slate-800 shadow-xs'
+                : 'border-slate-200 dark:!border-slate-800 hover:border-brand/40 hover:bg-slate-50 dark:hover:bg-slate-800/40'
                 }`}
             >
               <div className="flex items-center gap-3">
@@ -356,8 +356,8 @@ function AppearanceTab({ toast }) {
                       toast.success(`Active palette: ${preset.name}`);
                     }}
                     className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border-2 transition-all group ${isSelected
-                      ? 'border-brand bg-brand-subtle dark:bg-slate-800 shadow-xs scale-102'
-                      : 'border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                      ? 'border-brand bg-brand-subtle dark:!bg-slate-800 shadow-xs scale-102'
+                      : 'border-slate-100 dark:!border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                       }`}
                   >
                     <span
@@ -2043,7 +2043,7 @@ export default function SettingsPage() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`w-full flex items-center justify-between px-4 py-3.5 text-left transition-all group ${idx < visibleTabs.length - 1 ? 'border-b border-slate-100 dark:border-slate-800/80' : ''
                     } ${active
-                      ? 'bg-brand-subtle dark:bg-slate-800 text-brand font-bold'
+                      ? 'bg-brand/10 dark:!bg-slate-800 font-bold'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100 font-medium'
                     }`}
                 >
@@ -2057,7 +2057,7 @@ export default function SettingsPage() {
                       <Icon className="w-3.5 h-3.5" />
                     </div>
                     <div className="min-w-0">
-                      <p className={`text-xs truncate ${active ? 'text-brand font-bold' : ''}`}>
+                      <p className={`text-xs truncate ${active ? 'text-brand dark:!text-white font-bold' : ''}`}>
                         {tab.label}
                       </p>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate leading-tight mt-0.5">

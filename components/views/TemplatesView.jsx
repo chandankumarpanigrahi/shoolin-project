@@ -113,7 +113,7 @@ export function TemplatesView({ onSelectTemplateForCreation }) {
       confirmButtonText: 'Yes, Remove Template',
     });
     if (confirmed) {
-      handleDeleteTemplate(tmpl.id);
+      handleDeleteTemplate(tmpl.id || tmpl._id);
     }
   };
 
@@ -163,10 +163,10 @@ export function TemplatesView({ onSelectTemplateForCreation }) {
                 if (setEditingTemplate) setEditingTemplate(null);
                 setIsCreateTemplateOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-brand hover:bg-brand-hover active:bg-brand-hover rounded-md shadow-sm transition-colors"
+              className="inline-flex cursor-pointer items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-brand hover:bg-brand-hover active:bg-brand-hover rounded-md shadow-sm transition-colors"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Template</span>
+              <span>Create</span>
             </button>
           </div>
         </div>
@@ -179,11 +179,10 @@ export function TemplatesView({ onSelectTemplateForCreation }) {
                 key={c}
                 type="button"
                 onClick={() => setSelectedCategory(c)}
-                className={`px-2.5 py-1 rounded-sm font-semibold transition-colors whitespace-nowrap text-xs ${
-                  selectedCategory === c
-                    ? 'bg-white dark:bg-slate-900 text-brand shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
+                className={`px-2.5 py-1 rounded-sm font-semibold transition-colors whitespace-nowrap text-xs ${selectedCategory === c
+                  ? 'bg-white dark:bg-slate-900 text-brand shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
               >
                 {c === 'ALL' ? 'All Templates' : c}
               </button>
@@ -329,11 +328,17 @@ export function TemplatesView({ onSelectTemplateForCreation }) {
                   </div>
                 </div>
 
-                {/* Card Footer - Duration, Edit and Instantiate buttons */}
+                {/* Card Footer - Duration / Auto Re-add Date, Edit and Instantiate buttons */}
                 <div className="px-4 py-2.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-[11px]">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Duration: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{t.defaultDuration || '60 Days'}</strong></span>
+                    {t.type === 'recurring' ? (
+                      <>
+                        <Clock className="w-3.5 h-3.5 text-brand" />
+                        <span>Auto Re-Add: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{t.recurringDay || t.defaultDuration || '1st of every month'}</strong></span>
+                      </>
+                    ) : (
+                      <span className="text-slate-500 font-medium">One-Time Sprint</span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">

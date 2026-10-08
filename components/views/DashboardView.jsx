@@ -399,7 +399,7 @@ export function DashboardView({
         <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3 sm:p-3 sm:p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 sm:pb-3">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-brand-subtle text-brand flex items-center justify-center">
+              <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-200/10 text-brand flex items-center justify-center">
                 <Briefcase className="w-4 h-4" />
               </div>
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
@@ -416,7 +416,7 @@ export function DashboardView({
             </button>
           </div>
 
-          <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+          <div className="flex flex-col gap-1 divide-y divide-slate-100 dark:divide-slate-800 text-xs">
             {activeProjects.slice(0, 6).map((p) => {
               const { totalTasks, completedTasks: pCompleted, progress } = getProjectProgress(p);
 
@@ -428,7 +428,7 @@ export function DashboardView({
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-xs font-black text-brand bg-brand-subtle px-1.5 py-0.5 rounded border border-brand-border">
+                      <span className="font-mono text-xs font-black text-brand dark:!text-white/60 bg-brand-subtle dark:!bg-slate-900 px-1.5 py-0.5 rounded border border-brand-border">
                         {p.code}
                       </span>
                       <span className="font-semibold text-slate-900 dark:text-slate-100 group-hover:text-brand dark:group-hover:text-white transition-colors truncate">
@@ -540,7 +540,7 @@ export function DashboardView({
             <button
               type="button"
               onClick={onOpenScheduleMeeting}
-              className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-xs cursor-pointer"
+              className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-white bg-brand hover:bg-brand-dark rounded-lg transition-colors shadow-xs cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Schedule</span>
@@ -577,7 +577,7 @@ export function DashboardView({
                     </span>
                     <StatusBadge status={m.status || 'Scheduled'} size="xs" />
                     {m.meetUrl && (
-                      <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                      <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/60 text-brand dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
                         <Video className="w-2.5 h-2.5" /> Video Link
                       </span>
                     )}
@@ -587,7 +587,7 @@ export function DashboardView({
                       </span>
                     )}
                     {isAttendee && !isCreator && (
-                      <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/60 text-brand dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                         Attendee
                       </span>
                     )}

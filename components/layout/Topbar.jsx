@@ -191,7 +191,7 @@ export function Topbar({
         </button>
 
         {/* Quick Create Dropdown */}
-        <div className="relative" ref={createMenuRef}>
+        {/* <div className="relative" ref={createMenuRef}>
           <button
             type="button"
             onClick={() => setIsCreateOpen(!isCreateOpen)}
@@ -259,7 +259,7 @@ export function Topbar({
               )}
             </div>
           )}
-        </div>
+        </div> */}
 
         {/* Notifications Popover */}
         <div className="relative" ref={notificationsRef}>

@@ -224,6 +224,12 @@ export function MeetingsView({
     return role === 'super admin' || role === 'superadmin';
   };
 
+  const isSuperAdminOrAdmin = (user = currentUser) => {
+    if (!user) return false;
+    const role = String(user.role || '').toLowerCase();
+    return role === 'super admin' || role === 'superadmin' || role === 'admin' || role.includes('admin');
+  };
+
   const isMeetingCreator = (m) => {
     if (!m || !currentUser) return false;
     const curId = String(currentUser.id || currentUser._id || '').toLowerCase();
@@ -506,14 +512,14 @@ export function MeetingsView({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-xs">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-brand/10 dark:bg-emerald-950/60 text-brand dark:text-brand flex items-center justify-center">
               <Video className="w-4 h-4" />
             </div>
             <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-              Video Syncs
+              Meetings
             </h1>
-            <span className="text-xs px-2.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-mono font-bold rounded-full border border-emerald-300 dark:border-emerald-700/80">
-              {filteredMeetings.length} syncs
+            <span className="text-xs px-2.5 py-0.5 bg-brand/10 dark:bg-brand/10 text-brand dark:text-brand font-mono font-bold rounded-full border border-brand dark:border-brand/80">
+              {filteredMeetings.length} meetings
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -525,7 +531,7 @@ export function MeetingsView({
           <button
             type="button"
             onClick={onOpenScheduleMeeting}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:from-emerald-700 active:to-teal-700 rounded-lg shadow-sm transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-brand dark:bg-brand hover:bg-brand/90 active:bg-brand/95 rounded-lg shadow-sm transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             New
@@ -540,7 +546,7 @@ export function MeetingsView({
             type="button"
             onClick={() => setActiveTab('upcoming')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer ${activeTab !== 'archive'
-              ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400 bg-white dark:bg-slate-900 rounded-t-lg shadow-2xs'
+              ? 'border-brand text-brand dark:!text-white dark:bg-slate-900 rounded-t-lg shadow-2xs'
               : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/40'
               }`}
           >
@@ -583,7 +589,7 @@ export function MeetingsView({
             type="button"
             onClick={() => setViewMode('table')}
             className={`flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${viewMode === 'table'
-              ? 'bg-white dark:bg-slate-900 text-emerald-600 shadow-2xs'
+              ? 'bg-white dark:bg-slate-900 text-brand shadow-2xs'
               : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
           >
@@ -594,7 +600,7 @@ export function MeetingsView({
             type="button"
             onClick={() => setViewMode('calendar')}
             className={`flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${viewMode === 'calendar'
-              ? 'bg-white dark:bg-slate-900 text-emerald-600 shadow-2xs'
+              ? 'bg-white dark:bg-slate-900 text-brand shadow-2xs'
               : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
           >

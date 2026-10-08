@@ -23,10 +23,10 @@ import { MasterBrand } from '@/lib/models/MasterBrand';
 import { MasterDepartment } from '@/lib/models/MasterDepartment';
 import { LinkCategory } from '@/lib/models/LinkCategory';
 import { TemplateCategory } from '@/lib/models/TemplateCategory';
+import { DEFAULT_BLUEPRINT_CATEGORIES } from '@/data/templates';
 import {
   sendLoginOtpEmail,
   sendPasswordResetEmail,
-  sendNewUserWelcomeEmail,
 } from '@/lib/email';
 
 // Device parsing helper (No IP address used)
@@ -39,7 +39,7 @@ const parseDeviceInfo = (userAgent = '') => {
 
   let browser = 'Chrome';
   if (/Edg/i.test(userAgent)) browser = 'Edge';
-  else if (/Firefox/i.test(userAgent)) browser = 'Firefox';
+  else if (/Firefox/i.test(userAgent)) browser = 'Firefox'; 
   else if (/Safari/i.test(userAgent) && !/Chrome/i.test(userAgent)) browser = 'Safari';
   else if (/Chrome/i.test(userAgent)) browser = 'Chrome';
 
@@ -1471,18 +1471,6 @@ async function handleRequest(request, context) {
           timestamp: new Date(),
         });
 
-        try {
-          if (created.email) {
-            await sendNewUserWelcomeEmail({
-              to: created.email,
-              name: created.name || 'Team Member',
-              role: created.role || 'Member',
-              appUrl: process.env.CLIENT_URL || 'http://localhost:3001',
-            });
-          }
-        } catch (mailErr) {
-          console.error('Welcome email dispatch error:', mailErr.message);
-        }
         const transformedCreated = {
           ...transform(created),
           ...(body.id ? { clientTempId: body.id } : {})
@@ -2806,11 +2794,15 @@ async function handleRequest(request, context) {
       if (method === 'GET') {
         let docs = await TemplateCategory.find().sort({ order: 1, createdAt: 1 });
         if (docs.length === 0) {
-          const defaults = [
-            { name: 'Sprint Architecture', code: 'SPRN', color: '#2563EB', status: 'Active', description: 'Agile sprint templates', order: 1 },
-            { name: 'Feature Delivery', code: 'FEAT', color: '#059669', status: 'Active', description: 'Product feature roadmap templates', order: 2 },
-            { name: 'Marketing & Launch', code: 'MKTG', color: '#9333EA', status: 'Active', description: 'Go-to-market campaigns', order: 3 },
-          ];
+          const defaults = (DEFAULT_BLUEPRINT_CATEGORIES || []).map((cat, idx) => ({
+            name: cat.name,
+            code: cat.code || `CAT-${idx + 1}`,
+            color: cat.color || '#2563EB',
+            description: cat.description || '',
+            status: cat.status || 'Active',
+            isSystem: cat.isSystem || false,
+            order: idx + 1,
+          }));
           docs = await TemplateCategory.insertMany(defaults);
         }
         return NextResponse.json(transformArr(docs));
@@ -2818,8 +2810,9 @@ async function handleRequest(request, context) {
       if (method === 'POST') {
         const body = await request.json();
         const created = await TemplateCategory.create(body);
-        await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', created._id.toString(), transform(created));
-        return NextResponse.json(transform(created), { status: 201 });
+        const transformed = transform(created);
+        await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', created._id.toString(), transformed);
+        return NextResponse.json(transformed, { status: 201 });
       }
     }
 
@@ -2832,14 +2825,148 @@ async function handleRequest(request, context) {
         if (isObjectId(id)) conditions.unshift({ _id: id });
         const updated = await TemplateCategory.findOneAndUpdate({ $or: conditions }, updates, { new: true });
         if (!updated) return NextResponse.json({ error: 'Template category not found' }, { status: 404 });
-        await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', id, transform(updated));
-        return NextResponse.json(transform(updated));
+        const transformed = transform(updated);
+        await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', id, transformed);
+        return NextResponse.json(transformed);
       }
       if (method === 'DELETE') {
         const conditions = [{ id }, { name: id }, { code: id }];
         if (isObjectId(id)) conditions.unshift({ _id: id });
-        const deleted = await TemplateCategory.findOneAndDelete({ $or: conditions });
+        await TemplateCategory.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', id, { id });
+        return NextResponse.json({ success: true, id });
+      }
+    }
+
+    // PROJECT TEMPLATES CRUD
+    if (path === 'templates') {
+      if (method === 'GET') {
+        let docs = await Template.find().sort({ createdAt: -1 });
+        if (docs.length === 0) {
+          const defaults = [
+            {
+              name: 'Enterprise E-Commerce SaaS Sprint',
+              type: 'one-time',
+              category: 'Website Development',
+              tasksCount: 14,
+              maxDepth: 4,
+              defaultDuration: '60 Days',
+              description: 'Complete architecture blueprint for enterprise multi-tenant e-commerce web applications',
+              tasksTree: [
+                {
+                  id: 'node-1',
+                  title: 'Discovery & System Architecture',
+                  children: [
+                    {
+                      id: 'node-1-1',
+                      title: 'Technical Stakeholder Alignment',
+                      children: [
+                        {
+                          id: 'node-1-1-1',
+                          title: 'Security & SSO Mapping Specs',
+                          children: [
+                            { id: 'node-1-1-1-1', title: 'OAuth2 / SAML Token Rotation Strategy', children: [] }
+                          ]
+                        }
+                      ]
+                    },
+                    { id: 'node-1-2', title: 'Database ERD & Indexing Plan', children: [] }
+                  ]
+                },
+                {
+                  id: 'node-2',
+                  title: 'Frontend Component Engineering',
+                  children: [
+                    { id: 'node-2-1', title: 'Design Tokens & Theme Switcher Setup', children: [] }
+                  ]
+                },
+                { id: 'node-3', title: 'Production Cutover & QA Audit', children: [] }
+              ],
+              tasksPreview: [
+                'Discovery & System Architecture',
+                'Discovery & System Architecture > Technical Stakeholder Alignment',
+                'Discovery & System Architecture > Technical Stakeholder Alignment > Security & SSO Mapping Specs',
+                'Frontend Component Engineering',
+                'Production Cutover & QA Audit'
+              ],
+              isDefault: true,
+              isCustom: false,
+              createdBy: 'System Default'
+            },
+            {
+              name: 'Cross-Platform Mobile App Launch',
+              type: 'one-time',
+              category: 'Mobile App Development',
+              tasksCount: 10,
+              maxDepth: 3,
+              defaultDuration: '45 Days',
+              description: 'Native iOS and Android mobile app development with push notifications and store submission',
+              tasksTree: [
+                {
+                  id: 'm-node-1',
+                  title: 'App Architecture & API Integration',
+                  children: [
+                    {
+                      id: 'm-node-1-1',
+                      title: 'State Management & Offline Storage',
+                      children: [
+                        { id: 'm-node-1-1-1', title: 'SQLite / Realm Sync Engine', children: [] }
+                      ]
+                    }
+                  ]
+                },
+                { id: 'm-node-2', title: 'UI/UX Screen Flow & Animations', children: [] },
+                { id: 'm-node-3', title: 'App Store & Google Play Submission', children: [] }
+              ],
+              tasksPreview: [
+                'App Architecture & API Integration',
+                'App Architecture & API Integration > State Management & Offline Storage',
+                'UI/UX Screen Flow & Animations',
+                'App Store & Google Play Submission'
+              ],
+              isDefault: true,
+              isCustom: false,
+              createdBy: 'System Default'
+            }
+          ];
+          docs = await Template.insertMany(defaults);
+        }
+        return NextResponse.json(transformArr(docs));
+      }
+      if (method === 'POST') {
+        const body = await request.json();
+        const created = await Template.create(body);
+        const transformed = transform(created);
+        await recordRealtimeEvent('template_created', created._id.toString(), transformed);
+        return NextResponse.json(transformed, { status: 201 });
+      }
+    }
+
+    if (path.startsWith('templates/')) {
+      const parts = path.split('/');
+      const id = parts[parts.length - 1];
+      if (method === 'GET') {
+        const conditions = [{ id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const template = await Template.findOne({ $or: conditions });
+        if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+        return NextResponse.json(transform(template));
+      }
+      if (method === 'PUT' || method === 'PATCH') {
+        const body = await request.json();
+        const conditions = [{ id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        const updated = await Template.findOneAndUpdate({ $or: conditions }, body, { new: true });
+        if (!updated) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+        const transformed = transform(updated);
+        await recordRealtimeEvent('template_updated', id, transformed);
+        return NextResponse.json(transformed);
+      }
+      if (method === 'DELETE') {
+        const conditions = [{ id }];
+        if (isObjectId(id)) conditions.unshift({ _id: id });
+        await Template.findOneAndDelete({ $or: conditions });
+        await recordRealtimeEvent('template_deleted', id, { id });
         return NextResponse.json({ success: true, id });
       }
     }

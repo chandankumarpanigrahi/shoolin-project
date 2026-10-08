@@ -466,7 +466,7 @@ export function ProjectsView({
                       </td>
 
                       {/* Code */}
-                      <td className="py-3 px-3 font-mono font-bold text-brand whitespace-nowrap">
+                      <td className="py-3 px-3 font-mono font-bold text-brand dark:!text-white/90 whitespace-nowrap">
                         {p.code || 'PRJ'}
                       </td>
 
@@ -623,7 +623,7 @@ export function ProjectsView({
               >
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-mono text-xs font-bold text-brand">{p.code || 'PRJ'}</span>
+                    <span className="font-mono text-xs font-bold text-brand dark:!text-white/90">{p.code || 'PRJ'}</span>
                     <div className="flex items-center gap-1.5">
                       {activeTab === 'active' && (
                         <button

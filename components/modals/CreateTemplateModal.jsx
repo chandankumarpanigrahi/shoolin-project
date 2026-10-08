@@ -17,10 +17,44 @@ import {
   Tag
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
-import { countTreeNodes, getMaxTreeDepth } from '@/data/templates';
+import { countTreeNodes, getMaxTreeDepth, DEFAULT_BLUEPRINT_CATEGORIES } from '@/data/templates';
 
 // Helper: generate a unique node ID
 const generateNodeId = () => `node-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+export const RECURRING_DAY_OPTIONS = [
+  '1st of every month',
+  '2nd of every month',
+  '3rd of every month',
+  '4th of every month',
+  '5th of every month',
+  '6th of every month',
+  '7th of every month',
+  '8th of every month',
+  '9th of every month',
+  '10th of every month',
+  '11th of every month',
+  '12th of every month',
+  '13th of every month',
+  '14th of every month',
+  '15th of every month',
+  '16th of every month',
+  '17th of every month',
+  '18th of every month',
+  '19th of every month',
+  '20th of every month',
+  '21st of every month',
+  '22nd of every month',
+  '23rd of every month',
+  '24th of every month',
+  '25th of every month',
+  '26th of every month',
+  '27th of every month',
+  '28th of every month',
+  '29th of every month',
+  '30th of every month',
+  'Last day of every month'
+];
 
 // Recursive Node Component
 function TreeNodeItem({
@@ -183,7 +217,6 @@ export function CreateTemplateModal({
 }) {
   const {
     blueprintCategories,
-    handleAddBlueprintCategory,
     editingTemplate,
     handleUpdateTemplate: ctxUpdateTemplate,
     handleAddTemplate: ctxAddTemplate
@@ -195,19 +228,13 @@ export function CreateTemplateModal({
   const [name, setName] = useState('');
   const [type, setType] = useState('one-time');
   const [category, setCategory] = useState('Website Development');
-  const [customCategory, setCustomCategory] = useState('');
-  const [defaultDuration, setDefaultDuration] = useState('60 Days');
+  const [recurringDay, setRecurringDay] = useState('1st of every month');
   const [description, setDescription] = useState('');
 
   // Recursive Tree State: array of Level 1 root tasks
   const [tasksTree, setTasksTree] = useState([]);
   const [newRootTitle, setNewRootTitle] = useState('');
   const [error, setError] = useState('');
-
-  // Inline Quick Add Category state for Master
-  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryCode, setNewCategoryCode] = useState('');
 
   // Populate or reset state on open/mode switch
   useEffect(() => {
@@ -216,8 +243,11 @@ export function CreateTemplateModal({
     if (currentTemplate) {
       setName(currentTemplate.name || '');
       setType(currentTemplate.type || 'one-time');
-      setCategory(currentTemplate.category || 'Website Development');
-      setDefaultDuration(currentTemplate.defaultDuration || '60 Days');
+      const initialCat = categoryOptions.includes(currentTemplate.category)
+        ? currentTemplate.category
+        : (categoryOptions[0] || 'Website Development');
+      setCategory(initialCat);
+      setRecurringDay(currentTemplate.recurringDay || currentTemplate.defaultDuration || '1st of every month');
       setDescription(currentTemplate.description || '');
 
       // Load tasks tree or build from preview fallback
@@ -240,7 +270,7 @@ export function CreateTemplateModal({
       setType('one-time');
       const firstCat = blueprintCategories?.[0]?.name || 'Website Development';
       setCategory(firstCat);
-      setDefaultDuration('60 Days');
+      setRecurringDay('1st of every month');
       setDescription('');
       setTasksTree([
         {
@@ -290,12 +320,8 @@ export function CreateTemplateModal({
       ]);
     }
 
-    setCustomCategory('');
     setError('');
     setNewRootTitle('');
-    setIsAddingNewCategory(false);
-    setNewCategoryName('');
-    setNewCategoryCode('');
   }, [isOpen, currentTemplate, blueprintCategories]);
 
   // Close on Escape
@@ -307,18 +333,23 @@ export function CreateTemplateModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Derived category list from Blueprint Master
+  // Derived category list strictly from Blueprint Master
   const categoryOptions = useMemo(() => {
-    const active = (blueprintCategories || [])
-      .filter((c) => c.status === 'Active')
-      .map((c) => c.name);
+    const list = [];
+    const source = (blueprintCategories && blueprintCategories.length > 0)
+      ? blueprintCategories
+      : DEFAULT_BLUEPRINT_CATEGORIES;
 
-    // If existing template has a category not in active master, include it
-    if (category && !active.includes(category) && category !== 'Custom') {
-      active.push(category);
-    }
-    return active;
-  }, [blueprintCategories, category]);
+    (source || []).forEach((c) => {
+      const name = typeof c === 'string' ? c : (c.name || c.title || '');
+      const status = typeof c === 'object' && c.status ? c.status : 'Active';
+      if (name && status === 'Active') {
+        list.push(name);
+      }
+    });
+
+    return Array.from(new Set(list));
+  }, [blueprintCategories]);
 
   if (!isOpen) return null;
 
@@ -405,33 +436,6 @@ export function CreateTemplateModal({
   const totalNodesCount = countTreeNodes(tasksTree);
   const maxTreeDepth = getMaxTreeDepth(tasksTree);
 
-  // Quick Register Category to Master
-  const handleQuickAddCategory = (e) => {
-    if (e) e.preventDefault();
-    if (!newCategoryName.trim()) return;
-
-    const trimmedName = newCategoryName.trim();
-    const generatedCode = (newCategoryCode.trim() || trimmedName.slice(0, 4)).toUpperCase();
-
-    const newCategoryObj = {
-      id: `bcat-${Date.now()}`,
-      name: trimmedName,
-      code: generatedCode,
-      color: '#2563EB',
-      description: 'Custom added category from template editor',
-      status: 'Active',
-      isSystem: false
-    };
-
-    if (handleAddBlueprintCategory) {
-      handleAddBlueprintCategory(newCategoryObj);
-    }
-    setCategory(trimmedName);
-    setNewCategoryName('');
-    setNewCategoryCode('');
-    setIsAddingNewCategory(false);
-  };
-
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -443,7 +447,7 @@ export function CreateTemplateModal({
       return;
     }
 
-    const finalCategory = category === 'Custom' ? (customCategory.trim() || 'General') : category;
+    const finalCategory = category || categoryOptions[0] || 'Website Development';
 
     // Generate preview summary strings for card displays
     const generatePreviewLines = (nodes, prefix = '') => {
@@ -468,7 +472,8 @@ export function CreateTemplateModal({
         category: finalCategory,
         tasksCount: totalNodesCount,
         maxDepth: maxTreeDepth,
-        defaultDuration: type === 'recurring' ? (defaultDuration.includes('Monthly') ? defaultDuration : 'Monthly (30 Days)') : defaultDuration,
+        recurringDay: type === 'recurring' ? recurringDay : null,
+        defaultDuration: type === 'recurring' ? recurringDay : null,
         lastUpdated: new Date().toISOString().split('T')[0],
         description: description.trim() || `Configured ${finalCategory} template with ${totalNodesCount} hierarchical tasks up to ${maxTreeDepth} levels deep.`,
         tasksTree: tasksTree,
@@ -488,7 +493,8 @@ export function CreateTemplateModal({
         category: finalCategory,
         tasksCount: totalNodesCount,
         maxDepth: maxTreeDepth,
-        defaultDuration: type === 'recurring' ? (defaultDuration.includes('Monthly') ? defaultDuration : 'Monthly (30 Days)') : defaultDuration,
+        recurringDay: type === 'recurring' ? recurringDay : null,
+        defaultDuration: type === 'recurring' ? recurringDay : null,
         createdBy: 'Current User',
         lastUpdated: new Date().toISOString().split('T')[0],
         isCustom: true,
@@ -518,7 +524,7 @@ export function CreateTemplateModal({
         {/* Header - Clean, No gradient, No top border */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className={`w-8 h-8 rounded-md ${isEditMode ? 'bg-amber-600' : 'bg-brand'} text-white flex items-center justify-center shadow-sm shrink-0`}>
+            <div className={`w-8 h-8 rounded-md bg-brand text-white flex items-center justify-center shadow-sm shrink-0`}>
               {isEditMode ? <Pencil className="w-4 h-4" /> : <FolderTree className="w-4 h-4" />}
             </div>
             <div>
@@ -583,11 +589,10 @@ export function CreateTemplateModal({
                     setType('one-time');
                     if (defaultDuration.includes('Monthly')) setDefaultDuration('60 Days');
                   }}
-                  className={`p-3 rounded-md border text-left flex items-start gap-2.5 transition-colors ${
-                    type === 'one-time'
-                      ? 'border-brand bg-brand-light/20 dark:bg-brand-light/10 text-brand font-semibold'
-                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                  }`}
+                  className={`p-3 rounded-md border text-left flex items-start gap-2.5 transition-colors ${type === 'one-time'
+                    ? 'border-brand bg-brand-light/20 dark:bg-brand-light/10 text-brand font-semibold'
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                    }`}
                 >
                   <div className={`w-3.5 h-3.5 rounded-full mt-0.5 border flex items-center justify-center shrink-0 ${type === 'one-time' ? 'border-brand bg-brand' : 'border-slate-400'}`}>
                     {type === 'one-time' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
@@ -606,11 +611,10 @@ export function CreateTemplateModal({
                     setType('recurring');
                     setDefaultDuration('Monthly (30 Days)');
                   }}
-                  className={`p-3 rounded-md border text-left flex items-start gap-2.5 transition-colors ${
-                    type === 'recurring'
-                      ? 'border-brand bg-brand-light/20 dark:bg-brand-light/10 text-brand font-semibold'
-                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                  }`}
+                  className={`p-3 rounded-md border text-left flex items-start gap-2.5 transition-colors ${type === 'recurring'
+                    ? 'border-brand bg-brand-light/20 dark:bg-brand-light/10 text-brand font-semibold'
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                    }`}
                 >
                   <div className={`w-3.5 h-3.5 rounded-full mt-0.5 border flex items-center justify-center shrink-0 ${type === 'recurring' ? 'border-brand bg-brand' : 'border-slate-400'}`}>
                     {type === 'recurring' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
@@ -626,64 +630,13 @@ export function CreateTemplateModal({
             </div>
           </div>
 
-          {/* Category (Connected to Master) & Duration */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Category (Connected to Master) & Recurring Auto Re-Add Date (Only for Recurring) */}
+          <div className={`grid grid-cols-1 ${type === 'recurring' ? 'sm:grid-cols-2' : ''} gap-3`}>
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-slate-700 dark:text-slate-300 font-bold flex items-center gap-1.5">
-                  <Tag className="w-3.5 h-3.5 text-brand" />
-                  <span>Category (Master) <span className="text-rose-500">*</span></span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setIsAddingNewCategory(!isAddingNewCategory)}
-                  className="text-[11px] font-semibold text-brand hover:underline flex items-center gap-1"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>{isAddingNewCategory ? 'Cancel' : '+ New Category'}</span>
-                </button>
-              </div>
-
-              {/* Quick Add New Category Inline to Master */}
-              {isAddingNewCategory && (
-                <div className="mb-2 p-2.5 bg-brand-light/20 dark:bg-brand-light/10 border border-brand/30 rounded-md space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-brand">Register In Category Master</span>
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingNewCategory(false)}
-                      className="text-slate-400 hover:text-slate-600"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      autoFocus
-                      value={newCategoryName}
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      placeholder="Category Name (e.g., AI Systems)"
-                      className="flex-1 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100"
-                    />
-                    <input
-                      type="text"
-                      value={newCategoryCode}
-                      onChange={(e) => setNewCategoryCode(e.target.value)}
-                      placeholder="Code (AI)"
-                      className="w-16 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-sm text-xs uppercase text-slate-900 dark:text-slate-100"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleQuickAddCategory}
-                      disabled={!newCategoryName.trim()}
-                      className="px-2.5 py-1 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white font-semibold rounded-sm text-xs shrink-0"
-                    >
-                      Save &amp; Select
-                    </button>
-                  </div>
-                </div>
-              )}
+              <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-brand" />
+                <span>Category (Master) <span className="text-rose-500">*</span></span>
+              </label>
 
               <select
                 value={category}
@@ -695,32 +648,30 @@ export function CreateTemplateModal({
                     {c}
                   </option>
                 ))}
-                <option value="Custom">+ Custom Entry...</option>
               </select>
-
-              {category === 'Custom' && (
-                <input
-                  type="text"
-                  value={customCategory}
-                  onChange={(e) => setCustomCategory(e.target.value)}
-                  placeholder="Enter custom category name..."
-                  className="mt-1.5 w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-slate-100"
-                />
-              )}
             </div>
 
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
-                Default Duration
-              </label>
-              <input
-                type="text"
-                value={defaultDuration}
-                onChange={(e) => setDefaultDuration(e.target.value)}
-                placeholder="e.g., 45 Days, 90 Days"
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-slate-900 dark:text-slate-100 font-medium focus:border-brand focus:outline-none"
-              />
-            </div>
+            {type === 'recurring' && (
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
+                  Auto Re-Add Date (Monthly) <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={recurringDay}
+                  onChange={(e) => setRecurringDay(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-slate-900 dark:text-slate-100 font-medium focus:border-brand focus:outline-none"
+                >
+                  {RECURRING_DAY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                  Date of month on which tasks are automatically re-added.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Description */}
@@ -784,7 +735,7 @@ export function CreateTemplateModal({
                 className="px-3 py-1.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200 font-semibold rounded-sm flex items-center gap-1.5 shadow-sm transition-colors shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>+ Add Root Task</span>
+                <span>Add Root Task</span>
               </button>
             </div>
 

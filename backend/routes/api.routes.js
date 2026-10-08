@@ -8,6 +8,7 @@ import { Dependency } from '../models/Dependency.js';
 import { Link } from '../models/Link.js';
 import { User } from '../models/User.js';
 import { Template } from '../models/Template.js';
+import { TemplateCategory } from '../models/TemplateCategory.js';
 import { MasterStatus } from '../models/MasterStatus.js';
 import { Role } from '../models/Role.js';
 import { RolePermission } from '../models/RolePermission.js';
@@ -642,14 +643,74 @@ router.get('/templates', async (req, res) => {
   }
 });
 
-router.post('/templates', async (req, res) => {
+router.put('/templates/:id', async (req, res) => {
   try {
-    const created = await Template.create(req.body);
+    const { id } = req.params;
+    const updated = await Template.findByIdAndUpdate(id, req.body, { new: true });
+    if (!updated) return res.status(404).json({ error: 'Template not found' });
+    const result = transform(updated);
+    broadcastRealtimeEvent('template_updated', result);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await Template.findByIdAndDelete(id);
+    if (!deleted) return res.status(404).json({ error: 'Template not found' });
+    broadcastRealtimeEvent('template_deleted', { id });
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Template Categories Master Routes
+router.get(['/masters/template-categories', '/template-categories'], async (req, res) => {
+  try {
+    const categories = await TemplateCategory.find().sort({ order: 1, name: 1 });
+    res.json(transformArr(categories));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post(['/masters/template-categories', '/template-categories'], async (req, res) => {
+  try {
+    const created = await TemplateCategory.create(req.body);
     const result = transform(created);
-    broadcastRealtimeEvent('template_created', result);
+    broadcastRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', result);
     res.status(201).json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+router.put(['/masters/template-categories/:id', '/template-categories/:id'], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await TemplateCategory.findByIdAndUpdate(id, req.body, { new: true });
+    if (!updated) return res.status(404).json({ error: 'Template category not found' });
+    const result = transform(updated);
+    broadcastRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', result);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete(['/masters/template-categories/:id', '/template-categories/:id'], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await TemplateCategory.findByIdAndDelete(id);
+    if (!deleted) return res.status(404).json({ error: 'Template category not found' });
+    broadcastRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', { id });
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

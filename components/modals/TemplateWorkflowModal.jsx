@@ -147,13 +147,11 @@ export function TemplateWorkflowModal({
               return (
                 <div key={idx} className="flex-1 flex flex-col items-center">
                   <div
-                    className={`w-full h-1.5 rounded-full transition-all ${
-                      isDone ? 'bg-indigo-600 dark:bg-indigo-500' : isCurrent ? 'bg-indigo-400' : 'bg-slate-200 dark:bg-slate-800'
-                    }`}
+                    className={`w-full h-1.5 rounded-full transition-all ${isDone ? 'bg-indigo-600 dark:bg-indigo-500' : isCurrent ? 'bg-indigo-400' : 'bg-slate-200 dark:bg-slate-800'
+                      }`}
                   />
-                  <span className={`text-[10px] mt-1.5 text-center truncate max-w-[85px] ${
-                    isCurrent ? 'font-bold text-indigo-600 dark:text-indigo-400' : isDone ? 'text-slate-700 dark:text-slate-300 font-semibold' : 'text-slate-400'
-                  }`}>
+                  <span className={`text-[10px] mt-1.5 text-center truncate max-w-[85px] ${isCurrent ? 'font-bold text-indigo-600 dark:text-indigo-400' : isDone ? 'text-slate-700 dark:text-slate-300 font-semibold' : 'text-slate-400'
+                    }`}>
                     {stepNum}. {label.split(' ')[0]}
                   </span>
                 </div>
@@ -175,11 +173,10 @@ export function TemplateWorkflowModal({
                   <div
                     key={t.id}
                     onClick={() => handleTemplateSelect(t)}
-                    className={`p-4 border rounded-xl cursor-pointer hover:border-indigo-400 transition-all ${
-                      currentTemplate.id === t.id
-                        ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 ring-2 ring-indigo-500/30'
-                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 hover:bg-slate-50'
-                    }`}
+                    className={`p-4 border rounded-xl cursor-pointer hover:border-indigo-400 transition-all ${currentTemplate.id === t.id
+                      ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 ring-2 ring-indigo-500/30'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:!bg-slate-900'
+                      }`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <ProjectTypeBadge type={t.type} size="xs" />

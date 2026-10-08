@@ -808,6 +808,16 @@ export function AppProvider({ children }) {
         setTemplates((prev) => [newTmpl, ...prev.filter((t) => t.id !== newTmpl.id && t._id !== newTmpl._id)]);
       });
 
+      const unsubTemplateUpdated = subscribeToRealtimeEvent('template_updated', (updatedTmpl) => {
+        setTemplates((prev) =>
+          prev.map((t) => (t.id === updatedTmpl.id || t._id === updatedTmpl._id ? { ...t, ...updatedTmpl } : t))
+        );
+      });
+
+      const unsubTemplateDeleted = subscribeToRealtimeEvent('template_deleted', ({ id }) => {
+        setTemplates((prev) => prev.filter((t) => t.id !== id && t._id !== id));
+      });
+
       const unsubRbacMatrix = subscribeToRealtimeEvent('rbac_matrix_updated', ({ roleName, permissions }) => {
         setRolePermissions((prev) => ({ ...prev, [roleName]: permissions }));
       });
@@ -982,6 +992,8 @@ export function AppProvider({ children }) {
         unsubLinkUpdated();
         unsubLinkDeleted();
         unsubTemplateCreated();
+        unsubTemplateUpdated();
+        unsubTemplateDeleted();
         unsubUserCreated();
         unsubUserUpdated();
         unsubUserDeleted();
@@ -2046,40 +2058,47 @@ export function AppProvider({ children }) {
     handleSelectProject(newProj);
   };
 
-  const handleAddTemplate = (newTmpl) => {
-    setTemplates((prev) => {
-      const updated = [newTmpl, ...prev];
-      try {
-        localStorage.setItem('pulsepm_custom_templates', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to save custom templates', e);
-      }
-      return updated;
-    });
+  const handleAddTemplate = async (newTmpl) => {
+    try {
+      const created = await api.templates.create(newTmpl);
+      const item = created || newTmpl;
+      setTemplates((prev) => [item, ...prev.filter((t) => t.id !== item.id && t._id !== item._id)]);
+      broadcastLocalEvent('template_created', item);
+      showSuccess('Template Created!', `Template "${item.name}" created and synced to DB.`);
+      return item;
+    } catch (err) {
+      console.error('Failed to create template in DB:', err);
+      showError('Failed to save template to database: ' + err.message);
+    }
   };
 
-  const handleDeleteTemplate = (templateId) => {
-    setTemplates((prev) => {
-      const updated = prev.filter((t) => t.id !== templateId);
-      try {
-        localStorage.setItem('pulsepm_custom_templates', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to update templates after delete', e);
-      }
-      return updated;
-    });
+  const handleDeleteTemplate = async (templateId) => {
+    try {
+      await api.templates.delete(templateId);
+      setTemplates((prev) => prev.filter((t) => t.id !== templateId && t._id !== templateId));
+      broadcastLocalEvent('template_deleted', { id: templateId });
+      showSuccess('Template Deleted', 'Template removed from DB.');
+    } catch (err) {
+      console.error('Failed to delete template from DB:', err);
+      showError('Failed to delete template from database: ' + err.message);
+    }
   };
 
-  const handleUpdateTemplate = (updatedTmpl) => {
-    setTemplates((prev) => {
-      const updated = prev.map((t) => (t.id === updatedTmpl.id ? updatedTmpl : t));
-      try {
-        localStorage.setItem('pulsepm_custom_templates', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to update template', e);
-      }
-      return updated;
-    });
+  const handleUpdateTemplate = async (updatedTmpl) => {
+    const targetId = updatedTmpl.id || updatedTmpl._id;
+    try {
+      const updated = await api.templates.update(targetId, updatedTmpl);
+      const item = updated || updatedTmpl;
+      setTemplates((prev) =>
+        prev.map((t) => (t.id === targetId || t._id === targetId ? { ...t, ...item } : t))
+      );
+      broadcastLocalEvent('template_updated', item);
+      showSuccess('Template Updated!', `Template "${item.name}" updated in DB.`);
+      return item;
+    } catch (err) {
+      console.error('Failed to update template in DB:', err);
+      showError('Failed to update template in database: ' + err.message);
+    }
   };
 
   const handleOpenEditTemplate = (tmpl) => {

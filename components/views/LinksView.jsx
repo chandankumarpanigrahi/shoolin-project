@@ -269,7 +269,7 @@ function ProjectFolder3DCard({ project, count, onClick }) {
       >
         {/* Back Flap Cover (Work-5) */}
         <div
-          className="work-5 w-full h-full origin-top rounded-2xl rounded-tl-none group-hover:shadow-[0_20px_40px_rgba(0,0,0,.2)] transition-all ease duration-300 relative after:absolute after:content-[''] after:bottom-[99%] after:left-0 after:w-[35%] after:h-4 after:bg-[var(--folder-bg)] after:rounded-t-[10px] before:absolute before:content-[''] before:-top-[15px] before:left-[calc(35%-4.5px)] before:w-4 before:h-4 before:bg-[var(--folder-bg)] before:[clip-path:polygon(0_35%,0%_100%,50%_100%);]"
+          className="work-5 w-full h-full origin-top rounded-2xl rounded-tl-none group-hover:shadow-[0_20px_40px_rgba(0,0,0,.2)] transition-all ease duration-300 relative after:absolute after:content-[''] after:bottom-[99%] after:left-0 after:w-[35%] after:h-4 after:bg-[var(--folder-bg)] after:rounded-t-[10px] before:absolute before:content-['']"
           style={{ backgroundColor: baseColor }}
         />
 
@@ -297,7 +297,7 @@ function ProjectFolder3DCard({ project, count, onClick }) {
 
         {/* Front Opening Cover Flap (Work-1) */}
         <div
-          className="work-1 absolute bottom-0 w-full h-[78%] rounded-2xl rounded-tr-none after:absolute after:content-[''] after:bottom-[99%] after:right-0 after:w-[61%] after:h-[20px] after:bg-[var(--folder-tab)] after:rounded-t-[10px] before:absolute before:content-[''] before:-top-[10px] before:right-[calc(61%-4px)] before:size-3 before:bg-[var(--folder-tab)] before:[clip-path:polygon(100%_14%,50%_100%,100%_100%);] transition-all ease duration-300 origin-bottom flex items-end group-hover:[transform:rotateX(-46deg)_translateY(1px)] p-3.5 sm:p-4"
+          className="work-1 absolute bottom-0 w-full h-[78%] rounded-2xl rounded-tr-none after:absolute after:content-[''] after:bottom-[99%] after:right-0 after:w-[61%] after:h-[20px] after:bg-[var(--folder-tab)] after:rounded-t-[10px] transition-all ease duration-300 origin-bottom flex items-end group-hover:[transform:rotateX(-46deg)_translateY(1px)] p-3.5 sm:p-4"
           style={{
             background: `linear-gradient(to top, ${baseColor}, ${lightColor})`,
           }}
