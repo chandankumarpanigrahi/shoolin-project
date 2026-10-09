@@ -1,5 +1,4 @@
 import '../styles/globals.css';
-import Script from 'next/script';
 import { AppProvider } from '@/components/providers/AppProvider';
 import { AppShell } from '@/components/layout/AppShell';
 
@@ -57,9 +56,8 @@ export default function RootLayout({ children }) {
           href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
           rel="stylesheet"
         />
-        <Script
+        <script
           id="theme-initializer"
-          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               (function() {

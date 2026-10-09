@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Check, Camera, Image as ImageIcon } from 'lucide-react';
+import { X, Upload, Check, Camera, Image as ImageIcon, Loader2, CloudUpload, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { UserAvatar } from '@/components/common/UserAvatar';
+import { uploadToImageKit } from '@/lib/imagekit';
 
 const AVATAR_PRESETS = [
   'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80',
@@ -19,28 +20,57 @@ const AVATAR_PRESETS = [
 
 export function ChangeDpModal({ isOpen, onClose, currentUser, onUpdateAvatar }) {
   const [selectedUrl, setSelectedUrl] = useState(currentUser?.avatar || '');
-  const [customUrl, setCustomUrl] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState({ type: '', message: '' });
 
   useEffect(() => {
     if (currentUser?.avatar) {
       setSelectedUrl(currentUser.avatar);
     }
-    setCustomUrl('');
+    setUploadStatus({ type: '', message: '' });
   }, [currentUser, isOpen]);
 
   if (!isOpen) return null;
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (loadEvt) => {
-        const result = loadEvt.target?.result;
-        if (typeof result === 'string') {
-          setSelectedUrl(result);
-        }
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    setIsUploading(true);
+    setUploadStatus({ type: '', message: '' });
+
+    // Read local preview first
+    const reader = new FileReader();
+    reader.onload = (loadEvt) => {
+      const result = loadEvt.target?.result;
+      if (typeof result === 'string') {
+        setSelectedUrl(result);
+      }
+    };
+    reader.readAsDataURL(file);
+
+    // Perform background upload
+    const result = await uploadToImageKit(file, { folder: '/user-avatars' });
+    setIsUploading(false);
+
+    if (result.success && result.url) {
+      setSelectedUrl(result.url);
+      setUploadStatus({
+        type: 'success',
+        message: 'Image uploaded successfully!',
+      });
+    } else {
+      if (result.code === 'MISSING_ENV') {
+        setUploadStatus({
+          type: 'warning',
+          message: 'Image key missing in .env.local — using local preview fallback.',
+        });
+      } else {
+        setUploadStatus({
+          type: 'error',
+          message: result.error || 'Failed to upload image. Using local preview fallback.',
+        });
+      }
     }
   };
 
@@ -49,12 +79,6 @@ export function ChangeDpModal({ isOpen, onClose, currentUser, onUpdateAvatar }) 
       onUpdateAvatar(selectedUrl);
     }
     onClose();
-  };
-
-  const handleCustomUrlApply = () => {
-    if (customUrl.trim()) {
-      setSelectedUrl(customUrl.trim());
-    }
   };
 
   const previewUser = {
@@ -104,7 +128,7 @@ export function ChangeDpModal({ isOpen, onClose, currentUser, onUpdateAvatar }) 
                 <Check className="w-2.5 h-2.5" />
               </div>
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="font-bold text-slate-900 dark:text-slate-100 text-sm truncate">
                 {currentUser?.name}
               </p>
@@ -129,7 +153,10 @@ export function ChangeDpModal({ isOpen, onClose, currentUser, onUpdateAvatar }) 
                   <button
                     key={idx}
                     type="button"
-                    onClick={() => setSelectedUrl(preset)}
+                    onClick={() => {
+                      setSelectedUrl(preset);
+                      setUploadStatus({ type: '', message: '' });
+                    }}
                     style={{ borderRadius: '50%' }}
                     className={`relative rounded-full overflow-hidden aspect-square border-2 transition-all group ${
                       isSelected
@@ -160,46 +187,54 @@ export function ChangeDpModal({ isOpen, onClose, currentUser, onUpdateAvatar }) 
 
           {/* Upload Custom Image */}
           <div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-              Upload from Device
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>Upload from Device</span>
+              {isUploading && (
+                <span className="text-[11px] text-brand font-medium flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Uploading...
+                </span>
+              )}
             </label>
-            <label className="flex items-center justify-center gap-2 px-3 py-2 border border-dashed border-slate-300 dark:border-slate-700 hover:border-brand rounded-sm cursor-pointer bg-slate-50/50 dark:bg-slate-800/30 hover:bg-brand-subtle transition-all text-slate-600 dark:text-slate-400 hover:text-brand">
-              <Upload className="w-3.5 h-3.5" />
-              <span className="font-medium">Browse image file (PNG, JPG, WebP)</span>
+            <label className={`flex items-center justify-center gap-2 px-3 py-3 border border-dashed rounded-sm cursor-pointer transition-all ${
+              isUploading
+                ? 'border-brand bg-brand-subtle opacity-70 pointer-events-none'
+                : 'border-slate-300 dark:border-slate-700 hover:border-brand bg-slate-50/50 dark:bg-slate-800/30 hover:bg-brand-subtle text-slate-600 dark:text-slate-400 hover:text-brand'
+            }`}>
+              {isUploading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-brand" />
+              ) : (
+                <CloudUpload className="w-4 h-4 text-brand" />
+              )}
+              <span className="font-medium text-xs">
+                {isUploading ? 'Uploading image...' : 'Browse & Upload Image (PNG, JPG, WebP)'}
+              </span>
               <input
                 type="file"
                 accept="image/*"
+                disabled={isUploading}
                 onChange={handleFileUpload}
                 className="hidden"
               />
             </label>
-          </div>
 
-          {/* Or Paste Direct Image URL */}
-          <div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-              Or Custom Image URL
-            </label>
-            <div className="flex gap-1.5">
-              <div className="relative flex-1">
-                <ImageIcon className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                <input
-                  type="url"
-                  placeholder="https://images.unsplash.com/..."
-                  value={customUrl}
-                  onChange={(e) => setCustomUrl(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-sm text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-brand"
-                />
+            {/* Status Messages */}
+            {uploadStatus.message && (
+              <div className={`mt-2 p-2 rounded text-[11px] flex items-center gap-1.5 border ${
+                uploadStatus.type === 'success'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                  : uploadStatus.type === 'warning'
+                  ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
+                  : 'bg-red-50 dark:bg-red-950/60 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300'
+              }`}>
+                {uploadStatus.type === 'success' ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span>{uploadStatus.message}</span>
               </div>
-              <button
-                type="button"
-                onClick={handleCustomUrlApply}
-                disabled={!customUrl.trim()}
-                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium rounded-sm disabled:opacity-50 transition-colors"
-              >
-                Apply
-              </button>
-            </div>
+            )}
           </div>
         </div>
 

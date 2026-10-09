@@ -34,7 +34,9 @@ import {
   Clock,
   Flame,
   ListTodo,
-  Calendar
+  Calendar,
+  Loader2,
+  CloudUpload
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { showConfirm } from '@/lib/swal';
@@ -43,6 +45,7 @@ import { RoleBadge } from '@/components/common/Badges';
 import { AccessControlView } from '@/components/views/AccessControlView';
 import { useUrlTab } from '@/hooks/useUrlState';
 import { formatDate } from '@/lib/dateUtils';
+import { uploadToImageKit } from '@/lib/imagekit';
 import { INITIAL_PERMISSIONS } from '@/data/permissions';
 import {
   BEHAVIOR_PRESETS,
@@ -186,6 +189,28 @@ export function MastersView() {
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
     isDepartmentLead: false
   });
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingAvatar(true);
+    const result = await uploadToImageKit(file, { folder: '/user-avatars' });
+    setIsUploadingAvatar(false);
+
+    if (result.success && result.url) {
+      setUserForm((prev) => ({ ...prev, avatar: result.url }));
+    } else {
+      const reader = new FileReader();
+      reader.onload = (loadEvt) => {
+        if (typeof loadEvt.target?.result === 'string') {
+          setUserForm((prev) => ({ ...prev, avatar: loadEvt.target.result }));
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // =========================================================================
   // 2. ROLES & PERMISSIONS MASTER STATE
@@ -2406,14 +2431,14 @@ export function MastersView() {
                 </div>
               </div>
 
-              {/* User Avatar Image URL Field */}
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700 space-y-1.5">
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              {/* User Avatar Image Upload Field */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700 space-y-2.5">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                   <Camera className="w-3.5 h-3.5 text-brand" />
-                  <span>Profile Picture / Avatar Image URL</span>
+                  <span>Profile Picture / Avatar Image</span>
                 </label>
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 shrink-0 flex items-center justify-center">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 shrink-0 flex items-center justify-center shadow-xs">
                     {userForm.avatar ? (
                       <img
                         src={userForm.avatar}
@@ -2428,16 +2453,32 @@ export function MastersView() {
                       <span className="text-xs font-bold text-slate-500">IMG</span>
                     )}
                   </div>
-                  <input
-                    type="url"
-                    placeholder="https://images.unsplash.com/... or avatar image link"
-                    value={userForm.avatar || ''}
-                    onChange={(e) => setUserForm({ ...userForm, avatar: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand"
-                  />
+                  <label className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 border border-dashed rounded-lg cursor-pointer transition-all ${isUploadingAvatar
+                      ? 'border-brand bg-brand-subtle opacity-70 pointer-events-none'
+                      : 'border-slate-300 dark:border-slate-700 hover:border-brand bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:text-brand'
+                    }`}>
+                    {isUploadingAvatar ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-brand" />
+                        <span className="text-xs font-semibold">Uploading image...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CloudUpload className="w-3.5 h-3.5 text-brand" />
+                        <span className="text-xs font-semibold">Browse & Upload Image</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isUploadingAvatar}
+                      onChange={handleAvatarUpload}
+                      className="hidden"
+                    />
+                  </label>
                 </div>
                 <span className="text-[10px] text-slate-400 block">
-                  Paste any public image URL (Unsplash, Gravatar, GitHub, Cloudinary, etc.) to set user photo.
+                  Select an image file from your device (PNG, JPG, WebP) to update profile photo.
                 </span>
               </div>
 
@@ -2466,22 +2507,22 @@ export function MastersView() {
                     className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Account Status
+                  </label>
+                  <select
+                    value={userForm.status}
+                    onChange={(e) => setUserForm({ ...userForm, status: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand font-medium"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Deactivated">Deactivated</option>
+                    <option value="Archived">Archived</option>
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  Account Status
-                </label>
-                <select
-                  value={userForm.status}
-                  onChange={(e) => setUserForm({ ...userForm, status: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand font-medium"
-                >
-                  <option value="Active">Active</option>
-                  <option value="Deactivated">Deactivated</option>
-                  <option value="Archived">Archived</option>
-                </select>
-              </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <button
