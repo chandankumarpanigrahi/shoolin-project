@@ -1176,12 +1176,9 @@ export function AppProvider({ children }) {
 
   const updateCurrentUserAvatar = (newAvatarUrl) => {
     const target = dpTargetUser || currentUser;
-    if (target.id === currentUser.id) {
-      setCurrentUser((prev) => ({ ...prev, avatar: newAvatarUrl }));
-    }
-    setUsers((prevUsers) =>
-      prevUsers.map((u) => (u.id === target.id ? { ...u, avatar: newAvatarUrl } : u))
-    );
+    if (!target) return;
+    const updated = { ...target, avatar: newAvatarUrl };
+    handleUpdateUser(updated);
   };
 
   // UI State & Sidebar Toggle
@@ -2123,7 +2120,7 @@ export function AppProvider({ children }) {
   };
 
   const handleUpdateUser = async (updatedUser) => {
-    const targetId = updatedUser.id || updatedUser._id;
+    const targetId = updatedUser.id || updatedUser._id || updatedUser.email;
     const targetEmail = updatedUser.email ? updatedUser.email.toLowerCase() : '';
 
     // Quick local reflect: 0ms UI update
