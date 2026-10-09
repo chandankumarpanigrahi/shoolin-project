@@ -272,7 +272,7 @@ export function ProjectDetailView({
       ? project.teamIds
       : (project.team && project.team.length > 0)
         ? project.team
-        : [project.ownerId || project.owner, project.managerId || project.manager].filter(Boolean);
+        : [project.ownerId || project.owner].filter(Boolean);
     const resolved = [];
     const seen = new Set();
     for (const memberKey of rawTeam) {
@@ -671,14 +671,6 @@ export function ProjectDetailView({
                     <p className="font-semibold text-slate-900 dark:text-slate-100">{ownerUser.name}</p>
                   </div>
                   <UserAvatar user={ownerUser} size="xs" />
-                </div>
-
-                <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800/60 rounded-sm">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Technical Lead</span>
-                    <p className="font-semibold text-slate-900 dark:text-slate-100">{managerUser.name}</p>
-                  </div>
-                  <UserAvatar user={managerUser} size="xs" />
                 </div>
 
                 <div className="pt-2">

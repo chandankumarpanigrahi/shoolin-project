@@ -179,7 +179,7 @@ export function AvatarGroup({ userIds = [], max = 3, size = 'sm' }) {
       if (!uid) return null;
       const resolved = resolveUserObject(uid, contextUsers);
       if (resolved) return resolved;
-      if (typeof uid === 'object') {
+      if (typeof uid === 'object' && uid.name) {
         return {
           id: uid.id || uid._id || 'member',
           name: uid.name || uid.email || 'Member',
@@ -187,13 +187,7 @@ export function AvatarGroup({ userIds = [], max = 3, size = 'sm' }) {
           avatar: uid.avatar,
         };
       }
-      const str = String(uid).trim();
-      if (!str) return null;
-      return {
-        id: str,
-        name: str.includes('@') ? str.split('@')[0] : str.length > 20 ? 'Attendee' : str,
-        role: 'Member',
-      };
+      return null;
     })
     .filter(Boolean);
 

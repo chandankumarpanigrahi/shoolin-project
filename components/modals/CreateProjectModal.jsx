@@ -224,10 +224,12 @@ export function CreateProjectModal({
 
     const creatorId = resolveUserKey(currentUser, users) || users[0]?.id || users[0]?._id;
     const ownerId = resolveUserKey(owner, users) || creatorId;
-    const managerId = resolveUserKey(manager, users) || creatorId;
 
     const resolvedSelected = deduplicateTeam(selectedTeam);
-    const finalTeam = Array.from(new Set([creatorId, ownerId, managerId, ...resolvedSelected])).filter(Boolean);
+    const finalTeam = Array.from(new Set([ownerId, ...resolvedSelected])).map((item) => {
+      const uObj = resolveUserObject(item, users);
+      return uObj ? (uObj.id || uObj._id) : null;
+    }).filter(Boolean);
 
     const payload = {
       name: name.trim(),
@@ -237,8 +239,8 @@ export function CreateProjectModal({
       category,
       ownerId: ownerId,
       owner: ownerId,
-      managerId: managerId,
-      manager: managerId,
+      managerId: ownerId,
+      manager: ownerId,
       teamIds: finalTeam,
       team: finalTeam,
       priority,

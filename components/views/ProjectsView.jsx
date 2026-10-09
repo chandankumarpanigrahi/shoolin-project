@@ -417,10 +417,10 @@ export function ProjectsView({
                   const targetOwnerId = p.ownerId || p.owner;
                   const ownerUser = resolveUserObject(targetOwnerId, users) || (users && users[0]) || { name: 'Owner', role: 'Member' };
                   const ownerDisplayName = ownerUser?.name || 'Owner';
-                  const rawTeam = (p.teamIds && p.teamIds.length > 0) ? p.teamIds : (p.team && p.team.length > 0) ? p.team : [targetOwnerId, p.managerId || p.manager].filter(Boolean);
+                  const rawTeam = (p.teamIds && p.teamIds.length > 0) ? p.teamIds : (p.team && p.team.length > 0) ? p.team : [targetOwnerId].filter(Boolean);
                   const teamIds = Array.from(new Set(rawTeam.map((item) => {
                     const uObj = resolveUserObject(item, users);
-                    return uObj ? (uObj.id || uObj._id) : item;
+                    return uObj ? (uObj.id || uObj._id) : null;
                   }))).filter(Boolean);
 
                   const projTasks = (tasks || []).filter((t) => {
@@ -609,10 +609,10 @@ export function ProjectsView({
             const targetOwnerId = p.ownerId || p.owner;
             const ownerUser = resolveUserObject(targetOwnerId, users) || (users && users[0]) || { name: 'Owner', role: 'Member' };
             const ownerDisplayName = ownerUser?.name || 'Owner';
-            const rawTeam = (p.teamIds && p.teamIds.length > 0) ? p.teamIds : (p.team && p.team.length > 0) ? p.team : [targetOwnerId, p.managerId || p.manager].filter(Boolean);
+            const rawTeam = (p.teamIds && p.teamIds.length > 0) ? p.teamIds : (p.team && p.team.length > 0) ? p.team : [targetOwnerId].filter(Boolean);
             const teamIds = Array.from(new Set(rawTeam.map((item) => {
               const uObj = resolveUserObject(item, users);
-              return uObj ? (uObj.id || uObj._id) : item;
+              return uObj ? (uObj.id || uObj._id) : null;
             }))).filter(Boolean);
 
             return (
