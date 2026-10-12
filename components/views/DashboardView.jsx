@@ -91,6 +91,40 @@ export function DashboardView({
     );
   }, [projects]);
 
+  // Check if current user is an admin-level role (sees all projects/tasks)
+  const isAdminRole = React.useMemo(() => {
+    const role = String(currentUser?.role || '').toLowerCase();
+    return role === 'super admin' || role === 'admin';
+  }, [currentUser]);
+
+  // User-specific projects: owner, manager, or team member
+  // Admins & Super Admins see all
+  const myProjects = React.useMemo(() => {
+    if (isAdminRole) return activeProjects;
+    const currentId = String(currentUser?.id || currentUser?._id || '').toLowerCase();
+    const currentEmail = String(currentUser?.email || '').toLowerCase();
+    const currentName = String(currentUser?.name || '').trim().toLowerCase();
+
+    return activeProjects.filter((p) => {
+      const isOwner =
+        (p.ownerId && String(p.ownerId).toLowerCase() === currentId) ||
+        (p.ownerEmail && String(p.ownerEmail).toLowerCase() === currentEmail) ||
+        (p.ownerName && String(p.ownerName).trim().toLowerCase() === currentName);
+
+      const isManager =
+        (p.managerId && String(p.managerId).toLowerCase() === currentId) ||
+        (p.managerEmail && String(p.managerEmail).toLowerCase() === currentEmail) ||
+        (p.managerName && String(p.managerName).trim().toLowerCase() === currentName);
+
+      const isTeamMember = (p.teamIds || []).some((tid) => {
+        const t = String(tid || '').toLowerCase();
+        return t === currentId || t === currentEmail || t === currentName;
+      });
+
+      return isOwner || isManager || isTeamMember;
+    });
+  }, [activeProjects, currentUser, isAdminRole]);
+
   const activeProjectIdsSet = React.useMemo(() => {
     const set = new Set();
     activeProjects.forEach((p) => {
@@ -121,6 +155,7 @@ export function DashboardView({
   });
 
   const myTasks = activeTasks.filter((t) => {
+    if (checkIsCompleted(t.status)) return false; // Exclude completed tasks from "My Tasks"
     if (matchesCurrentUser(t.assignedTo) || matchesCurrentUser(t.createdBy)) return true;
     const resolved = resolveUserObject(t.assignedTo, users);
     return resolved ? matchesCurrentUser(resolved) : false;
@@ -417,7 +452,7 @@ export function DashboardView({
           </div>
 
           <div className="flex flex-col gap-1 divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-            {activeProjects.slice(0, 6).map((p) => {
+            {myProjects.slice(0, 6).map((p) => {
               const { totalTasks, completedTasks: pCompleted, progress } = getProjectProgress(p);
 
               return (
@@ -451,9 +486,11 @@ export function DashboardView({
               );
             })}
 
-            {activeProjects.length === 0 && (
+            {myProjects.length === 0 && (
               <div className="py-8 text-center text-slate-400 dark:text-slate-500 text-xs">
-                No active projects found. Create a project to start tracking progress!
+                {isAdminRole
+                  ? 'No active projects found. Create a project to start tracking progress!'
+                  : 'You are not assigned to any active projects yet.'}
               </div>
             )}
           </div>

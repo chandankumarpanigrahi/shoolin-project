@@ -22,12 +22,14 @@ export function ChangeDpModal({ isOpen, onClose, currentUser, onUpdateAvatar }) 
   const [selectedUrl, setSelectedUrl] = useState(currentUser?.avatar || '');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState({ type: '', message: '' });
+  const [uploadedFileId, setUploadedFileId] = useState(null); // ImageKit fileId of newly uploaded image
 
   useEffect(() => {
     if (currentUser?.avatar) {
       setSelectedUrl(currentUser.avatar);
     }
     setUploadStatus({ type: '', message: '' });
+    setUploadedFileId(null); // Reset fileId when modal reopens
   }, [currentUser, isOpen]);
 
   if (!isOpen) return null;
@@ -55,6 +57,7 @@ export function ChangeDpModal({ isOpen, onClose, currentUser, onUpdateAvatar }) 
 
     if (result.success && result.url) {
       setSelectedUrl(result.url);
+      setUploadedFileId(result.fileId || null); // Store fileId for deletion on next update
       setUploadStatus({
         type: 'success',
         message: 'Image uploaded successfully!',
@@ -76,7 +79,8 @@ export function ChangeDpModal({ isOpen, onClose, currentUser, onUpdateAvatar }) 
 
   const handleSave = () => {
     if (selectedUrl) {
-      onUpdateAvatar(selectedUrl);
+      // Pass both url and fileId — caller saves fileId to DB for future deletion
+      onUpdateAvatar(selectedUrl, uploadedFileId);
     }
     onClose();
   };

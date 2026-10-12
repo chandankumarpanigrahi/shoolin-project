@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { deleteFromImageKit } from '@/lib/imagekit';
 import { PROJECTS as INITIAL_PROJECTS } from '@/data/projects';
 import { INITIAL_TASKS } from '@/data/tasks';
 import { USERS as INITIAL_USERS } from '@/data/users';
@@ -1174,11 +1175,26 @@ export function AppProvider({ children }) {
     setIsChangeDpOpen(true);
   };
 
-  const updateCurrentUserAvatar = (newAvatarUrl) => {
+  const updateCurrentUserAvatar = async (newAvatarUrl, newFileId = null) => {
     const target = dpTargetUser || currentUser;
     if (!target) return;
-    const updated = { ...target, avatar: newAvatarUrl };
-    handleUpdateUser(updated);
+
+    // Capture old fileId before overwriting (only set if previously uploaded to ImageKit)
+    const oldFileId = target.avatarFileId || null;
+
+    const updated = { ...target, avatar: newAvatarUrl, avatarFileId: newFileId || null };
+    await handleUpdateUser(updated);
+
+    // Non-blocking: delete old ImageKit image after successful update
+    // Only runs if old avatar was an ImageKit upload (has a fileId)
+    if (oldFileId) {
+      try {
+        await deleteFromImageKit(oldFileId);
+      } catch (e) {
+        console.warn('[ImageKit] Could not delete old avatar file:', oldFileId, e);
+        // Update already saved — safe to ignore
+      }
+    }
   };
 
   // UI State & Sidebar Toggle

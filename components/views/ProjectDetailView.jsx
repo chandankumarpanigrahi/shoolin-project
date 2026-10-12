@@ -789,7 +789,7 @@ export function ProjectDetailView({
                     <th className="py-2.5 px-3">Assignee</th>
                     <th className="py-2.5 px-3">Priority</th>
                     <th className="py-2.5 px-3">Status</th>
-                    <th className="py-2.5 px-3">Timeline (From &#8211; To)</th>
+                    <th className="py-2.5 px-3">Timeline</th>
                     <th className="py-2.5 px-3 text-right">Actions</th>
                   </tr>
                 </thead>
