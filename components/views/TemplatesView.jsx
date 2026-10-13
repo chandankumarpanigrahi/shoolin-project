@@ -180,7 +180,7 @@ export function TemplatesView({ onSelectTemplateForCreation }) {
                 type="button"
                 onClick={() => setSelectedCategory(c)}
                 className={`px-2.5 py-1 rounded-sm font-semibold transition-colors whitespace-nowrap text-xs ${selectedCategory === c
-                  ? 'bg-white dark:bg-slate-900 text-brand shadow-sm'
+                  ? 'bg-white dark:!bg-slate-900 text-brand dark:!text-white shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
               >
@@ -305,7 +305,7 @@ export function TemplatesView({ onSelectTemplateForCreation }) {
                         <FolderTree className="w-3.5 h-3.5 text-brand" />
                         Task &gt; Sub-task Hierarchy
                       </span>
-                      <span className="text-brand font-mono font-normal">
+                      <span className="text-gray-500 dark:text-white/60 font-mono font-normal">
                         {tree.length} Root Tracks
                       </span>
                     </div>
