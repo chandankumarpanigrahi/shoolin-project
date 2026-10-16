@@ -128,24 +128,33 @@ export function AppProvider({ children }) {
   const setProjects = (val) => {
     setProjectsState((prev) => {
       const next = typeof val === 'function' ? val(prev) : val;
-      try { localStorage.setItem('pulsepm_live_projects', JSON.stringify(next)); } catch (e) {}
-      return next;
+      const deduplicated = Array.isArray(next)
+        ? next.filter((p, i, self) => p && i === self.findIndex((o) => o && (o.id === p.id || o._id === p._id || (o.code && o.code === p.code))))
+        : next;
+      try { localStorage.setItem('pulsepm_live_projects', JSON.stringify(deduplicated)); } catch (e) {}
+      return deduplicated;
     });
   };
 
   const setTasks = (val) => {
     setTasksState((prev) => {
       const next = typeof val === 'function' ? val(prev) : val;
-      try { localStorage.setItem('pulsepm_live_tasks', JSON.stringify(next)); } catch (e) {}
-      return next;
+      const deduplicated = Array.isArray(next)
+        ? next.filter((t, i, self) => t && i === self.findIndex((o) => o && (o.id === t.id || o._id === t._id || (o.code && o.code === t.code))))
+        : next;
+      try { localStorage.setItem('pulsepm_live_tasks', JSON.stringify(deduplicated)); } catch (e) {}
+      return deduplicated;
     });
   };
 
   const setUsers = (val) => {
     setUsersState((prev) => {
       const next = typeof val === 'function' ? val(prev) : val;
-      try { localStorage.setItem('pulsepm_live_users', JSON.stringify(next)); } catch (e) {}
-      return next;
+      const deduplicated = Array.isArray(next)
+        ? next.filter((u, i, self) => u && i === self.findIndex((o) => o && (o.id === u.id || o._id === u._id || (o.email && o.email === u.email))))
+        : next;
+      try { localStorage.setItem('pulsepm_live_users', JSON.stringify(deduplicated)); } catch (e) {}
+      return deduplicated;
     });
   };
 
@@ -1563,8 +1572,12 @@ export function AppProvider({ children }) {
 
   // Project Handlers
   const handleSelectProject = (project) => {
+    if (!project) return;
     setSelectedProject(project);
-    router.push(`/project/${project.id || project._id}`);
+    const targetUrl = `/project/${project.id || project._id}`;
+    if (typeof window !== 'undefined' && window.location.pathname !== targetUrl) {
+      router.push(targetUrl);
+    }
   };
 
   const handleOpenEditProject = (project) => {

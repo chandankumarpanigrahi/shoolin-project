@@ -8,7 +8,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import { InstallPromptBanner } from '@/components/pwa/InstallPromptBanner';
 import { ToastProvider } from '@/components/common/Toast';
-import { getUrlParam, setUrlParam, removeUrlParam } from '@/hooks/useUrlState';
+import { getUrlParam, setUrlParam, removeUrlParam, setMultipleUrlParams } from '@/hooks/useUrlState';
 
 // Modals
 import { GlobalSearchModal } from '@/components/modals/GlobalSearchModal';
@@ -270,15 +270,18 @@ export function AppShell({ children }) {
         dependencies={dependencies}
         links={links}
         onSelectProject={(p) => {
-          closeModal(() => setIsSearchOpen(false));
+          setIsSearchOpen(false);
+          removeUrlParam('modal', true);
           handleSelectProject(p);
         }}
         onSelectTask={(t) => {
-          closeModal(() => setIsSearchOpen(false));
-          openTaskWithUrl(t);
+          setIsSearchOpen(false);
+          setMultipleUrlParams({ modal: null, task: t.id || t.code }, true);
+          handleSelectTask(t);
         }}
         onNavigate={(view) => {
-          closeModal(() => setIsSearchOpen(false));
+          setIsSearchOpen(false);
+          removeUrlParam('modal', true);
         }}
       />
 
