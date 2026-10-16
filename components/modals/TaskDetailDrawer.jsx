@@ -24,6 +24,7 @@ import { UserAvatar, resolveUserObject, isTaskAssignee } from '@/components/comm
 import { useAppContext } from '@/components/providers/AppProvider';
 import { showError } from '@/lib/swal';
 import { formatDate } from '@/lib/dateUtils';
+import { isChildTask } from '@/lib/taskUtils';
 
 export function TaskDetailDrawer({
   isOpen,
@@ -99,10 +100,10 @@ export function TaskDetailDrawer({
   const creator = resolveUserObject(task.createdBy, users) || { name: 'Project Creator' };
 
   // Find parent task
-  const parent = task.parentId ? allTasks.find(t => t.id === task.parentId) : null;
+  const parent = allTasks.find(t => isChildTask(task, t, allTasks));
 
   // Find direct child tasks
-  const childTasks = allTasks.filter(t => t.parentId === task.id);
+  const childTasks = allTasks.filter(t => isChildTask(t, task, allTasks));
 
   // Find linked dependencies
   const relatedDeps = dependencies.filter(d => d.relatedTaskId === task.id);

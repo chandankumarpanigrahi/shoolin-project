@@ -245,7 +245,7 @@ export function CreateTemplateModal({
       setType(currentTemplate.type || 'one-time');
       const initialCat = categoryOptions.includes(currentTemplate.category)
         ? currentTemplate.category
-        : (categoryOptions[0] || 'Website Development');
+        : (categoryOptions[0] || 'Web Development');
       setCategory(initialCat);
       setRecurringDay(currentTemplate.recurringDay || currentTemplate.defaultDuration || '1st of every month');
       setDescription(currentTemplate.description || '');
@@ -268,7 +268,7 @@ export function CreateTemplateModal({
       // Defaults for brand new template
       setName('');
       setType('one-time');
-      const firstCat = blueprintCategories?.[0]?.name || 'Website Development';
+      const firstCat = categoryOptions[0] || blueprintCategories?.[0]?.name || 'Web Development';
       setCategory(firstCat);
       setRecurringDay('1st of every month');
       setDescription('');
@@ -335,15 +335,15 @@ export function CreateTemplateModal({
 
   // Derived category list strictly from Blueprint Master
   const categoryOptions = useMemo(() => {
-    const list = [];
     const source = (blueprintCategories && blueprintCategories.length > 0)
-      ? blueprintCategories
+      ? [...blueprintCategories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       : DEFAULT_BLUEPRINT_CATEGORIES;
 
+    const list = [];
     (source || []).forEach((c) => {
       const name = typeof c === 'string' ? c : (c.name || c.title || '');
       const status = typeof c === 'object' && c.status ? c.status : 'Active';
-      if (name && status === 'Active') {
+      if (name && status !== 'Archived') {
         list.push(name);
       }
     });

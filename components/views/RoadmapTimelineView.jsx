@@ -456,9 +456,6 @@ export function RoadmapTimelineView({
               {currentYear} Roadmap
             </h1>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Full scrollable calendar. Project spans auto-wrap deliverables. Assigned members can drag task bars to adjust Date From &amp; Date To.
-          </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">

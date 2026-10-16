@@ -407,8 +407,8 @@ export function AppShell({ children }) {
         }}
         users={users}
         preselectedTemplate={selectedTemplateForWorkflow}
-        onCreateProjectFromTemplate={(p) => {
-          handleCreateProjectFromTemplate(p);
+        onCreateProjectFromTemplate={(p, tmpl) => {
+          handleCreateProjectFromTemplate(p, tmpl);
           closeModal(() => {
             setIsTemplateWorkflowOpen(false);
             setSelectedTemplateForWorkflow(null);

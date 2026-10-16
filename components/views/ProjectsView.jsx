@@ -23,7 +23,7 @@ import { StatusBadge, PriorityBadge, ProjectTypeBadge } from '@/components/commo
 import { UserAvatar, AvatarGroup, resolveUserObject } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { useUrlParam } from '@/hooks/useUrlState';
-import Swal, { showConfirm, showSuccess } from '@/lib/swal';
+import { showConfirm, showSuccess, showPrompt } from '@/lib/swal';
 
 export function ProjectsView({
   projects,
@@ -111,55 +111,20 @@ export function ProjectsView({
     showSuccess('Project Restored', `"${projName}" is back in active projects.`);
   };
 
-  // Permanent Delete Handler (Step 1: Yes/No SweetAlert -> Step 2: Type "Delete" modal -> Permanent deletion)
+  // Permanent Delete Handler (Directly prompts to type "Delete" for enterprise security)
   const handlePermanentDelete = async (project) => {
     const targetId = project.id || project._id;
     const projName = project.name || project.code || 'this project';
 
-    // Step 1: Yes/No Confirmation Sheet/Alert
-    const step1Confirmed = await showConfirm({
-      title: 'Permanently Delete Project?',
-      text: `Are you sure you want to permanently delete "${projName}"? This action CANNOT be undone.`,
-      icon: 'warning',
-      confirmButtonText: 'Yes, Proceed to Delete',
-      cancelButtonText: 'No, Keep Project',
-    });
-
-    if (!step1Confirmed) return;
-
-    // Step 2: Modal requiring user to type "Delete" exactly
-    const isDark = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
-
-    const { value: typedText } = await Swal.fire({
+    const typedText = await showPrompt({
       title: 'Confirm Permanent Deletion',
-      html: `To permanently delete <strong class="text-rose-600 font-bold">${projName}</strong>, type <span class="bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-mono px-2 py-0.5 rounded font-bold">Delete</span> below:`,
-      input: 'text',
-      inputPlaceholder: 'Type Delete here...',
-      showCancelButton: true,
+      html: `This action is <strong class="text-rose-600 dark:text-rose-400 font-bold">IRREVERSIBLE</strong>. All associated deliverables and data for <span class="inline-block px-1.5 py-0.5 mx-0.5 font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 rounded border border-rose-200 dark:border-rose-900/60 text-xs">${projName}</span> will be permanently erased.<br/><br/>To confirm, please type <span class="bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-mono px-2 py-0.5 rounded font-bold text-xs">Delete</span> below:`,
+      placeholder: 'Type Delete here...',
+      requiredMatch: 'Delete',
       confirmButtonText: 'Permanently Delete',
       cancelButtonText: 'Cancel',
-      confirmButtonColor: '#e11d48',
-      background: isDark ? '#0f172a' : '#ffffff',
-      color: isDark ? '#f8fafc' : '#0f172a',
-      customClass: {
-        popup: isDark
-          ? 'border border-slate-800 rounded-2xl shadow-2xl backdrop-blur-xl'
-          : 'border border-slate-200 rounded-2xl shadow-2xl',
-        title: 'text-lg font-bold tracking-tight text-rose-600 dark:text-rose-400',
-        htmlContainer: 'text-xs text-slate-500 dark:text-slate-400',
-        input:
-          'text-xs font-mono rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 p-2.5 mx-auto max-w-xs focus:ring-2 focus:ring-rose-500',
-        confirmButton:
-          'px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-rose-500/25 transition-all mx-1.5 cursor-pointer',
-        cancelButton:
-          'px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs transition-all mx-1.5 cursor-pointer',
-      },
-      buttonsStyling: false,
-      inputValidator: (value) => {
-        if (!value || value.trim() !== 'Delete') {
-          return 'You must type "Delete" exactly (case-sensitive) to confirm!';
-        }
-      },
+      isDanger: true,
+      errorMessage: 'You must type "Delete" exactly (case-sensitive) to confirm!',
     });
 
     if (typedText === 'Delete') {
@@ -180,9 +145,6 @@ export function ProjectsView({
               {filteredProjects.length} {filteredProjects.length === 1 ? 'project' : 'projects'}
             </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Enterprise roadmap, fixed-scope sprints, and recurring retainers
-          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -488,8 +450,13 @@ export function ProjectsView({
                       <td className="py-3 px-3 whitespace-nowrap">
                         <ProjectTypeBadge type={p.type || 'one-time'} size="xs" />
                         {p.type === 'recurring' && p.recurringConfig && (
-                          <div className="text-[10px] text-cyan-700 dark:text-cyan-400 mt-0.5 font-mono">
-                            Monthly ({p.recurringConfig.monthlyDay || 1}th)
+                          <div className="text-[10px] text-cyan-700 dark:text-cyan-400 mt-0.5 font-medium leading-tight">
+                            <span>{p.recurringConfig.currentCycle || `Monthly (${p.recurringConfig.monthlyDay || 1}st)`}</span>
+                            {p.recurringConfig.nextCycleDate && (
+                              <span className="block text-[9px] text-slate-500 dark:text-slate-400">
+                                Next: {p.recurringConfig.nextCycleDate}
+                              </span>
+                            )}
                           </div>
                         )}
                       </td>

@@ -19,7 +19,9 @@ import {
   CheckCircle2,
   Circle,
   Search,
-  X
+  X,
+  PauseCircle,
+  PlayCircle
 } from 'lucide-react';
 import { StatusBadge, PriorityBadge, ProjectTypeBadge, StatusSelect } from '@/components/common/Badges';
 import { UserAvatar, AvatarGroup, resolveUserObject, isTaskAssignee } from '@/components/common/UserAvatar';
@@ -27,6 +29,7 @@ import { useAppContext } from '@/components/providers/AppProvider';
 import { useUrlTab } from '@/hooks/useUrlState';
 import { showError } from '@/lib/swal';
 import { formatDate } from '@/lib/dateUtils';
+import { isChildTask } from '@/lib/taskUtils';
 
 export function ProjectDetailView({
   project,
@@ -44,7 +47,7 @@ export function ProjectDetailView({
   onOpenAddLink,
   onUpdateTaskStatus
 }) {
-  const { isCompletedStatus, getTaskStatuses, toggleTaskComplete, handleOpenEditProject, handleOpenEditTask, can, currentUser, handleUpdateTask } = useAppContext();
+  const { isCompletedStatus, getTaskStatuses, toggleTaskComplete, handleOpenEditProject, handleOpenEditTask, can, currentUser, handleUpdateTask, handleToggleProjectAutoRenew } = useAppContext();
   const [activeTab, setActiveTab] = useUrlTab('tab', 'tasks', [
     'overview',
     'tasks',
@@ -236,7 +239,8 @@ export function ProjectDetailView({
 
     // Prevent dropping a parent onto one of its own descendants
     const isDescendant = (parentId, checkId) => {
-      const children = projectTasks.filter(t => t.parentId === parentId);
+      const parentDummy = { id: parentId, _id: parentId };
+      const children = projectTasks.filter(t => isChildTask(t, parentDummy, projectTasks));
       return children.some(c => c.id === checkId || isDescendant(c.id, checkId));
     };
     if (isDescendant(srcId, targetTaskId)) return;
@@ -292,15 +296,15 @@ export function ProjectDetailView({
     !projectSquadUsers.some(su => (su.id || su._id) === (u.id || u._id))
   );
 
-  // Build root tasks (parentId === null or not in this project)
-  const rootTasks = projectTasks.filter(t => !t.parentId || !projectTasks.some(p => p.id === t.parentId));
+  // Build root tasks (not a child of any task in this project)
+  const rootTasks = projectTasks.filter(t => !projectTasks.some(p => isChildTask(t, p, projectTasks)));
 
   // Recursive task tree row renderer
   const renderTaskNode = (task, level = 0) => {
     const isDragOver = dragOverId === task.id;
-    const children = projectTasks.filter(t => t.parentId === task.id);
+    const children = projectTasks.filter(t => isChildTask(t, task, projectTasks));
     const hasChildren = children.length > 0;
-    const isExpanded = !!expandedTasks[task.id];
+    const isExpanded = expandedTasks[task.id] !== undefined ? !!expandedTasks[task.id] : true;
     const assignee = task.assignedTo ? resolveUserObject(task.assignedTo, users) : null;
     const assigneeDisplayName = assignee ? assignee.name : 'Unassigned';
 
@@ -647,14 +651,63 @@ export function ProjectDetailView({
               </p>
 
               {project.type === 'recurring' && project.recurringConfig && (
-                <div className="mt-3 p-3 bg-cyan-50/70 dark:bg-cyan-950/40 border border-cyan-200/80 dark:border-cyan-800/80 rounded-sm">
-                  <div className="flex items-center gap-1.5 font-bold text-cyan-900 dark:text-cyan-300 mb-1">
-                    <RefreshCw className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-                    Recurring Cadence: {project.recurringConfig.frequency}
+                <div className="mt-3 p-3.5 bg-cyan-50/80 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800 rounded-md space-y-2.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-1.5 font-bold text-cyan-950 dark:text-cyan-200 text-xs">
+                      <RefreshCw className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                      <span>Recurring Cadence: {project.recurringConfig.frequency || 'Monthly'}</span>
+                    </div>
+                    {project.recurringConfig.currentCycle && (
+                      <span className="text-[11px] font-bold text-cyan-800 dark:text-cyan-300 bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-cyan-200 dark:border-cyan-700">
+                        Cycle: {project.recurringConfig.currentCycle}
+                      </span>
+                    )}
                   </div>
-                  <p className="text-[11px] text-cyan-800 dark:text-cyan-400">
-                    Cycle cut-off day: {project.recurringConfig.monthlyDay}th of every month. Next automated cycle triggers on <strong>{formatDate(project.recurringConfig.nextCycleDate)}</strong>.
-                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-cyan-900 dark:text-cyan-200">
+                    <div>
+                      <span className="text-cyan-700 dark:text-cyan-400 block text-[10px] uppercase font-bold">Cut-off Day</span>
+                      <span className="font-semibold">{project.recurringConfig.monthlyDay || 1}st of every month</span>
+                    </div>
+                    <div>
+                      <span className="text-cyan-700 dark:text-cyan-400 block text-[10px] uppercase font-bold">Next Automated Cycle Date</span>
+                      <strong className="font-semibold text-cyan-950 dark:text-cyan-100">{formatDate(project.recurringConfig.nextCycleDate)}</strong>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-cyan-200/60 dark:border-cyan-800/60 flex items-center justify-between flex-wrap gap-2 text-xs">
+                    <div className="text-[11px] text-cyan-800 dark:text-cyan-300 flex items-center gap-1.5">
+                      <span>Auto-Renewal:</span>
+                      <span className={`font-bold px-1.5 py-0.2 rounded text-[10px] ${
+                        project.recurringConfig.autoRenew !== false
+                          ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                      }`}>
+                        {project.recurringConfig.autoRenew !== false ? 'Active' : 'Paused'}
+                      </span>
+                    </div>
+                    {handleToggleProjectAutoRenew && (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleProjectAutoRenew(project.id || project._id)}
+                        className={`px-2.5 py-1 text-xs font-semibold rounded-md border shadow-2xs transition-colors flex items-center gap-1.5 ${
+                          project.recurringConfig.autoRenew !== false
+                            ? 'bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent'
+                        }`}
+                      >
+                        {project.recurringConfig.autoRenew !== false ? (
+                          <>
+                            <PauseCircle className="w-3.5 h-3.5" />
+                            <span>Pause Auto-Renewal</span>
+                          </>
+                        ) : (
+                          <>
+                            <PlayCircle className="w-3.5 h-3.5" />
+                            <span>Resume Auto-Renewal</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

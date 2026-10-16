@@ -133,7 +133,7 @@ function SectionCard({
             <>
               <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
                 <Lock className="w-3.5 h-3.5" />
-                <span>View-only mode (modifications restricted by administrator policy)</span>
+                <span>View-only mode (for security reasons)</span>
               </div>
               <button
                 type="button"
@@ -562,7 +562,7 @@ function ProfileTab({ toast }) {
         onReset={handleDiscard}
         saveLabel="Save Profile Details"
         isReadOnly={!canEdit}
-        readOnlyNotice={!canEdit ? 'Profile details are locked by administrator access control policy (View-Only mode).' : ''}
+        readOnlyNotice={!canEdit ? 'Profile details are locked (View-Only mode).' : ''}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

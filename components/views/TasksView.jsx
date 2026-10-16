@@ -23,6 +23,7 @@ import { useAppContext } from '@/components/providers/AppProvider';
 import { useUrlParam } from '@/hooks/useUrlState';
 import { showError } from '@/lib/swal';
 import { formatDate } from '@/lib/dateUtils';
+import { isChildTask } from '@/lib/taskUtils';
 
 export function TasksView({
   tasks,
@@ -35,7 +36,7 @@ export function TasksView({
   onCreateQuickTask
 }) {
   const { currentUser, isCompletedStatus, getTaskStatuses, toggleTaskComplete } = useAppContext();
-  
+
   const taskStatusesList = React.useMemo(() => {
     const list = getTaskStatuses ? getTaskStatuses() : [];
     if (list.length > 0) return list;
@@ -76,7 +77,7 @@ export function TasksView({
     try {
       const saved = localStorage.getItem(`pulsepm_expanded_tasks_${currentUser.id}`);
       if (saved) return JSON.parse(saved);
-    } catch (e) {}
+    } catch (e) { }
     return { 'task-100': true };
   });
 
@@ -86,7 +87,7 @@ export function TasksView({
       if (typeof window !== 'undefined' && currentUser?.id) {
         try {
           localStorage.setItem(`pulsepm_expanded_tasks_${currentUser.id}`, JSON.stringify(next));
-        } catch (e) {}
+        } catch (e) { }
       }
       return next;
     });
@@ -111,7 +112,7 @@ export function TasksView({
   // If filtered by search or dropdown, render flat list; otherwise render hierarchical tree
   const isFiltering = searchQuery.trim() !== '' || selectedProject !== 'ALL' || selectedStatus !== 'ALL' || selectedPriority !== 'ALL' || selectedAssignee !== 'ALL';
 
-  const rootTasks = filteredTasks.filter(t => !t.parentId || !tasks.some(p => p.id === t.parentId));
+  const rootTasks = filteredTasks.filter(t => !tasks.some(p => isChildTask(t, p, tasks)));
 
   const exportToCSV = () => {
     const headers = ['Task Code', 'Title', 'Project', 'Assignee', 'Priority', 'Status', 'Date From', 'Date To'];
@@ -174,9 +175,9 @@ export function TasksView({
   };
 
   const renderRow = (task, level = 0) => {
-    const children = tasks.filter(t => t.parentId === task.id);
+    const children = tasks.filter(t => isChildTask(t, task, tasks));
     const hasChildren = children.length > 0;
-    const isExpanded = !!expandedTasks[task.id];
+    const isExpanded = expandedTasks[task.id] !== undefined ? !!expandedTasks[task.id] : true;
     const project = projects.find(p => p.id === task.projectId) || { code: "PRJ", name: "Project" };
     const assignee = task.assignedTo ? resolveUserObject(task.assignedTo, users) : null;
     const assigneeDisplayName = assignee ? assignee.name : 'Unassigned';
@@ -226,17 +227,16 @@ export function TasksView({
                     onUpdateTaskStatus(task.id, isCompleted ? 'In Progress' : 'Completed');
                   }
                 }}
-                className={`p-0.5 rounded-full transition-colors shrink-0 ${
-                  isAssignee
+                className={`p-0.5 rounded-full transition-colors shrink-0 ${isAssignee
                     ? 'hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer'
                     : 'opacity-40 cursor-not-allowed'
-                }`}
+                  }`}
                 title={
                   !isAssignee
                     ? `Only assigned member (${assigneeDisplayName}) can change task status`
                     : isCompleted
-                    ? 'Mark as Incomplete'
-                    : 'Mark as Completed (Triggers Strikethrough)'
+                      ? 'Mark as Incomplete'
+                      : 'Mark as Completed (Triggers Strikethrough)'
                 }
               >
                 {isCompleted ? (
@@ -252,11 +252,10 @@ export function TasksView({
 
               <span
                 onClick={() => onSelectTask(task)}
-                className={`font-medium transition-colors whitespace-nowrap ml-1 ${
-                  isCompleted
+                className={`font-medium transition-colors whitespace-nowrap ml-1 ${isCompleted
                     ? 'line-through text-slate-400 dark:text-slate-500 opacity-75'
                     : 'text-slate-900 dark:text-slate-100 group-hover:text-brand'
-                }`}
+                  }`}
               >
                 {task.title}
               </span>
@@ -378,9 +377,6 @@ export function TasksView({
               {filteredTasks.length} tasks
             </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Infinite nesting hierarchy with deliverable code prefixes across all projects
-          </p>
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
@@ -389,11 +385,10 @@ export function TasksView({
             <button
               type="button"
               onClick={() => setActiveView('tree')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                activeView === 'tree'
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeView === 'tree'
                   ? 'bg-white dark:bg-slate-900 text-brand shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
+                }`}
             >
               <ListTree className="w-3.5 h-3.5" />
               <span>Tree Matrix</span>
@@ -401,11 +396,10 @@ export function TasksView({
             <button
               type="button"
               onClick={() => setActiveView('kanban')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                activeView === 'kanban'
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${activeView === 'kanban'
                   ? 'bg-white dark:bg-slate-900 text-brand shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
+                }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
               <span>Kanban Board</span>

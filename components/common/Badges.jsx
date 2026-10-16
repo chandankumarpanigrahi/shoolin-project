@@ -294,7 +294,7 @@ export function ProjectTypeBadge({ type, size = 'sm' }) {
 
   if (isRecurring) {
     return (
-      <span className={`inline-flex items-center gap-1.5 font-semibold rounded-full border bg-cyan-100/90 text-cyan-800 border-cyan-300 dark:bg-cyan-950/60 dark:text-cyan-300 dark:border-cyan-700/80 whitespace-nowrap shadow-2xs ${sizeClass}`}>
+      <span className={`inline-flex items-center gap-1.5 font-semibold rounded-full border bg-cyan-100/90 text-cyan-800 border-cyan-300 dark:bg-cyan-950/60 dark:text-white dark:border-white whitespace-nowrap shadow-2xs ${sizeClass}`}>
         <svg className="w-3 h-3 text-cyan-600 dark:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
@@ -304,7 +304,7 @@ export function ProjectTypeBadge({ type, size = 'sm' }) {
   }
 
   return (
-    <span className={`inline-flex items-center gap-1.5 font-semibold rounded-full border bg-brand-light text-brand-text border-brand-border whitespace-nowrap shadow-2xs ${sizeClass}`}>
+    <span className={`inline-flex items-center gap-1.5 font-semibold rounded-full border bg-brand-light dark:!bg-cyan-950/60 text-brand-text dark:!text-white border-brand-border whitespace-nowrap shadow-2xs ${sizeClass}`}>
       <span className="w-1.5 h-1.5 rounded-full bg-brand"></span>
       One Time
     </span>

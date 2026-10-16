@@ -18,6 +18,7 @@ import { UserAvatar, resolveUserObject, isTaskAssignee } from '@/components/comm
 import { useAppContext } from '@/components/providers/AppProvider';
 import { showError } from '@/lib/swal';
 import { formatDate } from '@/lib/dateUtils';
+import { isChildTask } from '@/lib/taskUtils';
 
 const COLUMNS = [
   {
@@ -123,7 +124,7 @@ export function KanbanBoardView({
                 colTasks.map((t) => {
                   const project = (projects || []).find((p) => p.id === t.projectId || p._id === t.projectId || p.code === t.projectId);
                   const assignee = t.assignedTo ? resolveUserObject(t.assigneeId || t.assignedTo, users) : null;
-                  const subtasks = tasks.filter((st) => st.parentId === t.id);
+                  const subtasks = tasks.filter((st) => isChildTask(st, t, tasks));
                   const isCompleted = isCompletedStatus ? isCompletedStatus(t.status) : t.status === 'Completed';
                   const completedSubtasks = subtasks.filter(s => isCompletedStatus ? isCompletedStatus(s.status) : s.status === 'Completed').length;
                   const progressPct = subtasks.length > 0 ? Math.round((completedSubtasks / subtasks.length) * 100) : 0;

@@ -41,6 +41,7 @@
     /* Prevent overscroll bounce on iOS/Android */
     overscroll-behavior: none;
   }
+
   body {
     @apply bg-[#f8fafc] text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
     /* Ensure body fills safely on notched devices */
@@ -52,7 +53,12 @@
   }
 
   /* Tap highlight removal for all interactive elements */
-  a, button, input, select, textarea, [role="button"] {
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  [role="button"] {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
   }
@@ -62,24 +68,31 @@
   .bg-brand {
     background-color: var(--brand-primary);
   }
+
   .bg-brand-light {
     background-color: var(--brand-light);
   }
+
   .bg-brand-subtle {
     background-color: var(--brand-subtle);
   }
+
   .text-brand {
     color: var(--brand-primary);
   }
+
   .text-brand-dark {
     color: var(--brand-hover);
   }
+
   .text-brand-text {
     color: var(--brand-text);
   }
+
   .border-brand {
     border-color: var(--brand-primary);
   }
+
   .border-brand-border {
     border-color: var(--brand-border);
   }
@@ -88,6 +101,7 @@
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+
   .pt-safe {
     padding-top: env(safe-area-inset-top, 0px);
   }
@@ -130,4 +144,147 @@
     /* Reset since OS handles the safe areas in standalone mode */
     padding-top: 0;
   }
+}
+
+/* ============================================================
+   Custom Enterprise SweetAlert2 Modal Theme
+   Replaces default oversized/plain Swal with modern enterprise UI
+   ============================================================ */
+.swal2-container {
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  background-color: rgba(15, 23, 42, 0.45) !important;
+  z-index: 99999 !important;
+}
+
+.dark .swal2-container {
+  background-color: rgba(2, 6, 23, 0.75) !important;
+}
+
+.swal2-popup.swal-enterprise-popup {
+  background: #ffffff !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  border-radius: 1.25rem !important;
+  padding: 1.5rem 1.75rem !important;
+  width: 92% !important;
+  max-width: 440px !important;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25) !important;
+  overflow: hidden !important;
+}
+
+.dark .swal2-popup.swal-enterprise-popup {
+  background: #0f172a !important;
+  border: 1px solid rgba(51, 65, 85, 0.7) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Hide default SweetAlert2 icons and raw titles completely */
+.swal-enterprise-popup .swal2-title {
+  display: none !important;
+}
+
+.swal-enterprise-popup .swal2-icon {
+  display: none !important;
+}
+
+.swal-enterprise-popup .swal2-html-container {
+  margin: 0 !important;
+  padding: 0 !important;
+  text-align: center !important;
+  overflow: visible !important;
+}
+
+/* Enterprise SweetAlert2 Input & Prompts */
+.swal-enterprise-popup .swal2-input,
+.swal2-input {
+  box-sizing: border-box !important;
+  height: 2.625rem !important;
+  padding: 0.5rem 1rem !important;
+  font-size: 0.8125rem !important;
+  font-family: monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas !important;
+  text-align: center !important;
+  border-radius: 0.75rem !important;
+  border: 1px solid rgba(203, 213, 225, 0.9) !important;
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+  max-width: 320px !important;
+  width: 90% !important;
+  margin: 1rem auto 0.25rem auto !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04) !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+.swal-enterprise-popup .swal2-input:focus,
+.swal2-input:focus {
+  border-color: #e11d48 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.15) !important;
+  background-color: #ffffff !important;
+}
+
+.dark .swal-enterprise-popup .swal2-input,
+.dark .swal2-input {
+  border-color: rgba(51, 65, 85, 0.9) !important;
+  background-color: #020617 !important;
+  color: #f8fafc !important;
+}
+
+.dark .swal-enterprise-popup .swal2-input:focus,
+.dark .swal2-input:focus {
+  background-color: #0b1120 !important;
+}
+
+/* SweetAlert2 Validation Message */
+.swal2-validation-message {
+  background: rgba(254, 242, 242, 0.95) !important;
+  color: #e11d48 !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  border-radius: 0.625rem !important;
+  padding: 0.5rem 0.75rem !important;
+  margin: 0.5rem auto 0 auto !important;
+  border: 1px solid rgba(254, 205, 211, 0.8) !important;
+  max-width: 320px !important;
+}
+
+.dark .swal2-validation-message {
+  background: rgba(69, 10, 10, 0.6) !important;
+  color: #fca5a5 !important;
+  border-color: rgba(153, 27, 27, 0.6) !important;
+}
+
+.swal-enterprise-popup .swal2-actions {
+  margin: 1.25rem 0 0 0 !important;
+  padding-top: 1rem !important;
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.625rem !important;
+  border-top: 1px solid rgba(241, 245, 249, 1) !important;
+}
+
+.dark .swal-enterprise-popup .swal2-actions {
+  border-top: 1px solid rgba(30, 41, 59, 0.8) !important;
+}
+
+.swal-enterprise-popup .swal2-timer-progress-bar {
+  background: #10b981 !important;
+  height: 3px !important;
+}
+
+@keyframes swalEnterpriseIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(10px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.swal2-popup.swal-enterprise-popup.swal2-show {
+  animation: swalEnterpriseIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
 }

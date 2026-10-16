@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Layers,
@@ -80,24 +80,35 @@ export function TemplatesView({ onSelectTemplateForCreation }) {
   const [selectedCategory, setSelectedCategory] = useUrlParam('category', 'ALL', false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Extract all categories dynamically from master categories + template usages
+  // Extract all categories strictly from Master > Template Categories in DB
   const categories = useMemo(() => {
-    const set = new Set();
-    (blueprintCategories || [])
-      .filter((c) => c.status === 'Active')
-      .forEach((c) => set.add(c.name));
-    templates.forEach((t) => {
-      if (t.category) set.add(t.category);
-    });
-    return ['ALL', ...Array.from(set)];
-  }, [templates, blueprintCategories]);
+    const list = (blueprintCategories || [])
+      .filter((c) => !c.status || c.status === 'Active')
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((c) => c.name)
+      .filter(Boolean);
+    return ['ALL', ...Array.from(new Set(list))];
+  }, [blueprintCategories]);
+
+  // Keep selectedCategory valid if categories change in DB
+  useEffect(() => {
+    if (selectedCategory !== 'ALL' && !categories.includes(selectedCategory)) {
+      setSelectedCategory('ALL');
+    }
+  }, [categories, selectedCategory, setSelectedCategory]);
 
   const filteredTemplates = useMemo(() => {
     return templates.filter((t) => {
-      if (selectedCategory !== 'ALL' && t.category !== selectedCategory) return false;
+      if (selectedCategory !== 'ALL') {
+        const matchesCategory =
+          t.category === selectedCategory ||
+          (selectedCategory === 'Web Development' && t.category === 'Website Development') ||
+          (selectedCategory === 'Website Development' && t.category === 'Web Development');
+        if (!matchesCategory) return false;
+      }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchesName = t.name.toLowerCase().includes(q);
+        const matchesName = t.name?.toLowerCase().includes(q);
         const matchesDesc = t.description?.toLowerCase().includes(q);
         const matchesCategory = t.category?.toLowerCase().includes(q);
         if (!matchesName && !matchesDesc && !matchesCategory) return false;
@@ -174,19 +185,28 @@ export function TemplatesView({ onSelectTemplateForCreation }) {
         {/* Filter Controls: Categories & Search */}
         <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-md border border-slate-200 dark:border-slate-700 overflow-x-auto">
-            {categories.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setSelectedCategory(c)}
-                className={`px-2.5 py-1 rounded-sm font-semibold transition-colors whitespace-nowrap text-xs ${selectedCategory === c
-                  ? 'bg-white dark:!bg-slate-900 text-brand dark:!text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
-              >
-                {c === 'ALL' ? 'All Templates' : c}
-              </button>
-            ))}
+            {categories.map((c) => {
+              const catObj = (blueprintCategories || []).find((cat) => cat.name === c);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setSelectedCategory(c)}
+                  className={`px-2.5 py-1 rounded-sm font-semibold transition-colors whitespace-nowrap text-xs flex items-center gap-1.5 ${selectedCategory === c
+                    ? 'bg-white dark:!bg-slate-900 text-brand dark:!text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    }`}
+                >
+                  {catObj?.color && c !== 'ALL' && (
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ backgroundColor: catObj.color }}
+                    />
+                  )}
+                  <span>{c === 'ALL' ? 'All Templates' : c}</span>
+                </button>
+              );
+            })}
           </div>
 
           <div className="relative w-full sm:w-60 shrink-0">
@@ -236,7 +256,9 @@ export function TemplatesView({ onSelectTemplateForCreation }) {
                     <div className="flex items-center gap-2">
                       <ProjectTypeBadge type={t.type} size="xs" />
                       {(() => {
-                        const catObj = (blueprintCategories || []).find((c) => c.name === t.category);
+                        const catObj = (blueprintCategories || []).find(
+                          (c) => c.name === t.category || (t.category === 'Website Development' && c.name === 'Web Development')
+                        );
                         const hex = catObj?.color || '#2563EB';
                         const isHex = hex.startsWith('#');
                         return (

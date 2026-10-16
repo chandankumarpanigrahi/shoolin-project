@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { randomInt } from 'crypto';
@@ -409,9 +410,12 @@ async function handleRequest(request, context) {
         const userAgent = request.headers.get('user-agent') || '';
         const { device } = parseDeviceInfo(userAgent);
 
+        const isFromTemplate = Boolean(created.templateName || created.templateId);
         await AuditLog.create({
-          action: 'PROJECT_CREATED',
-          details: `Project "${created.name || created.title}" (${created.code}) created`,
+          action: isFromTemplate ? 'TEMPLATE_SPRINT_LAUNCHED' : 'PROJECT_CREATED',
+          details: isFromTemplate
+            ? `Sprint "${created.name || created.title}" (${created.code}) launched from template "${created.templateName}" with ${created.tasksCount || 0} deliverables`
+            : `Project "${created.name || created.title}" (${created.code}) created`,
           module: 'PROJECTS',
           performedBy: actor?.name || 'Administrator',
           performedByEmail: actor?.email || '',
@@ -572,12 +576,110 @@ async function handleRequest(request, context) {
       }
       if (method === 'POST') {
         const body = await request.json();
+        const actor = await getActorFromRequest(request);
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        if (Array.isArray(body)) {
+          const count = await Task.countDocuments();
+
+          // Step 1: Pre-generate MongoDB ObjectIds and map client temporary IDs & task codes
+          const idMap = new Map();
+          const codeToIdMap = new Map();
+
+          const preparedDocs = body.map((item, idx) => {
+            const newId = (item._id && isObjectId(item._id))
+              ? new mongoose.Types.ObjectId(item._id)
+              : new mongoose.Types.ObjectId();
+            const newIdStr = newId.toString();
+
+            if (item.id) idMap.set(String(item.id), newIdStr);
+            if (item._id) idMap.set(String(item._id), newIdStr);
+
+            const taskCode = item.code || `TSK-${100 + count + idx + 1}`;
+            codeToIdMap.set(taskCode, newIdStr);
+
+            const startDate = item.startDate || item.fromDate || new Date().toISOString().split('T')[0];
+            const dueDate = item.dueDate || item.endDate || item.toDate || item.targetDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+
+            return {
+              ...item,
+              _id: newId,
+              code: taskCode,
+              startDate,
+              fromDate: startDate,
+              dueDate,
+              endDate: dueDate,
+              toDate: dueDate,
+              targetDate: dueDate,
+            };
+          });
+
+          // Step 2: Remap parentId to point to the resolved parent's real MongoDB ObjectId string
+          const docs = preparedDocs.map((doc) => {
+            let resolvedParentId = doc.parentId || null;
+            if (resolvedParentId) {
+              const strParent = String(resolvedParentId);
+              if (idMap.has(strParent)) {
+                resolvedParentId = idMap.get(strParent);
+              } else if (codeToIdMap.has(strParent)) {
+                resolvedParentId = codeToIdMap.get(strParent);
+              }
+            } else if (doc.parentCode && codeToIdMap.has(String(doc.parentCode))) {
+              resolvedParentId = codeToIdMap.get(String(doc.parentCode));
+            } else if (doc.code && doc.code.includes('.')) {
+              // Hierarchical dot code fallback: e.g. "PMV-299.1.1" -> parent is "PMV-299.1"
+              const parts = doc.code.split('.');
+              if (parts.length > 2) {
+                const parentCode = parts.slice(0, -1).join('.');
+                if (codeToIdMap.has(parentCode)) {
+                  resolvedParentId = codeToIdMap.get(parentCode);
+                }
+              }
+            }
+
+            return {
+              ...doc,
+              parentId: resolvedParentId,
+            };
+          });
+
+          const created = await Task.insertMany(docs);
+          const transformed = transformArr(created);
+          if (docs[0]?.projectId) {
+            const pId = docs[0].projectId;
+            const pConditions = [{ id: pId }, { code: pId }];
+            if (isObjectId(pId)) pConditions.unshift({ _id: pId });
+            await Project.findOneAndUpdate({ $or: pConditions }, { $inc: { tasksCount: created.length } });
+          }
+          await AuditLog.create({
+            action: 'TASKS_BATCH_CREATED',
+            details: `${created.length} deliverables created and synced for project ${docs[0]?.projectCode || docs[0]?.projectId || ''}`,
+            module: 'TASKS',
+            performedBy: actor?.name || 'Administrator',
+            performedByEmail: actor?.email || '',
+            performedByRole: actor?.role || 'Admin',
+            target: docs[0]?.projectCode || 'BULK',
+            device,
+            timestamp: new Date(),
+          });
+
+          await recordRealtimeEvent('task_created', docs[0]?.projectId || 'bulk', { count: created.length });
+          return NextResponse.json(transformed, { status: 201 });
+        }
+
         const count = await Task.countDocuments();
         const startDate = body.startDate || body.fromDate || new Date().toISOString().split('T')[0];
         const dueDate = body.dueDate || body.endDate || body.toDate || body.targetDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+        let singleParentId = body.parentId || null;
+        if (!singleParentId && body.parentCode) {
+          const parentDoc = await Task.findOne({ code: body.parentCode });
+          if (parentDoc) singleParentId = parentDoc._id.toString();
+        }
         const payload = {
           code: body.code || `TSK-${100 + count + 1}`,
           ...body,
+          parentId: singleParentId,
           startDate,
           fromDate: startDate,
           dueDate,
@@ -589,10 +691,6 @@ async function handleRequest(request, context) {
         if (created.projectId) {
           await Project.findByIdAndUpdate(created.projectId, { $inc: { tasksCount: 1 } });
         }
-
-        const actor = await getActorFromRequest(request);
-        const userAgent = request.headers.get('user-agent') || '';
-        const { device } = parseDeviceInfo(userAgent);
 
         await AuditLog.create({
           action: 'TASK_CREATED',
@@ -1746,20 +1844,7 @@ async function handleRequest(request, context) {
         return NextResponse.json({ success: true, id });
       }
     }
-
-    if (path === 'masters/template-categories' || path === 'template-categories') {
-      if (method === 'GET') {
-        const cats = await TemplateCategory.find().sort({ order: 1, name: 1 });
-        return NextResponse.json(transformArr(cats));
-      }
-      if (method === 'POST') {
-        const body = await request.json();
-        const created = await TemplateCategory.create(body);
-        const transformed = transform(created);
-        await recordRealtimeEvent('template_categories_updated', created._id, transformed);
-        return NextResponse.json(transformed, { status: 201 });
-      }
-    }
+    // MASTER TEMPLATE CATEGORIES moved to unified block at line ~2780
 
     if (path === 'roles' && method === 'GET') {
       const roles = await Role.find().sort({ name: 1 });
@@ -2792,7 +2877,7 @@ async function handleRequest(request, context) {
     // MASTER TEMPLATE / BLUEPRINT CATEGORIES
     if (path === 'masters/template-categories' || path === 'template-categories' || path === 'blueprint-categories') {
       if (method === 'GET') {
-        let docs = await TemplateCategory.find().sort({ order: 1, createdAt: 1 });
+        let docs = await TemplateCategory.find().sort({ order: 1, name: 1 });
         if (docs.length === 0) {
           const defaults = (DEFAULT_BLUEPRINT_CATEGORIES || []).map((cat, idx) => ({
             name: cat.name,
@@ -2812,6 +2897,7 @@ async function handleRequest(request, context) {
         const created = await TemplateCategory.create(body);
         const transformed = transform(created);
         await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', created._id.toString(), transformed);
+        await recordRealtimeEvent('template_categories_updated', created._id.toString(), transformed);
         return NextResponse.json(transformed, { status: 201 });
       }
     }
@@ -2827,6 +2913,7 @@ async function handleRequest(request, context) {
         if (!updated) return NextResponse.json({ error: 'Template category not found' }, { status: 404 });
         const transformed = transform(updated);
         await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', id, transformed);
+        await recordRealtimeEvent('template_categories_updated', id, transformed);
         return NextResponse.json(transformed);
       }
       if (method === 'DELETE') {
@@ -2834,6 +2921,7 @@ async function handleRequest(request, context) {
         if (isObjectId(id)) conditions.unshift({ _id: id });
         await TemplateCategory.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', id, { id });
+        await recordRealtimeEvent('template_categories_updated', id, { id });
         return NextResponse.json({ success: true, id });
       }
     }
@@ -2938,6 +3026,26 @@ async function handleRequest(request, context) {
         const created = await Template.create(body);
         const transformed = transform(created);
         await recordRealtimeEvent('template_created', created._id.toString(), transformed);
+
+        try {
+          const actor = await getActorFromRequest(request);
+          const userAgent = request.headers.get('user-agent') || '';
+          const { device } = parseDeviceInfo(userAgent);
+          await AuditLog.create({
+            action: 'TEMPLATE_CREATED',
+            details: `Template "${created.name}" created under category "${created.category || 'General'}"`,
+            module: 'TEMPLATES',
+            performedBy: actor?.name || 'Administrator',
+            performedByEmail: actor?.email || '',
+            performedByRole: actor?.role || 'Admin',
+            target: created.name,
+            device,
+            timestamp: new Date(),
+          });
+        } catch (auditErr) {
+          console.warn('AuditLog template create error:', auditErr);
+        }
+
         return NextResponse.json(transformed, { status: 201 });
       }
     }
@@ -2960,13 +3068,53 @@ async function handleRequest(request, context) {
         if (!updated) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
         const transformed = transform(updated);
         await recordRealtimeEvent('template_updated', id, transformed);
+
+        try {
+          const actor = await getActorFromRequest(request);
+          const userAgent = request.headers.get('user-agent') || '';
+          const { device } = parseDeviceInfo(userAgent);
+          await AuditLog.create({
+            action: 'TEMPLATE_UPDATED',
+            details: `Template "${updated.name}" updated`,
+            module: 'TEMPLATES',
+            performedBy: actor?.name || 'Administrator',
+            performedByEmail: actor?.email || '',
+            performedByRole: actor?.role || 'Admin',
+            target: updated.name,
+            device,
+            timestamp: new Date(),
+          });
+        } catch (auditErr) {
+          console.warn('AuditLog template update error:', auditErr);
+        }
+
         return NextResponse.json(transformed);
       }
       if (method === 'DELETE') {
         const conditions = [{ id }];
         if (isObjectId(id)) conditions.unshift({ _id: id });
-        await Template.findOneAndDelete({ $or: conditions });
+        const deleted = await Template.findOneAndDelete({ $or: conditions });
         await recordRealtimeEvent('template_deleted', id, { id });
+
+        try {
+          const actor = await getActorFromRequest(request);
+          const userAgent = request.headers.get('user-agent') || '';
+          const { device } = parseDeviceInfo(userAgent);
+          await AuditLog.create({
+            action: 'TEMPLATE_DELETED',
+            details: `Template "${deleted?.name || id}" deleted`,
+            module: 'TEMPLATES',
+            performedBy: actor?.name || 'Administrator',
+            performedByEmail: actor?.email || '',
+            performedByRole: actor?.role || 'Admin',
+            target: deleted?.name || id,
+            device,
+            timestamp: new Date(),
+          });
+        } catch (auditErr) {
+          console.warn('AuditLog template delete error:', auditErr);
+        }
+
         return NextResponse.json({ success: true, id });
       }
     }

@@ -37,14 +37,20 @@ export function getMaxTreeDepth(tree) {
 
 export function flattenTreeToTasks(tree, projectId, projectCode, defaultStart = '2026-09-15', defaultDue = '2026-10-30') {
   const result = [];
-  function traverse(nodes, parentId = null, codePrefix = projectCode, level = 1) {
+  let counter = 0;
+  const now = Date.now();
+
+  function traverse(nodes, parentId = null, codePrefix = projectCode, level = 0) {
     nodes.forEach((node, index) => {
-      const taskId = `task-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      counter++;
+      const taskId = `task-${now}-${counter}-${Math.floor(1000 + Math.random() * 9000)}`;
       const taskCode = `${codePrefix}.${index + 1}`;
+      const isRoot = codePrefix === projectCode;
       const taskObj = {
         id: taskId,
         projectId: projectId,
         code: taskCode,
+        parentCode: isRoot ? null : codePrefix,
         title: node.title,
         parentId: parentId,
         level: level,

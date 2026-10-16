@@ -146,7 +146,8 @@ export function MastersView() {
     handleAddRole,
     handleUpdateRole,
     handleDeleteRole: contextHandleDeleteRole,
-    templates
+    templates,
+    handleUpdateTemplate
   } = useAppContext();
 
   const canViewAccessControl = currentUser?.role === 'Super Admin' || (can ? can('access_control.view') : true);
@@ -840,14 +841,25 @@ export function MastersView() {
     if (!blueprintCatForm.name.trim()) return;
 
     if (editingBlueprintCat) {
+      const oldCatName = editingBlueprintCat.name;
+      const newCatName = blueprintCatForm.name.trim();
       const updated = {
         ...editingBlueprintCat,
         ...blueprintCatForm,
-        name: blueprintCatForm.name.trim(),
+        name: newCatName,
         code: (blueprintCatForm.code.trim() || blueprintCatForm.name.trim().slice(0, 4)).toUpperCase(),
         description: blueprintCatForm.description.trim()
       };
       if (handleUpdateBlueprintCategory) handleUpdateBlueprintCategory(updated);
+
+      // Cascade update templates if category name was changed
+      if (oldCatName && newCatName && oldCatName !== newCatName) {
+        (templates || []).forEach((t) => {
+          if (t.category === oldCatName && handleUpdateTemplate) {
+            handleUpdateTemplate({ ...t, category: newCatName });
+          }
+        });
+      }
     } else {
       const newCat = {
         id: 'bcat-' + Date.now(),
@@ -883,7 +895,7 @@ export function MastersView() {
       confirmButtonText: 'Yes, Remove Category',
     });
     if (confirmed) {
-      if (handleDeleteBlueprintCategory) handleDeleteBlueprintCategory(c.id);
+      if (handleDeleteBlueprintCategory) handleDeleteBlueprintCategory(c.id || c._id);
     }
   };
 

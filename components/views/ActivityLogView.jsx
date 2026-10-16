@@ -25,7 +25,8 @@ import {
   Trash2,
   Video,
   CheckSquare,
-  FolderGit2
+  FolderGit2,
+  Layers
 } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppProvider';
 import { UserAvatar } from '@/components/common/UserAvatar';
@@ -33,12 +34,13 @@ import { RoleBadge } from '@/components/common/Badges';
 import { api } from '@/lib/api';
 import { showConfirm, showSuccess, showError } from '@/lib/swal';
 import { formatDate, formatDateTime } from '@/lib/dateUtils';
+import { useUrlTab } from '@/hooks/useUrlState';
 
 export function ActivityLogView() {
   const { currentUser } = useAppContext();
 
-  // Active Tab: 'sessions' | 'audit'
-  const [activeTab, setActiveTab] = useState('sessions');
+  // Active Tab: 'audit' | 'sessions' (default to 'audit' for Activity Log)
+  const [activeTab, setActiveTab] = useUrlTab('tab', 'audit', ['audit', 'sessions']);
 
   // Sessions state
   const [sessions, setSessions] = useState([]);
@@ -300,16 +302,9 @@ export function ActivityLogView() {
     });
   }, [nonSuperAdminSessions, sessionFilter, sessionSearch]);
 
-  // Filtered Audit Logs (hiding Super Admin activity)
+  // Filtered Audit Logs (Full system visibility)
   const filteredAuditLogs = useMemo(() => {
     return auditLogs.filter((log) => {
-      const isSuperAdmin =
-        log.performedByRole === 'Super Admin' ||
-        log.performedByRole === 'super_admin' ||
-        log.performedByEmail?.toLowerCase() === 'admin@shoolin.co.uk' ||
-        log.performedBy?.toLowerCase() === 'admin shoolin';
-      if (isSuperAdmin) return false;
-
       const matchModule = auditModuleFilter === 'ALL' || log.module === auditModuleFilter;
       const q = auditSearch.toLowerCase().trim();
       const matchQuery =
@@ -688,7 +683,7 @@ export function ActivityLogView() {
             </div>
 
             <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
-              {['ALL', 'AUTH', 'SESSION', 'SECURITY', 'USER_MGMT', 'PROJECTS', 'TASKS', 'MEETINGS', 'RBAC'].map((mod) => (
+              {['ALL', 'PROJECTS', 'TASKS', 'TEMPLATES', 'AUTH', 'SESSION', 'SECURITY', 'USER_MGMT', 'MEETINGS', 'RBAC'].map((mod) => (
                 <button
                   key={mod}
                   type="button"
@@ -748,6 +743,7 @@ export function ActivityLogView() {
                       const isMeeting = log.module === 'MEETINGS';
                       const isTask = log.module === 'TASKS';
                       const isProject = log.module === 'PROJECTS';
+                      const isTemplate = log.module === 'TEMPLATES';
                       const isUser = log.module === 'USER_MGMT';
 
                       return (
@@ -766,6 +762,8 @@ export function ActivityLogView() {
                                 <CheckSquare className="w-3.5 h-3.5 text-teal-500" />
                               ) : isProject ? (
                                 <FolderGit2 className="w-3.5 h-3.5 text-blue-500" />
+                              ) : isTemplate ? (
+                                <Layers className="w-3.5 h-3.5 text-brand" />
                               ) : isUser ? (
                                 <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
                               ) : (

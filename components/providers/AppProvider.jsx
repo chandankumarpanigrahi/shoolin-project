@@ -9,7 +9,7 @@ import { USERS as INITIAL_USERS } from '@/data/users';
 import { INITIAL_MEETINGS } from '@/data/meetings';
 import { INITIAL_DEPENDENCIES } from '@/data/dependencies';
 import { INITIAL_LINKS } from '@/data/links';
-import { TEMPLATES as INITIAL_TEMPLATES, flattenTreeToTasks, DEFAULT_BLUEPRINT_CATEGORIES } from '@/data/templates';
+import { TEMPLATES as INITIAL_TEMPLATES, flattenTreeToTasks, countTreeNodes, DEFAULT_BLUEPRINT_CATEGORIES } from '@/data/templates';
 import { DEFAULT_MASTER_STATUSES, isCompletedStatus as isCompletedStatusHelper } from '@/data/statuses';
 import {
   INITIAL_ROLES,
@@ -182,7 +182,18 @@ export function AppProvider({ children }) {
   };
 
   const [editingTemplate, setEditingTemplate] = useState(null);
-  const [blueprintCategories, setBlueprintCategories] = useState(DEFAULT_BLUEPRINT_CATEGORIES);
+  const [blueprintCategories, setBlueprintCategories] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('pulsepm_master_template_categories');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {}
+      }
+    }
+    return DEFAULT_BLUEPRINT_CATEGORIES;
+  });
   const [masterStatuses, setMasterStatuses] = useState(DEFAULT_MASTER_STATUSES);
   const [masterLinkCategories, setMasterLinkCategories] = useState([]);
   const [masterBrands, setMasterBrands] = useState(() => {
@@ -334,7 +345,13 @@ export function AppProvider({ children }) {
   const handleAddBlueprintCategory = async (catData) => {
     try {
       const created = await api.masters.createCategory(catData);
-      setBlueprintCategories((prev) => [...prev, created]);
+      setBlueprintCategories((prev) => {
+        const next = [...prev, created];
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('pulsepm_master_template_categories', JSON.stringify(next)); } catch (e) {}
+        }
+        return next;
+      });
       broadcastLocalEvent('TEMPLATE_CATEGORIES_UPDATED', created);
       showSuccess(`Category "${created.name}" created and synced to DB.`);
       return created;
@@ -348,9 +365,13 @@ export function AppProvider({ children }) {
       const id = typeof idOrObj === 'object' ? idOrObj.id || idOrObj._id || idOrObj.name : idOrObj;
       const payload = typeof idOrObj === 'object' ? idOrObj : updates;
       const updated = await api.masters.updateCategory(id, payload);
-      setBlueprintCategories((prev) =>
-        prev.map((c) => (c.id === id || c._id === id || c.name === id ? { ...c, ...updated } : c))
-      );
+      setBlueprintCategories((prev) => {
+        const next = prev.map((c) => (c.id === id || c._id === id || c.name === id ? { ...c, ...updated } : c));
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('pulsepm_master_template_categories', JSON.stringify(next)); } catch (e) {}
+        }
+        return next;
+      });
       broadcastLocalEvent('TEMPLATE_CATEGORIES_UPDATED', updated);
       showSuccess(`Category "${updated.name || id}" updated in DB.`);
       return updated;
@@ -362,7 +383,13 @@ export function AppProvider({ children }) {
   const handleDeleteBlueprintCategory = async (id) => {
     try {
       await api.masters.deleteCategory(id);
-      setBlueprintCategories((prev) => prev.filter((c) => c.id !== id && c._id !== id && c.name !== id));
+      setBlueprintCategories((prev) => {
+        const next = prev.filter((c) => c.id !== id && c._id !== id && c.name !== id);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('pulsepm_master_template_categories', JSON.stringify(next)); } catch (e) {}
+        }
+        return next;
+      });
       broadcastLocalEvent('TEMPLATE_CATEGORIES_UPDATED', { id });
       showSuccess('Template category removed from DB.');
     } catch (err) {
@@ -372,6 +399,9 @@ export function AppProvider({ children }) {
 
   const saveBlueprintCategories = (items) => {
     setBlueprintCategories(items);
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem('pulsepm_master_template_categories', JSON.stringify(items)); } catch (e) {}
+    }
   };
 
   const handleAddLinkCategory = async (catData) => {
@@ -707,7 +737,10 @@ export function AppProvider({ children }) {
           }
           if (Array.isArray(dbDepartments) && dbDepartments.length > 0) setMasterDepartments(dbDepartments);
           if (Array.isArray(dbRoles) && dbRoles.length > 0) setRolesList(dbRoles);
-          if (Array.isArray(dbTemplateCategories) && dbTemplateCategories.length > 0) setBlueprintCategories(dbTemplateCategories);
+          if (Array.isArray(dbTemplateCategories) && dbTemplateCategories.length > 0) {
+            setBlueprintCategories(dbTemplateCategories);
+            try { localStorage.setItem('pulsepm_master_template_categories', JSON.stringify(dbTemplateCategories)); } catch (e) {}
+          }
           if (Array.isArray(dbLinkCategories) && dbLinkCategories.length > 0) setMasterLinkCategories(dbLinkCategories);
           if (dbRbacMatrix && typeof dbRbacMatrix === 'object' && Object.keys(dbRbacMatrix).length > 0) {
             setRolePermissions(dbRbacMatrix);
@@ -720,6 +753,9 @@ export function AppProvider({ children }) {
           }
           if (Array.isArray(dbNotifications)) {
             setNotifications(dbNotifications);
+          }
+          if (Array.isArray(normalizedProjects) && normalizedProjects.length > 0) {
+            checkAndRenewRecurringProjects(normalizedProjects, dbTemplates || []);
           }
         } catch (e) {
           console.warn('MongoDB connection fallback to local cache:', e);
@@ -921,7 +957,17 @@ export function AppProvider({ children }) {
 
       const unsubTemplateCategories = subscribeToRealtimeEvent('TEMPLATE_CATEGORIES_UPDATED', async () => {
         const fresh = await api.masters.getCategories().catch(() => null);
-        if (Array.isArray(fresh)) setBlueprintCategories(fresh);
+        if (Array.isArray(fresh)) {
+          setBlueprintCategories(fresh);
+          try { localStorage.setItem('pulsepm_master_template_categories', JSON.stringify(fresh)); } catch (e) {}
+        }
+      });
+      const unsubTemplateCategoriesLower = subscribeToRealtimeEvent('template_categories_updated', async () => {
+        const fresh = await api.masters.getCategories().catch(() => null);
+        if (Array.isArray(fresh)) {
+          setBlueprintCategories(fresh);
+          try { localStorage.setItem('pulsepm_master_template_categories', JSON.stringify(fresh)); } catch (e) {}
+        }
       });
 
       const unsubLinkCategories = subscribeToRealtimeEvent('LINK_CATEGORIES_UPDATED', async () => {
@@ -961,6 +1007,9 @@ export function AppProvider({ children }) {
           else if (e.key === 'pulsepm_live_dependencies') setDependenciesState(JSON.parse(e.newValue));
           else if (e.key === 'pulsepm_live_links') setLinksState(JSON.parse(e.newValue));
           else if (e.key === 'pulsepm_live_templates') setTemplatesState(JSON.parse(e.newValue));
+          else if (e.key === 'pulsepm_master_template_categories') {
+            try { setBlueprintCategories(JSON.parse(e.newValue)); } catch (err) {}
+          }
           else if (e.key === 'pulsepm_is_authenticated') setIsAuthenticated(e.newValue === 'true');
           else if (e.key === 'pulsepm_session_terminated_broadcast') {
             const data = JSON.parse(e.newValue);
@@ -1003,6 +1052,7 @@ export function AppProvider({ children }) {
         unsubMasterDepartments();
         unsubMasterStatuses();
         unsubTemplateCategories();
+        unsubTemplateCategoriesLower();
         unsubLinkCategories();
         unsubRoles();
         unsubRbacMatrix();
@@ -2055,20 +2105,259 @@ export function AppProvider({ children }) {
     setIsTemplateWorkflowOpen(true);
   };
 
-  const handleCreateProjectFromTemplate = (newProj, template = null) => {
-    setProjects([newProj, ...projects]);
-    const sourceTemplate = template || selectedTemplateForWorkflow;
-    if (sourceTemplate?.tasksTree && sourceTemplate.tasksTree.length > 0) {
-      const generatedTasks = flattenTreeToTasks(
-        sourceTemplate.tasksTree,
-        newProj.id,
-        newProj.code,
-        newProj.defaultStartDate || '2026-09-15',
-        newProj.defaultDueDate || '2026-10-30'
-      );
-      setTasks((prev) => [...generatedTasks, ...prev]);
+  // Recurring Sprint Auto-Renewal Engine
+  // Automatically creates a fresh project cycle with the latest template updates, same project, and same assigned team members
+  const checkAndRenewRecurringProjects = async (activeProjectsList = null, activeTemplatesList = null) => {
+    const projs = activeProjectsList || projects;
+    const tmpls = activeTemplatesList || templates;
+    if (!Array.isArray(projs) || projs.length === 0) return;
+
+    const todayIso = new Date().toISOString().split('T')[0];
+    const recurringProjects = projs.filter(
+      (p) =>
+        p.type === 'recurring' &&
+        p.recurringConfig &&
+        p.recurringConfig.autoRenew !== false &&
+        !p.isDeleted &&
+        p.status !== 'Deleted'
+    );
+
+    for (const p of recurringProjects) {
+      const cfg = p.recurringConfig;
+      if (!cfg.nextCycleDate) continue;
+
+      if (cfg.nextCycleDate <= todayIso) {
+        const nextCycleDateObj = new Date(cfg.nextCycleDate);
+        const cycleMonthYear = nextCycleDateObj.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+        const alreadyExists = projs.some(
+          (other) =>
+            other.id !== p.id &&
+            other.brand === p.brand &&
+            (other.name?.includes(cycleMonthYear) || other.recurringConfig?.currentCycle === cycleMonthYear)
+        );
+
+        const dayNum = cfg.monthlyDay || 1;
+        const followingMonthDate = new Date(nextCycleDateObj.getFullYear(), nextCycleDateObj.getMonth() + 1, dayNum);
+        const followingCycleDateIso = followingMonthDate.toISOString().split('T')[0];
+
+        try {
+          await api.projects.update(p.id || p._id, {
+            recurringConfig: {
+              ...cfg,
+              nextCycleDate: followingCycleDateIso,
+            }
+          });
+
+          setProjects((prev) =>
+            prev.map((proj) =>
+              proj.id === p.id || proj._id === p._id
+                ? { ...proj, recurringConfig: { ...proj.recurringConfig, nextCycleDate: followingCycleDateIso } }
+                : proj
+            )
+          );
+        } catch (e) {
+          console.error('Failed to bump recurring cycle date on parent project:', e);
+        }
+
+        if (!alreadyExists) {
+          const freshTemplate =
+            tmpls.find((t) => (t.id && t.id === cfg.templateId) || (t._id && t._id === cfg.templateId) || t.name === cfg.templateName) ||
+            tmpls[0];
+
+          if (freshTemplate) {
+            const masterProjName = cfg.masterProjectName || p.client || p.name;
+            const newProjectName = `${masterProjName} - ${freshTemplate.name} (${cycleMonthYear})`;
+            const newCodePrefix = (p.brand || 'PRJ').toUpperCase().slice(0, 4);
+
+            const newProjPayload = {
+              id: 'proj-' + Date.now(),
+              code: `${newCodePrefix}-${Math.floor(100 + Math.random() * 900)}`,
+              name: newProjectName,
+              client: masterProjName,
+              brand: p.brand || 'PRJ',
+              color: p.color || '#2563EB',
+              type: 'recurring',
+              category: freshTemplate.category || p.category || 'Web Development',
+              owner: p.owner,
+              ownerId: p.ownerId || p.owner,
+              manager: p.manager,
+              managerId: p.managerId || p.manager,
+              team: cfg.assignedMemberIds || p.team || [],
+              teamIds: cfg.assignedMemberIds || p.teamIds || p.team || [],
+              progress: 0,
+              status: 'In Progress',
+              priority: 'High',
+              description: freshTemplate.description || `Automated recurring sprint cycle for ${cycleMonthYear}`,
+              templateId: freshTemplate.id || freshTemplate._id,
+              templateName: freshTemplate.name,
+              tasksCount: freshTemplate.tasksTree ? countTreeNodes(freshTemplate.tasksTree) : (freshTemplate.tasksCount || 10),
+              completedTasksCount: 0,
+              recurringConfig: {
+                ...cfg,
+                currentCycle: cycleMonthYear,
+                nextCycleDate: followingCycleDateIso,
+                autoRenew: true,
+              }
+            };
+
+            try {
+              const createdProj = await api.projects.create(newProjPayload);
+              const projItem = createdProj || newProjPayload;
+
+              setProjects((prev) => [projItem, ...prev]);
+              broadcastLocalEvent('project_created', projItem);
+
+              if (freshTemplate.tasksTree && freshTemplate.tasksTree.length > 0) {
+                const defaultStart = new Date().toISOString().split('T')[0];
+                const defaultDue = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+                const rawTasks = flattenTreeToTasks(
+                  freshTemplate.tasksTree,
+                  projItem.id || projItem._id,
+                  projItem.code,
+                  defaultStart,
+                  defaultDue
+                );
+                const assignedTeam = projItem.teamIds || projItem.team || [];
+                const tasksWithAssignees = rawTasks.map((t, idx) => ({
+                  ...t,
+                  projectId: projItem.id || projItem._id,
+                  projectCode: projItem.code,
+                  assignees: assignedTeam,
+                  assigneeId: assignedTeam.length > 0 ? assignedTeam[idx % assignedTeam.length] : null,
+                }));
+
+                const savedTasks = await api.tasks.create(tasksWithAssignees).catch(() => tasksWithAssignees);
+                const taskArr = Array.isArray(savedTasks) ? savedTasks : tasksWithAssignees;
+                setTasks((prev) => [...taskArr, ...prev]);
+                broadcastLocalEvent('task_created', taskArr[0] || {});
+              }
+            } catch (err) {
+              console.error('Auto-renewal project creation failed:', err);
+            }
+          }
+        }
+      }
     }
-    handleSelectProject(newProj);
+  };
+
+  const handleToggleProjectAutoRenew = async (projectId) => {
+    const proj = projects.find((p) => p.id === projectId || p._id === projectId);
+    if (!proj || proj.type !== 'recurring') return;
+
+    const currentAutoRenew = proj.recurringConfig?.autoRenew !== false;
+    const nextAutoRenew = !currentAutoRenew;
+
+    const updatedConfig = {
+      ...(proj.recurringConfig || {}),
+      autoRenew: nextAutoRenew,
+    };
+
+    try {
+      await api.projects.update(projectId, { recurringConfig: updatedConfig });
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId || p._id === projectId ? { ...p, recurringConfig: updatedConfig } : p))
+      );
+      broadcastLocalEvent('project_updated', { ...proj, recurringConfig: updatedConfig });
+
+      try {
+        await api.auditLogs.create({
+          action: nextAutoRenew ? 'PROJECT_AUTO_RENEW_RESUMED' : 'PROJECT_AUTO_RENEW_PAUSED',
+          details: `Recurring sprint auto-renewal ${nextAutoRenew ? 'resumed' : 'paused'} for project "${proj.name || proj.title}" (${proj.code})`,
+          module: 'PROJECTS',
+          performedBy: currentUser?.name || 'Administrator',
+          performedByEmail: currentUser?.email || '',
+          performedByRole: currentUser?.role || 'Admin',
+          target: proj.code,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (logErr) {
+        console.warn('Audit log for auto renew toggle failed:', logErr);
+      }
+
+      showSuccess(
+        nextAutoRenew ? 'Auto-Renewal Resumed' : 'Auto-Renewal Paused',
+        nextAutoRenew
+          ? 'Next month sprint will automatically renew on cycle date.'
+          : 'Automatic template renewal paused for next month by administrator.'
+      );
+    } catch (err) {
+      showError('Failed to update renewal status: ' + err.message);
+    }
+  };
+
+  const handleCreateProjectFromTemplate = async (newProj, template = null) => {
+    try {
+      // 1. Create project in MongoDB
+      const createdProject = await api.projects.create(newProj);
+      const projItem = createdProject
+        ? {
+            ...createdProject,
+            id: createdProject.id || createdProject._id,
+            ownerId: createdProject.ownerId || createdProject.owner,
+            owner: createdProject.ownerId || createdProject.owner,
+            managerId: createdProject.managerId || createdProject.manager,
+            manager: createdProject.managerId || createdProject.manager,
+            teamIds: createdProject.teamIds || createdProject.team || [],
+            team: createdProject.teamIds || createdProject.team || [],
+          }
+        : newProj;
+
+      setProjects((prev) => [projItem, ...prev.filter((p) => p.id !== projItem.id && p._id !== projItem.id)]);
+      broadcastLocalEvent('project_created', projItem);
+
+      // 2. Generate and batch-save tasks from the template hierarchy
+      const sourceTemplate = template || selectedTemplateForWorkflow;
+      let generatedTasks = [];
+      if (sourceTemplate?.tasksTree && sourceTemplate.tasksTree.length > 0) {
+        const defaultStart = new Date().toISOString().split('T')[0];
+        const defaultDue = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+        const rawTasks = flattenTreeToTasks(
+          sourceTemplate.tasksTree,
+          projItem.id || projItem._id,
+          projItem.code,
+          defaultStart,
+          defaultDue
+        );
+
+        const assignedTeam = (projItem.teamIds || projItem.team || []).filter(Boolean);
+        const validUsersList = users || [];
+        const filteredAssignedTeam = assignedTeam.filter((uid) =>
+          validUsersList.some((u) => (u.id && u.id === uid) || (u._id && u._id === uid))
+        );
+        const finalAssignees = filteredAssignedTeam.length > 0 ? filteredAssignedTeam : assignedTeam;
+
+        const tasksWithAssignees = rawTasks.map((t, idx) => ({
+          ...t,
+          projectId: projItem.id || projItem._id,
+          projectCode: projItem.code,
+          assignees: finalAssignees,
+          assigneeId: finalAssignees.length > 0 ? finalAssignees[idx % finalAssignees.length] : null,
+        }));
+
+        try {
+          const savedTasks = await api.tasks.create(tasksWithAssignees);
+          generatedTasks = Array.isArray(savedTasks) ? savedTasks : tasksWithAssignees;
+        } catch (taskErr) {
+          console.error('Failed to batch save template tasks in DB:', taskErr);
+          generatedTasks = tasksWithAssignees;
+        }
+
+        setTasks((prev) => [...generatedTasks, ...prev]);
+        broadcastLocalEvent('task_created', generatedTasks[0] || {});
+      }
+
+      handleSelectProject(projItem);
+      showSuccess(
+        'Sprint Launched!',
+        `Project "${projItem.name}" and ${generatedTasks.length} deliverables have been created and synced.`
+      );
+      return projItem;
+    } catch (err) {
+      console.error('Failed to instantiate project from template:', err);
+      showError('Failed to instantiate project: ' + err.message);
+      throw err;
+    }
   };
 
   const handleAddTemplate = async (newTmpl) => {
@@ -2700,6 +2989,8 @@ export function AppProvider({ children }) {
     handleDeleteLink,
     handleOpenCreateFromTemplate,
     handleCreateProjectFromTemplate,
+    handleToggleProjectAutoRenew,
+    checkAndRenewRecurringProjects,
     handleAddTemplate,
     handleUpdateTemplate,
     handleDeleteTemplate,

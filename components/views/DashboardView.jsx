@@ -19,8 +19,7 @@ import {
 } from 'lucide-react';
 import { StatusBadge, PriorityBadge, ProjectTypeBadge } from '@/components/common/Badges';
 import { UserAvatar, AvatarGroup, resolveUserObject } from '@/components/common/UserAvatar';
-import { showConfirm, showSuccess, showError } from '@/lib/swal';
-import Swal from 'sweetalert2';
+import { showConfirm, showSuccess, showError, showPrompt } from '@/lib/swal';
 import { formatDate } from '@/lib/dateUtils';
 
 export function DashboardView({
@@ -229,18 +228,13 @@ export function DashboardView({
   };
 
   const handleDashboardDecline = async (m) => {
-    const isDark = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
-    const { value: reason } = await Swal.fire({
+    const reason = await showPrompt({
       title: 'Decline Meeting Sync',
       text: `Provide a reason for declining "${m.title}":`,
-      input: 'text',
-      inputPlaceholder: 'e.g. Schedule conflict...',
-      showCancelButton: true,
+      placeholder: 'e.g. Schedule conflict, client rescheduled...',
       confirmButtonText: 'Decline Sync',
       cancelButtonText: 'Cancel',
-      confirmButtonColor: '#e11d48',
-      background: isDark ? '#0f172a' : '#ffffff',
-      color: isDark ? '#f8fafc' : '#0f172a',
+      isDanger: true,
     });
 
     if (reason !== undefined) {
