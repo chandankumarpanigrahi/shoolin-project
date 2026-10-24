@@ -10,7 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@serwist/next": "^9.4.1",
+    "@serwist/next": "^8.4.4",
     "@thesvg/react": "^3.3.6",
     "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.3",
@@ -34,7 +34,6 @@
     "tailwindcss": "^4.3.3"
   },
   "overrides": {
-    "glob": "^13.0.0",
     "browserslist": "^4.29.3",
     "braces": "^3.0.3"
   }
