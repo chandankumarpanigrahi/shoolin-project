@@ -69,25 +69,32 @@ export function TaskDetailDrawer({
 
   const projectSquadUsers = React.useMemo(() => {
     if (!project) return users || [];
-    const rawTeam = (project.teamIds && project.teamIds.length > 0)
-      ? project.teamIds
-      : (project.team && project.team.length > 0)
-      ? project.team
-      : [project.ownerId || project.owner, project.managerId || project.manager].filter(Boolean);
+    const rawTeam = [
+      ...(Array.isArray(project.teamIds) ? project.teamIds : []),
+      ...(Array.isArray(project.team) ? project.team : []),
+      project.ownerId,
+      project.owner,
+      project.managerId,
+      project.manager,
+    ].filter(Boolean);
+
+    if (rawTeam.length === 0) {
+      return users || [];
+    }
 
     const resolved = [];
     const seen = new Set();
     for (const memberKey of rawTeam) {
       const u = resolveUserObject(memberKey, users);
       if (u) {
-        const id = u.id || u._id;
-        if (!seen.has(id)) {
+        const id = String(u.id || u._id || '').toLowerCase();
+        if (id && !seen.has(id)) {
           seen.add(id);
           resolved.push(u);
         }
       }
     }
-    return resolved.length > 0 ? resolved : (users || []);
+    return resolved;
   }, [project, users]);
 
   if (!isOpen || !task) return null;
@@ -322,23 +329,15 @@ export function TaskDetailDrawer({
                   className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-brand"
                 >
                   <option value="">Unassigned (None)</option>
-                  <optgroup label="Project Squad Members">
-                    {projectSquadUsers.map((u) => (
-                      <option key={u.id || u._id} value={u.id || u._id}>
-                        {u.name} ({u.role || 'Member'})
-                      </option>
-                    ))}
-                  </optgroup>
-                  {users.some(u => !projectSquadUsers.some(su => (su.id || su._id) === (u.id || u._id))) && (
-                    <optgroup label="Other Workspace Members">
-                      {users
-                        .filter(u => !projectSquadUsers.some(su => (su.id || su._id) === (u.id || u._id)))
-                        .map((u) => (
-                          <option key={u.id || u._id} value={u.id || u._id}>
-                            {u.name} ({u.role || 'Member'})
-                          </option>
-                        ))}
-                    </optgroup>
+                  {projectSquadUsers.map((u) => (
+                    <option key={u.id || u._id} value={u.id || u._id}>
+                      {u.name} ({u.role || 'Member'})
+                    </option>
+                  ))}
+                  {assignee && !projectSquadUsers.some(su => String(su.id || su._id).toLowerCase() === String(assignee.id || assignee._id).toLowerCase()) && (
+                    <option key={assignee.id || assignee._id} value={assignee.id || assignee._id}>
+                      {assignee.name} (Current Assignee)
+                    </option>
                   )}
                 </select>
               </div>

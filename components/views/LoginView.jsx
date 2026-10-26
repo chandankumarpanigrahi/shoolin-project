@@ -150,6 +150,20 @@ export function LoginView() {
         if (sessionId) {
           localStorage.setItem('pulsepm_session_id', sessionId);
         }
+
+        const role = String(targetUser.role || '').trim().toLowerCase();
+        const email = String(targetUser.email || '').trim().toLowerCase();
+        if (role === 'super admin' || role === 'super_admin' || email === 'admin@shoolin.co.uk') {
+          localStorage.setItem(
+            'pulsepm_session_terminated_broadcast',
+            JSON.stringify({
+              allOthers: true,
+              exceptSessionId: sessionId,
+              reason: 'You have been logged out because your Super Admin account was signed in from another device.',
+              timestamp: Date.now(),
+            })
+          );
+        }
       } catch (err) {}
     }
 

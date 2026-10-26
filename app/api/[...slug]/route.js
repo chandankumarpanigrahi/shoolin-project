@@ -94,7 +94,11 @@ const getAuthenticatedUser = async (request) => {
   if (sessionId) {
     const liveSession = await Session.findOne({ sessionId });
     if (liveSession && (liveSession.status === 'Terminated' || liveSession.status === 'Expired' || (liveSession.expiresAt && new Date() > new Date(liveSession.expiresAt)))) {
-      const error = new Error('Your session has been terminated by an administrator.');
+      const msg = liveSession.terminationReason ||
+        (liveSession.terminatedBy === 'System (Single Device Policy)'
+          ? 'You have been logged out because your Super Admin account was signed in from another device.'
+          : 'Your session has been terminated by an administrator.');
+      const error = new Error(msg);
       error.status = 401;
       error.active = false;
       error.sessionStatus = liveSession?.status || 'Terminated';
@@ -347,8 +351,12 @@ async function handleRequest(request, context) {
     if (checkSessionId && !isPublicAuthRoute) {
       const liveSession = await Session.findOne({ sessionId: checkSessionId });
       if (liveSession && (liveSession.status === 'Terminated' || liveSession.status === 'Expired' || new Date() > new Date(liveSession.expiresAt))) {
+        const msg = liveSession.terminationReason ||
+          (liveSession.terminatedBy === 'System (Single Device Policy)'
+            ? 'You have been logged out because your Super Admin account was signed in from another device.'
+            : 'Your session has been terminated by an administrator.');
         return NextResponse.json(
-          { active: false, status: liveSession.status, message: 'Your session has been terminated by an administrator.' },
+          { active: false, status: liveSession.status, message: msg },
           { status: 401 }
         );
       }
@@ -2217,8 +2225,12 @@ async function handleRequest(request, context) {
 
       const session = await Session.findOne({ sessionId });
       if (!session || session.status === 'Terminated' || session.status === 'Expired' || new Date() > new Date(session.expiresAt)) {
+        const msg = session?.terminationReason ||
+          (session?.terminatedBy === 'System (Single Device Policy)'
+            ? 'You have been logged out because your Super Admin account was signed in from another device.'
+            : 'Your session was terminated or has expired.');
         return NextResponse.json(
-          { active: false, status: session?.status || 'NotFound', message: 'Your session was terminated or has expired.' },
+          { active: false, status: session?.status || 'NotFound', message: msg },
           { status: 401 }
         );
       }
@@ -2351,6 +2363,68 @@ async function handleRequest(request, context) {
         device,
         timestamp: new Date(),
       });
+
+      // STRICT SINGLE-DEVICE LOGIN POLICY: EXCLUSIVELY FOR SUPER ADMIN
+      // Other roles retain multi-device/multi-session capability without change.
+      const isSuperAdmin =
+        user.role === 'Super Admin' ||
+        user.role === 'super_admin' ||
+        String(user.email || '').trim().toLowerCase() === adminEmail;
+
+      if (isSuperAdmin) {
+        try {
+          const prevSessions = await Session.find({
+            $or: [
+              { userId: user._id },
+              { userEmail: new RegExp(`^${escapeRegex(user.email)}$`, 'i') },
+              { userRole: { $in: ['Super Admin', 'super_admin'] } },
+            ],
+            sessionId: { $ne: sessionId },
+            status: 'Active',
+          });
+
+          if (prevSessions.length > 0) {
+            const prevIds = prevSessions.map((s) => s._id);
+            const prevSessionIds = prevSessions.map((s) => s.sessionId);
+
+            await Session.updateMany(
+              { _id: { $in: prevIds } },
+              {
+                status: 'Terminated',
+                terminatedAt: new Date(),
+                terminationReason: 'You have been logged out because your Super Admin account was signed in from another device.',
+                terminatedBy: 'System (Single Device Policy)',
+              },
+              { strict: false }
+            );
+
+            // Broadcast real-time session termination event to kick out old device(s) immediately
+            for (const prev of prevSessions) {
+              await recordRealtimeEvent('user_session_terminated', user._id, {
+                userId: user._id,
+                userEmail: user.email,
+                sessionId: prev.sessionId,
+                exceptSessionId: sessionId,
+                reason: 'You have been logged out because your Super Admin account was signed in from another device.',
+              });
+            }
+
+            await AuditLog.create({
+              action: 'SUPER_ADMIN_SINGLE_DEVICE_ENFORCED',
+              details: `Super Admin signed in on ${device}. Previous active session(s) (${prevSessionIds.join(', ')}) invalidated.`,
+              module: 'AUTH',
+              performedBy: 'System',
+              performedByEmail: user.email,
+              performedByRole: 'Super Admin',
+              target: user.email,
+              device,
+              timestamp: new Date(),
+            });
+          }
+        } catch (e) {
+          console.error('Super Admin single device session enforcement error:', e);
+        }
+      }
 
       const token = jwt.sign(
         { id: user._id, email: user.email, role: user.role, name: user.name, sessionId },
@@ -2487,6 +2561,69 @@ async function handleRequest(request, context) {
         device,
         timestamp: new Date(),
       });
+
+      // STRICT SINGLE-DEVICE LOGIN POLICY: EXCLUSIVELY FOR SUPER ADMIN
+      // Other roles retain multi-device/multi-session capability without change.
+      const adminEmail = (process.env.ADMIN_EMAIL || 'admin@shoolin.co.uk').trim().toLowerCase();
+      const isSuperAdmin =
+        user.role === 'Super Admin' ||
+        user.role === 'super_admin' ||
+        String(user.email || '').trim().toLowerCase() === adminEmail;
+
+      if (isSuperAdmin) {
+        try {
+          const prevSessions = await Session.find({
+            $or: [
+              { userId: user._id },
+              { userEmail: new RegExp(`^${escapeRegex(user.email)}$`, 'i') },
+              { userRole: { $in: ['Super Admin', 'super_admin'] } },
+            ],
+            sessionId: { $ne: sessionId },
+            status: 'Active',
+          });
+
+          if (prevSessions.length > 0) {
+            const prevIds = prevSessions.map((s) => s._id);
+            const prevSessionIds = prevSessions.map((s) => s.sessionId);
+
+            await Session.updateMany(
+              { _id: { $in: prevIds } },
+              {
+                status: 'Terminated',
+                terminatedAt: new Date(),
+                terminationReason: 'You have been logged out because your Super Admin account was signed in from another device.',
+                terminatedBy: 'System (Single Device Policy)',
+              },
+              { strict: false }
+            );
+
+            // Broadcast real-time session termination event to kick out old device(s) immediately
+            for (const prev of prevSessions) {
+              await recordRealtimeEvent('user_session_terminated', user._id, {
+                userId: user._id,
+                userEmail: user.email,
+                sessionId: prev.sessionId,
+                exceptSessionId: sessionId,
+                reason: 'You have been logged out because your Super Admin account was signed in from another device.',
+              });
+            }
+
+            await AuditLog.create({
+              action: 'SUPER_ADMIN_SINGLE_DEVICE_ENFORCED',
+              details: `Super Admin signed in on ${device} via OTP. Previous active session(s) (${prevSessionIds.join(', ')}) invalidated.`,
+              module: 'AUTH',
+              performedBy: 'System',
+              performedByEmail: user.email,
+              performedByRole: 'Super Admin',
+              target: user.email,
+              device,
+              timestamp: new Date(),
+            });
+          }
+        } catch (e) {
+          console.error('Super Admin single device session enforcement error (OTP):', e);
+        }
+      }
 
       const token = jwt.sign(
         { id: user._id, email: user.email, role: user.role, name: user.name, sessionId },

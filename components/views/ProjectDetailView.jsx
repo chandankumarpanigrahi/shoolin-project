@@ -270,13 +270,21 @@ export function ProjectDetailView({
     setDragOverId(null);
   };
 
-  // Build project squad user list for assignee dropdown
+  // Build project squad user list for assignee dropdown (only members assigned to this project)
   const projectSquadUsers = React.useMemo(() => {
-    const rawTeam = (project.teamIds && project.teamIds.length > 0)
-      ? project.teamIds
-      : (project.team && project.team.length > 0)
-        ? project.team
-        : [project.ownerId || project.owner].filter(Boolean);
+    const rawTeam = [
+      ...(Array.isArray(project.teamIds) ? project.teamIds : []),
+      ...(Array.isArray(project.team) ? project.team : []),
+      project.ownerId,
+      project.owner,
+      project.managerId,
+      project.manager,
+    ].filter(Boolean);
+
+    if (rawTeam.length === 0) {
+      return users || [];
+    }
+
     const resolved = [];
     const seen = new Set();
     for (const memberKey of rawTeam) {
@@ -289,12 +297,9 @@ export function ProjectDetailView({
         }
       }
     }
-    return resolved.length > 0 ? resolved : (users || []);
+    return resolved;
   }, [project, users]);
 
-  const otherUsers = (users || []).filter(u =>
-    !projectSquadUsers.some(su => (su.id || su._id) === (u.id || u._id))
-  );
 
   // Build root tasks (not a child of any task in this project)
   const rootTasks = projectTasks.filter(t => !projectTasks.some(p => isChildTask(t, p, projectTasks)));
@@ -427,21 +432,15 @@ export function ProjectDetailView({
                     }`}
                 >
                   <option value="">Unassigned (None)</option>
-                  <optgroup label="Project Squad">
-                    {projectSquadUsers.map((u) => (
-                      <option key={u.id || u._id} value={u.id || u._id}>
-                        {u.name} ({u.role || 'Member'})
-                      </option>
-                    ))}
-                  </optgroup>
-                  {otherUsers.length > 0 && (
-                    <optgroup label="Other Members">
-                      {otherUsers.map((u) => (
-                        <option key={u.id || u._id} value={u.id || u._id}>
-                          {u.name} ({u.role || 'Member'})
-                        </option>
-                      ))}
-                    </optgroup>
+                  {projectSquadUsers.map((u) => (
+                    <option key={u.id || u._id} value={u.id || u._id}>
+                      {u.name} ({u.role || 'Member'})
+                    </option>
+                  ))}
+                  {assignee && !projectSquadUsers.some(su => String(su.id || su._id).toLowerCase() === String(assignee.id || assignee._id).toLowerCase()) && (
+                    <option key={assignee.id || assignee._id} value={assignee.id || assignee._id}>
+                      {assignee.name} (Current Assignee)
+                    </option>
                   )}
                 </select>
               </div>
@@ -788,7 +787,7 @@ export function ProjectDetailView({
               className="px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-sm text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-brand font-medium"
             >
               <option value="ALL">All Assignees</option>
-              {(users || []).map(u => (
+              {projectSquadUsers.map(u => (
                 <option key={u.id || u._id} value={u.id || u._id}>{u.name}</option>
               ))}
             </select>

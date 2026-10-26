@@ -936,6 +936,24 @@ export function AppProvider({ children }) {
 
       const unsubUserSessionTerminated = subscribeToRealtimeEvent('user_session_terminated', (payload) => {
         if (!payload) return;
+        const mySessId = typeof window !== 'undefined' ? localStorage.getItem('pulsepm_session_id') : null;
+
+        // If a specific session ID was terminated:
+        if (payload.sessionId) {
+          if (mySessId && mySessId === payload.sessionId) {
+            logout(payload.reason || 'You have been logged out because your Super Admin account was signed in from another device.');
+          }
+          return;
+        }
+
+        // If all other sessions except a specific one were terminated:
+        if (payload.exceptSessionId) {
+          if (mySessId && mySessId !== payload.exceptSessionId) {
+            logout(payload.reason || 'You have been logged out because your Super Admin account was signed in from another device.');
+          }
+          return;
+        }
+
         setCurrentUser((prev) => {
           if (!prev) return prev;
           const targetId = payload.userId;
@@ -1024,9 +1042,9 @@ export function AppProvider({ children }) {
             const data = JSON.parse(e.newValue);
             const mySessId = localStorage.getItem('pulsepm_session_id');
             if (data.allOthers && mySessId !== data.exceptSessionId) {
-              logout('Your session was remotely terminated by an administrator.');
+              logout(data.reason || 'Your session was remotely terminated by an administrator.');
             } else if (data.sessionId && data.sessionId === mySessId) {
-              logout('Your session was remotely terminated by an administrator.');
+              logout(data.reason || 'Your session was remotely terminated by an administrator.');
             }
           }
         } catch (err) {}

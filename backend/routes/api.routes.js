@@ -1097,7 +1097,7 @@ router.get('/sessions/check', async (req, res) => {
 
     const session = await Session.findOne({ sessionId });
     if (!session || session.status === 'Terminated' || session.status === 'Expired' || new Date() > new Date(session.expiresAt)) {
-      return res.status(401).json({ active: false, status: session?.status || 'NotFound', message: 'Your session was terminated or has expired.' });
+      return res.status(401).json({ active: false, status: session?.status || 'NotFound', message: session?.terminationReason || 'Your session was terminated or has expired.' });
     }
     await Session.findByIdAndUpdate(session._id, { lastActiveAt: new Date() });
     res.json({ active: true, status: 'Active', session: transform(session) });
@@ -1181,6 +1181,56 @@ router.post('/auth/login', async (req, res) => {
       lastActiveAt: new Date(),
       expiresAt,
     });
+
+    // Enforce strict single-device login policy EXCLUSIVELY for Super Admin.
+    // Other roles retain multi-device/multi-session capability without change.
+    const isSuperAdmin =
+      user.role === 'Super Admin' ||
+      user.role === 'super_admin' ||
+      String(user.email || '').trim().toLowerCase() === adminEmail;
+
+    if (isSuperAdmin) {
+      try {
+        const prevSessions = await Session.find({
+          $or: [
+            { userId: user._id },
+            { userEmail: new RegExp(`^${user.email}$`, 'i') },
+            { userRole: { $in: ['Super Admin', 'super_admin'] } },
+          ],
+          sessionId: { $ne: sessionId },
+          status: 'Active',
+        });
+
+        if (prevSessions.length > 0) {
+          const prevIds = prevSessions.map((s) => s._id);
+          const prevSessionIds = prevSessions.map((s) => s.sessionId);
+
+          await Session.updateMany(
+            { _id: { $in: prevIds } },
+            {
+              status: 'Terminated',
+              terminatedAt: new Date(),
+              terminationReason: 'You have been logged out because your Super Admin account was signed in from another device.',
+              terminatedBy: 'System (Single Device Policy)',
+            }
+          );
+
+          await AuditLog.create({
+            action: 'SUPER_ADMIN_SINGLE_DEVICE_ENFORCED',
+            details: `Super Admin signed in on ${device}. Previous active session(s) (${prevSessionIds.join(', ')}) invalidated.`,
+            module: 'AUTH',
+            performedBy: 'System',
+            performedByEmail: user.email,
+            performedByRole: 'Super Admin',
+            target: user.email,
+            device,
+            timestamp: new Date(),
+          });
+        }
+      } catch (e) {
+        console.error('Super Admin single device session enforcement error:', e);
+      }
+    }
 
     await AuditLog.create({
       action: 'USER_LOGIN',

@@ -191,15 +191,15 @@ export function ActivityLogView() {
 
   // Clear all non-active (Terminated / Expired) sessions from DB
   const handleClearInactiveSessions = async () => {
-    const nonActiveCount = sessions.filter((s) => s.status !== 'Active').length;
+    const nonActiveCount = nonSuperAdminSessions.filter((s) => s.status !== 'Active').length;
     if (nonActiveCount === 0) {
-      showSuccess('All Clean', 'No non-active (terminated or expired) sessions found to clear.');
+      showSuccess('All Clean', 'No non-active (terminated or expired) member sessions found to clear.');
       return;
     }
 
     const confirmed = await showConfirm({
       title: 'Clear Non-Active Sessions?',
-      text: `This will permanently delete ${nonActiveCount} terminated and expired session record${nonActiveCount > 1 ? 's' : ''} from the database. Active sessions will remain completely intact.`,
+      text: `This will permanently delete ${nonActiveCount} terminated and expired member session record${nonActiveCount > 1 ? 's' : ''} from the database. Active sessions will remain completely intact.`,
       confirmButtonText: 'Yes, Clear Non-Active',
       confirmButtonColor: '#e11d48',
     });
@@ -269,13 +269,19 @@ export function ActivityLogView() {
 
   // Visible non-super-admin sessions
   const nonSuperAdminSessions = useMemo(() => {
-    return sessions.filter(
-      (s) =>
-        s.userRole !== 'Super Admin' &&
-        s.userRole !== 'super_admin' &&
-        s.userEmail?.toLowerCase() !== 'admin@shoolin.co.uk' &&
-        s.userName?.toLowerCase() !== 'admin shoolin'
-    );
+    const adminEmail = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || 'admin@shoolin.co.uk').trim().toLowerCase();
+    return sessions.filter((s) => {
+      const role = String(s.userRole || '').trim().toLowerCase();
+      const email = String(s.userEmail || '').trim().toLowerCase();
+      const name = String(s.userName || '').trim().toLowerCase();
+      return (
+        role !== 'super admin' &&
+        role !== 'super_admin' &&
+        email !== 'admin@shoolin.co.uk' &&
+        email !== adminEmail &&
+        name !== 'admin shoolin'
+      );
+    });
   }, [sessions]);
 
   // Stats calculation
@@ -283,8 +289,9 @@ export function ActivityLogView() {
     const total = nonSuperAdminSessions.length;
     const active = nonSuperAdminSessions.filter((s) => s.status === 'Active').length;
     const terminated = nonSuperAdminSessions.filter((s) => s.status === 'Terminated').length;
+    const expired = nonSuperAdminSessions.filter((s) => s.status === 'Expired').length;
     const uniqueUsers = new Set(nonSuperAdminSessions.map((s) => s.userEmail)).size;
-    return { total, active, terminated, uniqueUsers };
+    return { total, active, terminated, expired, uniqueUsers };
   }, [nonSuperAdminSessions]);
 
   // Filtered Sessions
@@ -452,7 +459,7 @@ export function ActivityLogView() {
             }`}
         >
           <Laptop className="w-4 h-4" />
-          <span>Active Member ({sessions.length})</span>
+          <span>Active Member ({stats.active})</span>
         </button>
 
         <button
@@ -487,17 +494,30 @@ export function ActivityLogView() {
             </div>
 
             <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
-              {['ALL', 'Active', 'Terminated', 'Expired'].map((filter) => (
+              {[
+                { label: 'ALL', count: stats.total },
+                { label: 'Active', count: stats.active },
+                { label: 'Terminated', count: stats.terminated },
+                { label: 'Expired', count: stats.expired },
+              ].map(({ label, count }) => (
                 <button
-                  key={filter}
+                  key={label}
                   type="button"
-                  onClick={() => setSessionFilter(filter)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${sessionFilter === filter
+                  onClick={() => setSessionFilter(label)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${sessionFilter === label
                     ? 'bg-brand text-white shadow-xs font-bold'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
                     }`}
                 >
-                  {filter}
+                  <span>{label}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${sessionFilter === label
+                      ? 'bg-white/20 text-white'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                      }`}
+                  >
+                    {count}
+                  </span>
                 </button>
               ))}
 
