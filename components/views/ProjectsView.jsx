@@ -365,7 +365,7 @@ export function ProjectsView({
                   <th className="py-2.5 px-3 w-10 text-center font-bold">#</th>
                   <th className="py-2.5 px-3">Project Code</th>
                   <th className="py-2.5 px-3">Project Name</th>
-                  <th className="py-2.5 px-3">Project</th>
+                  <th className="py-2.5 px-3">Client</th>
                   <th className="py-2.5 px-3">Type</th>
                   <th className="py-2.5 px-3">Owner</th>
                   <th className="py-2.5 px-3">Team</th>

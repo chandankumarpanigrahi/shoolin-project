@@ -428,7 +428,7 @@ export function CreateProjectModal({
           {/* Project & Brand Code Prefix */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Project</label>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Client</label>
               <select
                 value={selectedMasterProject}
                 onChange={(e) => handleProjectSelect(e.target.value)}
