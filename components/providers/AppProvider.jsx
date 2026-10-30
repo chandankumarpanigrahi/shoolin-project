@@ -1635,11 +1635,21 @@ export function AppProvider({ children }) {
   };
 
   const handleCreateProject = async (newProj) => {
+    const isSuperAdmin = currentUser?.role === 'Super Admin';
     const creatorVal = currentUser?.id || currentUser?._id || 'admin-1';
-    const ownerVal = newProj.ownerId || newProj.owner || creatorVal;
+    const ownerVal = newProj.ownerId || newProj.owner || (isSuperAdmin ? null : creatorVal);
     const managerVal = newProj.managerId || newProj.manager || ownerVal;
     const rawTeam = newProj.teamIds || newProj.team || [];
-    const teamVal = Array.from(new Set([creatorVal, ownerVal, managerVal, ...rawTeam])).filter(Boolean);
+    const teamVal = Array.from(new Set([
+      (!isSuperAdmin ? creatorVal : null),
+      ownerVal,
+      managerVal,
+      ...rawTeam
+    ])).filter((id) => {
+      if (!id) return false;
+      const u = resolveUserObject(id, users);
+      return !u || u.role !== 'Super Admin';
+    });
 
     const payload = {
       ...newProj,

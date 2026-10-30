@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, FolderGit2, RefreshCw, Layers, Sparkles, UserPlus, Check } from 'lucide-react';
+import { X, Plus, FolderGit2, RefreshCw, Layers, Sparkles, UserPlus, Check, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { UserAvatar, resolveUserObject } from '@/components/common/UserAvatar';
 import { useAppContext } from '@/components/providers/AppProvider';
 
@@ -24,6 +24,9 @@ export function CreateProjectModal({
     }
   } catch (e) { }
 
+  // Super Admin flag — drives all gated UI below
+  const isSuperAdmin = currentUser?.role === 'Super Admin';
+
   const availableProjects = masterBrands.length > 0 ? masterBrands : [
     { id: 'br-1', code: 'TCC', name: 'Captains Cafe', color: '#572700' },
     { id: 'br-2', code: 'INT', name: 'Internal', color: '#516506' },
@@ -47,6 +50,10 @@ export function CreateProjectModal({
   const [status, setStatus] = useState('In Progress');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState(availableProjects[0]?.color || '#2563EB');
+
+  // Super Admin: reassign-owner dialog state
+  const [showReassignDialog, setShowReassignDialog] = useState(false);
+  const [newOwnerForReassign, setNewOwnerForReassign] = useState('');
 
   const handleProjectSelect = (projectName) => {
     setSelectedMasterProject(projectName);
@@ -77,7 +84,8 @@ export function CreateProjectModal({
     return userObj ? (userObj.id || userObj._id) : null;
   };
 
-  // Resolve all raw IDs/strings to canonical user IDs, dropping any that don't map to a known user
+  // Resolve all raw IDs/strings to canonical user IDs, dropping any that don't map to a known user.
+  // Super Admin is always excluded from the visible team list.
   const deduplicateTeam = (rawList) => {
     const seen = new Set();
     const result = [];
@@ -93,9 +101,14 @@ export function CreateProjectModal({
     return result;
   };
 
+  // Non-Super-Admin users available for owner/team selection
+  const assignableUsers = (users || []).filter((u) => u.role !== 'Super Admin');
+
   useEffect(() => {
     if (!isOpen) {
       lastInitializedKeyRef.current = null;
+      setShowReassignDialog(false);
+      setNewOwnerForReassign('');
       return;
     }
 
@@ -111,7 +124,10 @@ export function CreateProjectModal({
     }
     lastInitializedKeyRef.current = currentKey;
 
-    const creatorId = resolveUserKey(currentUser, users) || users[0]?.id || users[0]?._id;
+    // For Super Admin: don't use their own ID as creator/owner — pick first assignable user instead
+    const creatorId = isSuperAdmin
+      ? (resolveUserKey(assignableUsers[0], users) || assignableUsers[0]?.id || assignableUsers[0]?._id)
+      : (resolveUserKey(currentUser, users) || users[0]?.id || users[0]?._id);
 
     if (projectToEdit) {
       setName(projectToEdit.name || '');
@@ -152,9 +168,10 @@ export function CreateProjectModal({
       setSelectedMasterProject(defaultProj?.name || 'PMV Maritime');
       setBrand(defaultProj?.code || 'PMV');
       setCategory(initialTemplate.category || availableCategories[0] || 'Website Development');
-      setSelectedTeam([creatorId].filter(Boolean));
-      setOwner(creatorId);
-      setManager(creatorId);
+      // Super Admin: start with empty owner so they must pick one
+      setSelectedTeam(isSuperAdmin ? [] : [creatorId].filter(Boolean));
+      setOwner(isSuperAdmin ? '' : creatorId);
+      setManager(isSuperAdmin ? '' : creatorId);
       setPriority('High');
       setStatus('In Progress');
       setStartDate(defaultStartIso);
@@ -168,9 +185,10 @@ export function CreateProjectModal({
       setSelectedMasterProject(defaultProj?.name || 'PMV Maritime');
       setBrand(defaultProj?.code || 'PMV');
       setCategory(availableCategories[0] || 'Website Development');
-      setSelectedTeam([creatorId].filter(Boolean));
-      setOwner(creatorId);
-      setManager(creatorId);
+      // Super Admin: start with empty owner so they must pick one
+      setSelectedTeam(isSuperAdmin ? [] : [creatorId].filter(Boolean));
+      setOwner(isSuperAdmin ? '' : creatorId);
+      setManager(isSuperAdmin ? '' : creatorId);
       setPriority('High');
       setStatus('In Progress');
       setStartDate(defaultStartIso);
@@ -191,6 +209,15 @@ export function CreateProjectModal({
     });
 
     if (isPresent) {
+      // Super Admin: block removal if this member is the current owner — must reassign first
+      if (isSuperAdmin) {
+        const currentOwnerCanonical = resolveUserKey(owner, users) || owner;
+        if (currentOwnerCanonical && String(targetCanonical).toLowerCase() === String(currentOwnerCanonical).toLowerCase()) {
+          setShowReassignDialog(true);
+          setNewOwnerForReassign('');
+          return;
+        }
+      }
       setSelectedTeam(prev => prev.filter(item => {
         const canonical = resolveUserKey(item, users) || item;
         return String(canonical).toLowerCase() !== String(targetCanonical).toLowerCase();
@@ -216,19 +243,47 @@ export function CreateProjectModal({
     }
   };
 
+  // Confirm owner reassignment: swap owner, remove old owner from team, add new
+  const handleConfirmReassign = () => {
+    if (!newOwnerForReassign) return;
+    const oldOwnerCanonical = resolveUserKey(owner, users) || owner;
+    const newOwnerCanonical = resolveUserKey(newOwnerForReassign, users) || newOwnerForReassign;
+    // Remove old owner from team, set new owner, add new owner to team
+    setSelectedTeam(prev => {
+      const filtered = prev.filter(item => {
+        const canonical = resolveUserKey(item, users) || item;
+        return String(canonical).toLowerCase() !== String(oldOwnerCanonical).toLowerCase();
+      });
+      return deduplicateTeam([...filtered, newOwnerCanonical]);
+    });
+    setOwner(newOwnerCanonical);
+    setManager(newOwnerCanonical);
+    setShowReassignDialog(false);
+    setNewOwnerForReassign('');
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    const creatorId = resolveUserKey(currentUser, users) || users[0]?.id || users[0]?._id;
-    const ownerId = resolveUserKey(owner, users) || creatorId;
+    // Super Admin must explicitly pick an owner
+    if (isSuperAdmin && !owner) return;
+
+    const creatorId = isSuperAdmin
+      ? (currentUser?.id || currentUser?._id)
+      : (resolveUserKey(currentUser, users) || users[0]?.id || users[0]?._id);
+
+    const ownerId = resolveUserKey(owner, users) || owner;
 
     const resolvedSelected = deduplicateTeam(selectedTeam);
+    // Build final team: always include owner, never include Super Admin
     const finalTeam = Array.from(new Set([ownerId, ...resolvedSelected])).map((item) => {
       const uObj = resolveUserObject(item, users);
-      return uObj ? (uObj.id || uObj._id) : null;
+      if (!uObj) return null;
+      if (uObj.role === 'Super Admin') return null; // Super Admin never in team list
+      return uObj.id || uObj._id;
     }).filter(Boolean);
 
     const payload = {
@@ -241,6 +296,7 @@ export function CreateProjectModal({
       owner: ownerId,
       managerId: ownerId,
       manager: ownerId,
+      createdBy: creatorId,
       teamIds: finalTeam,
       team: finalTeam,
       priority,
@@ -453,6 +509,107 @@ export function CreateProjectModal({
             </div>
           </div>
 
+          {/* ─── SUPER ADMIN ONLY: Project Owner Selector ─────────────────────── */}
+          {isSuperAdmin && (
+            <div className="p-3.5 bg-brand-light/10 border border-brand/25 rounded-xl space-y-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-brand shrink-0" />
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                  Project Owner Assignment
+                </span>
+                <span className="ml-auto text-[10px] font-bold text-brand bg-brand-light/40 border border-brand/30 px-1.5 py-0.5 rounded">
+                  Super Admin Only
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                As Super Admin you are not visible in the team list. Select who will be the accountable owner for this project.
+              </p>
+              <select
+                value={owner}
+                onChange={(e) => handleOwnerChange(e.target.value)}
+                required
+                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-brand/40 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand font-medium"
+              >
+                <option value="">— Select Project Owner —</option>
+                {assignableUsers.map((u) => {
+                  const uid = u.id || u._id;
+                  return (
+                    <option key={uid} value={uid}>
+                      {u.name} ({u.role})
+                    </option>
+                  );
+                })}
+              </select>
+
+              {/* Show who is currently selected as owner */}
+              {owner && (() => {
+                const ownerObj = resolveUserObject(owner, users);
+                if (!ownerObj) return null;
+                return (
+                  <div className="flex items-center gap-2 p-2 bg-white dark:bg-slate-900 border border-brand/20 rounded-lg">
+                    <UserAvatar user={ownerObj} size="xs" />
+                    <div>
+                      <p className="font-semibold text-slate-900 dark:text-slate-100 text-xs">{ownerObj.name}</p>
+                      <p className="text-[10px] text-slate-400">{ownerObj.role} · Accountable Owner</p>
+                    </div>
+                    <Check className="w-3.5 h-3.5 text-brand ml-auto" />
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Reassign Owner Dialog (Super Admin: shown when trying to remove current owner) */}
+          {isSuperAdmin && showReassignDialog && (
+            <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 rounded-xl space-y-2.5">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
+                  Cannot remove the current owner without reassigning ownership first.
+                </p>
+              </div>
+              <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                Select a new owner below. The old owner will be removed from the project team automatically.
+              </p>
+              <select
+                value={newOwnerForReassign}
+                onChange={(e) => setNewOwnerForReassign(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-amber-500"
+              >
+                <option value="">— Select New Owner —</option>
+                {assignableUsers.filter((u) => {
+                  const uid = u.id || u._id;
+                  const currentOwnerCanonical = resolveUserKey(owner, users) || owner;
+                  return String(uid).toLowerCase() !== String(currentOwnerCanonical).toLowerCase();
+                }).map((u) => {
+                  const uid = u.id || u._id;
+                  return (
+                    <option key={uid} value={uid}>
+                      {u.name} ({u.role})
+                    </option>
+                  );
+                })}
+              </select>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleConfirmReassign}
+                  disabled={!newOwnerForReassign}
+                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-lg text-xs font-semibold transition-colors"
+                >
+                  Confirm Reassign & Remove
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowReassignDialog(false); setNewOwnerForReassign(''); }}
+                  className="px-3 py-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 rounded-lg text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Assigned Team Members & Squad */}
           <div>
             <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -475,23 +632,35 @@ export function CreateProjectModal({
                   if (dedupedMembers.length === 0) {
                     return <span className="text-[11px] text-slate-400 italic">No squad members assigned (Default: None)</span>;
                   }
-                  return dedupedMembers.map(({ user: u, canonicalId }) => (
-                    <span
-                      key={canonicalId}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 shadow-2xs"
-                    >
-                      <UserAvatar user={u} size="xs" />
-                      <span>{u.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleTeamMember(canonicalId)}
-                        className="hover:text-rose-500 rounded-full p-0.5 transition-colors ml-0.5"
-                        title="Remove member from project team"
+                  return dedupedMembers.map(({ user: u, canonicalId }) => {
+                    const isOwner = (() => {
+                      const currentOwnerCanonical = resolveUserKey(owner, users) || owner;
+                      return currentOwnerCanonical && String(canonicalId).toLowerCase() === String(currentOwnerCanonical).toLowerCase();
+                    })();
+                    return (
+                      <span
+                        key={canonicalId}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shadow-2xs ${isOwner
+                            ? 'bg-brand-light/30 border border-brand/40 text-brand'
+                            : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200'
+                          }`}
                       >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ));
+                        <UserAvatar user={u} size="xs" />
+                        <span>{u.name}</span>
+                        {isOwner && (
+                          <span className="text-[9px] font-bold uppercase tracking-wide opacity-70">Owner</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleTeamMember(canonicalId)}
+                          className="hover:text-rose-500 rounded-full p-0.5 transition-colors ml-0.5"
+                          title={isOwner ? "Reassign owner before removing" : "Remove member from project team"}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    );
+                  });
                 })()}
               </div>
 
@@ -501,7 +670,7 @@ export function CreateProjectModal({
                   Select squad members to grant project visibility:
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto">
-                  {(users || []).filter((u) => u.role !== 'Super Admin').map((u) => {
+                  {assignableUsers.map((u) => {
                     const uId = u.id || u._id;
                     const uName = u.name || 'Member';
                     const isSelected = selectedTeam.some((item) => {
@@ -620,7 +789,8 @@ export function CreateProjectModal({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-brand hover:bg-brand-hover active:bg-brand-hover text-white font-semibold rounded-md shadow-sm transition-colors flex items-center gap-1.5"
+              disabled={isSuperAdmin && !owner}
+              className="px-5 py-2 bg-brand hover:bg-brand-hover active:bg-brand-hover disabled:opacity-40 text-white font-semibold rounded-md shadow-sm transition-colors flex items-center gap-1.5"
             >
               {projectToEdit ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
               <span>{projectToEdit ? "Save Project Changes" : "Create Project Mandate"}</span>

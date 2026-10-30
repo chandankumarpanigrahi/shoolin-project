@@ -72,8 +72,7 @@ function TreeNodeItem({
   const hasChildren = node.children && node.children.length > 0;
   const currentPath = [...path, node.title];
 
-  const handleAddChild = (e) => {
-    e.preventDefault();
+  const handleAddChild = () => {
     if (!newSubtaskTitle.trim()) return;
     onAddSubtask(node.id, newSubtaskTitle.trim());
     setNewSubtaskTitle('');
@@ -159,18 +158,29 @@ function TreeNodeItem({
 
       {/* Subtask Quick Input Form */}
       {isAddingSubtask && (
-        <form onSubmit={handleAddChild} className="ml-5 flex items-center gap-2 p-1.5 bg-brand-light/10 border border-brand/20 rounded-md">
+        <div className="ml-5 flex items-center gap-2 p-1.5 bg-brand-light/10 border border-brand/20 rounded-md">
           <CornerDownRight className="w-3.5 h-3.5 text-brand ml-1" />
           <input
             type="text"
             autoFocus
             value={newSubtaskTitle}
             onChange={(e) => setNewSubtaskTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAddChild();
+              }
+              if (e.key === 'Escape') {
+                setIsAddingSubtask(false);
+                setNewSubtaskTitle('');
+              }
+            }}
             placeholder={`Enter nested sub-task title (Level ${depth + 1})...`}
             className="flex-1 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-sm text-xs text-slate-900 dark:text-slate-100"
           />
           <button
-            type="submit"
+            type="button"
+            onClick={handleAddChild}
             className="px-2.5 py-1 bg-brand hover:bg-brand-hover text-white font-semibold rounded-sm text-xs"
           >
             Add
@@ -185,7 +195,7 @@ function TreeNodeItem({
           >
             Cancel
           </button>
-        </form>
+        </div>
       )}
 
       {/* Nested Children (Recursive rendering with indent line) */}

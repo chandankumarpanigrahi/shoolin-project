@@ -377,8 +377,8 @@ export function ProjectsView({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredProjects.map((p, index) => {
                   const targetOwnerId = p.ownerId || p.owner;
-                  const ownerUser = resolveUserObject(targetOwnerId, users) || (users && users[0]) || { name: 'Owner', role: 'Member' };
-                  const ownerDisplayName = ownerUser?.name || 'Owner';
+                  const ownerUser = resolveUserObject(targetOwnerId, users) || (targetOwnerId ? { name: 'Assigned Owner', role: 'User' } : { name: 'Unassigned', role: 'None' });
+                  const ownerDisplayName = ownerUser?.name || 'Unassigned';
                   const rawTeam = (p.teamIds && p.teamIds.length > 0) ? p.teamIds : (p.team && p.team.length > 0) ? p.team : [targetOwnerId].filter(Boolean);
                   const teamIds = Array.from(new Set(rawTeam.map((item) => {
                     const uObj = resolveUserObject(item, users);
@@ -542,7 +542,7 @@ export function ProjectsView({
                                 className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 rounded-xs border border-emerald-200 dark:border-emerald-800/60 transition-colors"
                                 title="Restore Project to Active List"
                               >
-                                <RotateCcw className="w-3 h-3" />
+                                <RotateCcw className="w-3.5 h-3.5" />
                                 <span>Restore</span>
                               </button>
                               {can('projects.delete') && (
@@ -552,7 +552,7 @@ export function ProjectsView({
                                   className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 rounded-xs border border-rose-200 dark:border-rose-800/60 transition-colors ml-1"
                                   title="Delete Permanently"
                                 >
-                                  <Trash2 className="w-3 h-3" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                   <span>Delete Permanently</span>
                                 </button>
                               )}
@@ -574,8 +574,8 @@ export function ProjectsView({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {filteredProjects.map((p) => {
             const targetOwnerId = p.ownerId || p.owner;
-            const ownerUser = resolveUserObject(targetOwnerId, users) || (users && users[0]) || { name: 'Owner', role: 'Member' };
-            const ownerDisplayName = ownerUser?.name || 'Owner';
+            const ownerUser = resolveUserObject(targetOwnerId, users) || (targetOwnerId ? { name: 'Assigned Owner', role: 'User' } : { name: 'Unassigned', role: 'None' });
+            const ownerDisplayName = ownerUser?.name || 'Unassigned';
             const rawTeam = (p.teamIds && p.teamIds.length > 0) ? p.teamIds : (p.team && p.team.length > 0) ? p.team : [targetOwnerId].filter(Boolean);
             const teamIds = Array.from(new Set(rawTeam.map((item) => {
               const uObj = resolveUserObject(item, users);
