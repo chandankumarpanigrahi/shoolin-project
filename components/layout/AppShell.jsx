@@ -362,6 +362,7 @@ export function AppShell({ children }) {
       <ScheduleMeetingModal
         isOpen={isScheduleMeetingOpen}
         meetingToEdit={meetingToEdit}
+        defaultProjectId={selectedProject?.id || selectedProject?._id || ''}
         onClose={() => {
           closeModal(() => {
             setIsScheduleMeetingOpen(false);

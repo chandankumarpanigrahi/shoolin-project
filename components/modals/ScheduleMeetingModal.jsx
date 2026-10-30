@@ -20,6 +20,7 @@ export function ScheduleMeetingModal({
   meetings = [],
   currentUser,
   meetingToEdit = null,
+  defaultProjectId = '',
   onScheduleMeeting,
   onUpdateMeeting,
 }) {
@@ -76,7 +77,7 @@ export function ScheduleMeetingModal({
       setDuration('45 mins');
       setPriority('Medium');
       setMeetUrl('');
-      setProjectId('');
+      setProjectId(defaultProjectId || '');
       setRelatedTaskId('');
       setDescription('');
       setParticipants([currentUser?.id || currentUser?._id].filter(Boolean));
@@ -84,7 +85,7 @@ export function ScheduleMeetingModal({
     }
     setFormError('');
     setAttendeeSearch('');
-  }, [meetingToEdit, isOpen, currentUser, users, projects]);
+  }, [meetingToEdit, isOpen, currentUser, users, projects, defaultProjectId]);
 
   if (!isOpen) return null;
 

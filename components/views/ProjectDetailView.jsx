@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import {
   ShieldCheck,
-ArrowLeft,
+  ArrowLeft,
   Briefcase,
   Plus,
   Edit,
@@ -105,29 +105,18 @@ export function ProjectDetailView({
     return false;
   });
   const projectMeetings = (meetings || []).filter((m) => {
-    if (m.projectId !== project.id && m.projectId !== project._id) return false;
-    if (!currentUser) return false;
-    const currentId = String(currentUser.id || currentUser._id || '').toLowerCase();
-    const currentEmail = String(currentUser.email || '').toLowerCase();
-    const currentName = String(currentUser.name || '').trim().toLowerCase();
-    const matchesUser = (v) => {
-      if (!v) return false;
-      const s = String(v).trim().toLowerCase();
-      return s === currentId || s === currentEmail || (currentName && s === currentName);
-    };
-    const isCreator = matchesUser(m.requestedBy) || matchesUser(m.requestedByEmail) || matchesUser(m.requestedByName);
-    const isApprover = matchesUser(m.approverId) || matchesUser(m.approverEmail) || matchesUser(m.approverName);
-    const isAttendee = [
-      ...(m.participants || []),
-      ...(m.participantIds || []),
-      ...(m.optionalMembers || []),
-      ...(m.optionalMemberIds || [])
-    ].some(matchesUser);
-    const isArchived = m.isArchived === true || m.status === 'Archived';
-    if (isArchived) return isCreator || isApprover;
-    const isApproved = m.status === 'Approved' || m.status === 'Accepted' || m.status === 'Completed';
-    if (isApproved) return isCreator || isApprover || isAttendee;
-    return isCreator || isApprover;
+    if (!m || !m.projectId) return false;
+    const mProj = String(m.projectId).trim();
+    const pId = String(project.id || '').trim();
+    const pUnderscoreId = String(project._id || '').trim();
+    const pCode = String(project.code || '').trim();
+    const pName = String(project.name || '').trim();
+    return (
+      mProj === pId ||
+      mProj === pUnderscoreId ||
+      mProj === pCode ||
+      mProj === pName
+    );
   });
   const ownerTarget = project.ownerId || project.owner;
   const ownerUser = resolveUserObject(ownerTarget, users) || (ownerTarget ? { name: 'Assigned Owner', role: 'User' } : { name: 'Unassigned', role: 'None' });
@@ -791,11 +780,10 @@ export function ProjectDetailView({
                   <div className="pt-2 border-t border-cyan-200/60 dark:border-cyan-800/60 flex items-center justify-between flex-wrap gap-2 text-xs">
                     <div className="text-[11px] text-cyan-800 dark:text-cyan-300 flex items-center gap-1.5">
                       <span>Auto-Renewal:</span>
-                      <span className={`font-bold px-1.5 py-0.2 rounded text-[10px] ${
-                        project.recurringConfig.autoRenew !== false
-                          ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
-                      }`}>
+                      <span className={`font-bold px-1.5 py-0.2 rounded text-[10px] ${project.recurringConfig.autoRenew !== false
+                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                        }`}>
                         {project.recurringConfig.autoRenew !== false ? 'Active' : 'Paused'}
                       </span>
                     </div>
@@ -803,11 +791,10 @@ export function ProjectDetailView({
                       <button
                         type="button"
                         onClick={() => handleToggleProjectAutoRenew(project.id || project._id)}
-                        className={`px-2.5 py-1 text-xs font-semibold rounded-md border shadow-2xs transition-colors flex items-center gap-1.5 ${
-                          project.recurringConfig.autoRenew !== false
-                            ? 'bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40'
-                            : 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent'
-                        }`}
+                        className={`px-2.5 py-1 text-xs font-semibold rounded-md border shadow-2xs transition-colors flex items-center gap-1.5 ${project.recurringConfig.autoRenew !== false
+                          ? 'bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent'
+                          }`}
                       >
                         {project.recurringConfig.autoRenew !== false ? (
                           <>
@@ -1030,7 +1017,7 @@ export function ProjectDetailView({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {projectMeetings.map((m) => (
               <div key={m.id} className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-sm space-y-2">
                 <div className="flex items-center justify-between">
