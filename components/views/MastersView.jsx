@@ -1458,7 +1458,7 @@ export function MastersView() {
                                     </span>
                                   )}
                                 </span>
-                                <span className="text-[11px] text-slate-400 font-mono">ID: {u.id}</span>
+                                <span className="hidden text-[11px] text-slate-400 font-mono">ID: {u.id}</span>
                               </div>
                             </div>
                           </td>

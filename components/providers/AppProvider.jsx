@@ -2146,139 +2146,85 @@ export function AppProvider({ children }) {
     setIsTemplateWorkflowOpen(true);
   };
 
-  // Recurring Sprint Auto-Renewal Engine
-  // Automatically creates a fresh project cycle with the latest template updates, same project, and same assigned team members
-  const checkAndRenewRecurringProjects = async (activeProjectsList = null, activeTemplatesList = null) => {
-    const projs = activeProjectsList || projects;
-    const tmpls = activeTemplatesList || templates;
-    if (!Array.isArray(projs) || projs.length === 0) return;
-
-    const todayIso = new Date().toISOString().split('T')[0];
-    const recurringProjects = projs.filter(
-      (p) =>
-        p.type === 'recurring' &&
-        p.recurringConfig &&
-        p.recurringConfig.autoRenew !== false &&
-        !p.isDeleted &&
-        p.status !== 'Deleted'
-    );
-
-    for (const p of recurringProjects) {
-      const cfg = p.recurringConfig;
-      if (!cfg.nextCycleDate) continue;
-
-      if (cfg.nextCycleDate <= todayIso) {
-        const nextCycleDateObj = new Date(cfg.nextCycleDate);
-        const cycleMonthYear = nextCycleDateObj.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-
-        const alreadyExists = projs.some(
-          (other) =>
-            other.id !== p.id &&
-            other.brand === p.brand &&
-            (other.name?.includes(cycleMonthYear) || other.recurringConfig?.currentCycle === cycleMonthYear)
-        );
-
-        const dayNum = cfg.monthlyDay || 1;
-        const followingMonthDate = new Date(nextCycleDateObj.getFullYear(), nextCycleDateObj.getMonth() + 1, dayNum);
-        const followingCycleDateIso = followingMonthDate.toISOString().split('T')[0];
-
-        try {
-          await api.projects.update(p.id || p._id, {
-            recurringConfig: {
-              ...cfg,
-              nextCycleDate: followingCycleDateIso,
-            }
-          });
-
-          setProjects((prev) =>
-            prev.map((proj) =>
-              proj.id === p.id || proj._id === p._id
-                ? { ...proj, recurringConfig: { ...proj.recurringConfig, nextCycleDate: followingCycleDateIso } }
-                : proj
-            )
-          );
-        } catch (e) {
-          console.error('Failed to bump recurring cycle date on parent project:', e);
+  // Recurring Sprint Auto-Renewal & Manual Cycle Generation Engine
+  const checkAndRenewRecurringProjects = async () => {
+    try {
+      const res = await api.projects.checkRecurring();
+      if (res && res.count > 0 && Array.isArray(res.generated) && res.generated.length > 0) {
+        const [freshProjects, freshTasks] = await Promise.all([
+          api.projects.getAll({ includeDeleted: true }).catch(() => null),
+          api.tasks.getAll(null, { includeDeletedProjects: true }).catch(() => null)
+        ]);
+        if (Array.isArray(freshProjects) && freshProjects.length > 0) {
+          const normalized = freshProjects.map((p) => ({
+            ...p,
+            ownerId: p.ownerId || p.owner,
+            owner: p.ownerId || p.owner,
+            managerId: p.managerId || p.manager,
+            manager: p.managerId || p.manager,
+            teamIds: p.teamIds || p.team || [],
+            team: p.teamIds || p.team || [],
+          }));
+          setProjects(normalized);
         }
-
-        if (!alreadyExists) {
-          const freshTemplate =
-            tmpls.find((t) => (t.id && t.id === cfg.templateId) || (t._id && t._id === cfg.templateId) || t.name === cfg.templateName) ||
-            tmpls[0];
-
-          if (freshTemplate) {
-            const masterProjName = cfg.masterProjectName || p.client || p.name;
-            const newProjectName = `${masterProjName} - ${freshTemplate.name} (${cycleMonthYear})`;
-            const newCodePrefix = (p.brand || 'PRJ').toUpperCase().slice(0, 4);
-
-            const newProjPayload = {
-              id: 'proj-' + Date.now(),
-              code: `${newCodePrefix}-${Math.floor(100 + Math.random() * 900)}`,
-              name: newProjectName,
-              client: masterProjName,
-              brand: p.brand || 'PRJ',
-              color: p.color || '#2563EB',
-              type: 'recurring',
-              category: freshTemplate.category || p.category || 'Web Development',
-              owner: p.owner,
-              ownerId: p.ownerId || p.owner,
-              manager: p.manager,
-              managerId: p.managerId || p.manager,
-              team: cfg.assignedMemberIds || p.team || [],
-              teamIds: cfg.assignedMemberIds || p.teamIds || p.team || [],
-              progress: 0,
-              status: 'In Progress',
-              priority: 'High',
-              description: freshTemplate.description || `Automated recurring sprint cycle for ${cycleMonthYear}`,
-              templateId: freshTemplate.id || freshTemplate._id,
-              templateName: freshTemplate.name,
-              tasksCount: freshTemplate.tasksTree ? countTreeNodes(freshTemplate.tasksTree) : (freshTemplate.tasksCount || 10),
-              completedTasksCount: 0,
-              recurringConfig: {
-                ...cfg,
-                currentCycle: cycleMonthYear,
-                nextCycleDate: followingCycleDateIso,
-                autoRenew: true,
-              }
-            };
-
-            try {
-              const createdProj = await api.projects.create(newProjPayload);
-              const projItem = createdProj || newProjPayload;
-
-              setProjects((prev) => [projItem, ...prev]);
-              broadcastLocalEvent('project_created', projItem);
-
-              if (freshTemplate.tasksTree && freshTemplate.tasksTree.length > 0) {
-                const defaultStart = new Date().toISOString().split('T')[0];
-                const defaultDue = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
-                const rawTasks = flattenTreeToTasks(
-                  freshTemplate.tasksTree,
-                  projItem.id || projItem._id,
-                  projItem.code,
-                  defaultStart,
-                  defaultDue
-                );
-                const assignedTeam = projItem.teamIds || projItem.team || [];
-                const tasksWithAssignees = rawTasks.map((t, idx) => ({
-                  ...t,
-                  projectId: projItem.id || projItem._id,
-                  projectCode: projItem.code,
-                  assignees: assignedTeam,
-                  assigneeId: assignedTeam.length > 0 ? assignedTeam[idx % assignedTeam.length] : null,
-                }));
-
-                const savedTasks = await api.tasks.create(tasksWithAssignees).catch(() => tasksWithAssignees);
-                const taskArr = Array.isArray(savedTasks) ? savedTasks : tasksWithAssignees;
-                setTasks((prev) => [...taskArr, ...prev]);
-                broadcastLocalEvent('task_created', taskArr[0] || {});
-              }
-            } catch (err) {
-              console.error('Auto-renewal project creation failed:', err);
-            }
-          }
+        if (Array.isArray(freshTasks) && freshTasks.length > 0) {
+          setTasks(freshTasks);
         }
       }
+    } catch (e) {
+      console.warn('Auto recurring renewal check error:', e);
+    }
+  };
+
+  const handleRenewProjectCycle = async (projectId, targetMonthYear) => {
+    try {
+      const result = await api.projects.renewCycle(projectId, { targetMonthYear });
+      if (result && result.project) {
+        const newProj = {
+          ...result.project,
+          id: result.project.id || result.project._id,
+          ownerId: result.project.ownerId || result.project.owner,
+          owner: result.project.ownerId || result.project.owner,
+          managerId: result.project.managerId || result.project.manager,
+          manager: result.project.managerId || result.project.manager,
+          teamIds: result.project.teamIds || result.project.team || [],
+          team: result.project.teamIds || result.project.team || [],
+        };
+
+        const [freshProjects, freshTasks] = await Promise.all([
+          api.projects.getAll({ includeDeleted: true }).catch(() => null),
+          api.tasks.getAll(null, { includeDeletedProjects: true }).catch(() => null)
+        ]);
+
+        if (Array.isArray(freshProjects)) {
+          setProjects(freshProjects.map((p) => ({
+            ...p,
+            ownerId: p.ownerId || p.owner,
+            owner: p.ownerId || p.owner,
+            managerId: p.managerId || p.manager,
+            manager: p.managerId || p.manager,
+            teamIds: p.teamIds || p.team || [],
+            team: p.teamIds || p.team || [],
+          })));
+        } else {
+          setProjects((prev) => [newProj, ...prev.filter((p) => (p.id || p._id) !== (newProj.id || newProj._id))]);
+        }
+
+        if (Array.isArray(freshTasks)) {
+          setTasks(freshTasks);
+        }
+
+        showSuccess(
+          'Cycle Generated!',
+          `Generated "${result.cycleMonthYear}" sprint for "${newProj.name}" with ${result.tasksCount} deliverables.`
+        );
+        return newProj;
+      }
+      return null;
+    } catch (err) {
+      console.error('Failed to manually renew cycle:', err);
+      showError('Cannot Generate Cycle', err.message || 'Cycle generation failed.');
+      throw err;
     }
   };
 
@@ -3031,6 +2977,7 @@ export function AppProvider({ children }) {
     handleOpenCreateFromTemplate,
     handleCreateProjectFromTemplate,
     handleToggleProjectAutoRenew,
+    handleRenewProjectCycle,
     checkAndRenewRecurringProjects,
     handleAddTemplate,
     handleUpdateTemplate,

@@ -71,9 +71,10 @@ export function CreateProjectModal({
   const [endDate, setEndDate] = useState(defaultEndIso);
 
   // Recurring fields
+  const currentMonthDefault = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
   const [recurrenceFrequency, setRecurrenceFrequency] = useState('Monthly');
-  const [monthlyDay, setMonthlyDay] = useState(5);
-  const [startMonth, setStartMonth] = useState('October 2026');
+  const [monthlyDay, setMonthlyDay] = useState(1);
+  const [startMonth, setStartMonth] = useState(currentMonthDefault);
   const [endCondition, setEndCondition] = useState('Annual Contract (12 cycles)');
 
   const lastInitializedKeyRef = React.useRef(null);
@@ -309,8 +310,22 @@ export function CreateProjectModal({
       ...(type === 'recurring' ? {
         recurringConfig: {
           frequency: recurrenceFrequency,
-          monthlyDay: Number(monthlyDay) || 5,
-          startMonth,
+          monthlyDay: Number(monthlyDay) || 1,
+          startMonth: startMonth || new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+          currentCycle: projectToEdit?.recurringConfig?.currentCycle || startMonth || new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+          nextCycleDate: (() => {
+            if (projectToEdit?.recurringConfig?.nextCycleDate) {
+              return projectToEdit.recurringConfig.nextCycleDate;
+            }
+            const mDay = Math.min(Math.max(Number(monthlyDay) || 1, 1), 28);
+            const now = new Date();
+            const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, mDay, 12, 0, 0);
+            const y = nextMonth.getFullYear();
+            const m = String(nextMonth.getMonth() + 1).padStart(2, '0');
+            const d = String(nextMonth.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+          })(),
+          autoRenew: projectToEdit?.recurringConfig?.autoRenew !== undefined ? projectToEdit.recurringConfig.autoRenew : true,
           endCondition
         }
       } : {})

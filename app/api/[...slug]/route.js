@@ -25,6 +25,7 @@ import { MasterDepartment } from '@/lib/models/MasterDepartment';
 import { LinkCategory } from '@/lib/models/LinkCategory';
 import { TemplateCategory } from '@/lib/models/TemplateCategory';
 import { DEFAULT_BLUEPRINT_CATEGORIES } from '@/data/templates';
+import { generateProjectCycle, runScheduledRecurringChecks } from '@/lib/server/recurringEngine';
 import {
   sendLoginOtpEmail,
   sendPasswordResetEmail,
@@ -395,6 +396,14 @@ async function handleRequest(request, context) {
     // 1. PROJECTS
     if (path === 'projects') {
       if (method === 'GET') {
+        try {
+          const userAgent = request.headers.get('user-agent') || '';
+          const { device } = parseDeviceInfo(userAgent);
+          await runScheduledRecurringChecks({ actor: null, device: `${device} (Auto-Catchup)` });
+        } catch (e) {
+          console.warn('Auto recurring check warning:', e.message);
+        }
+
         const includeDeleted = url.searchParams.get('includeDeleted') === 'true' || url.searchParams.get('all') === 'true';
         const query = includeDeleted ? {} : { isDeleted: { $ne: true }, status: { $ne: 'Deleted' } };
         const projects = await Project.find(query).sort({ createdAt: -1 });
@@ -436,6 +445,44 @@ async function handleRequest(request, context) {
         const transformedCreated = transform(created);
         await recordRealtimeEvent('project_created', created._id, transformedCreated);
         return NextResponse.json(transformedCreated, { status: 201 });
+      }
+    }
+
+
+    // Recurring Cycle Endpoints
+    if (path.startsWith('projects/') && path.endsWith('/renew-cycle')) {
+      const id = path.replace('projects/', '').replace('/renew-cycle', '');
+      if (method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const project = await Project.findOne(projectLookup(id));
+        if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+
+        const actor = await getActorFromRequest(request);
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        try {
+          const result = await generateProjectCycle({
+            project,
+            targetMonthYear: body.targetMonthYear,
+            actor,
+            device
+          });
+          return NextResponse.json(result, { status: 201 });
+        } catch (err) {
+          return NextResponse.json({ error: err.message }, { status: 400 });
+        }
+      }
+    }
+
+    if (path === 'projects/check-recurring') {
+      if (method === 'POST' || method === 'GET') {
+        const actor = await getActorFromRequest(request).catch(() => null);
+        const userAgent = request.headers.get('user-agent') || '';
+        const { device } = parseDeviceInfo(userAgent);
+
+        const generated = await runScheduledRecurringChecks({ actor, device });
+        return NextResponse.json({ success: true, count: generated.length, generated });
       }
     }
 

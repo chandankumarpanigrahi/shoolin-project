@@ -17,7 +17,9 @@ import {
   Edit,
   Clock,
   RefreshCw,
-  RotateCcw
+  RotateCcw,
+  Sparkles,
+  X
 } from 'lucide-react';
 import { StatusBadge, PriorityBadge, ProjectTypeBadge } from '@/components/common/Badges';
 import { UserAvatar, AvatarGroup, resolveUserObject } from '@/components/common/UserAvatar';
@@ -38,7 +40,7 @@ export function ProjectsView({
   onDeleteProject,
   onRestoreProject
 }) {
-  const { can, handleOpenEditProject, isCompletedStatus, isProjectAccessibleToUser, currentUser } = useAppContext();
+  const { can, handleOpenEditProject, isCompletedStatus, isProjectAccessibleToUser, currentUser, handleRenewProjectCycle } = useAppContext();
   const [rawActiveTab, setActiveTab] = useUrlParam('tab', 'active'); // 'active' | 'deleted'
   const canViewDeleted = can('projects.view_deleted');
   const activeTab = (rawActiveTab === 'deleted' && !canViewDeleted) ? 'active' : rawActiveTab;
@@ -48,6 +50,48 @@ export function ProjectsView({
   const [selectedType, setSelectedType] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedPriority, setSelectedPriority] = useState('ALL');
+
+  // Recurring Cycle Modal State in Portfolio
+  const [projectToRenew, setProjectToRenew] = useState(null);
+  const [selectedCycleMonth, setSelectedCycleMonth] = useState('');
+  const [isRenewingCycle, setIsRenewingCycle] = useState(false);
+
+  const availableCycleMonths = React.useMemo(() => {
+    const list = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 15);
+      list.push(d.toLocaleString('en-US', { month: 'long', year: 'numeric' }));
+    }
+    return list;
+  }, []);
+
+  const handleOpenRenewCycleForProject = (p) => {
+    let initialMonth = availableCycleMonths[0];
+    if (p.recurringConfig?.nextCycleDate) {
+      const [ny, nm] = String(p.recurringConfig.nextCycleDate).split('-').map(Number);
+      if (ny && nm) {
+        initialMonth = new Date(ny, nm - 1, 15).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      }
+    }
+    setSelectedCycleMonth(initialMonth || availableCycleMonths[0]);
+    setProjectToRenew(p);
+  };
+
+  const handleConfirmRenewCycle = async () => {
+    if (!projectToRenew || !selectedCycleMonth || isRenewingCycle) return;
+    setIsRenewingCycle(true);
+    try {
+      if (handleRenewProjectCycle) {
+        await handleRenewProjectCycle(projectToRenew.id || projectToRenew._id, selectedCycleMonth);
+      }
+      setProjectToRenew(null);
+    } catch (err) {
+      // Error handled by AppProvider
+    } finally {
+      setIsRenewingCycle(false);
+    }
+  };
 
   // Filter projects by active vs deleted status and user accessibility
   const activeProjectsList = (projects || []).filter(
@@ -499,6 +543,16 @@ export function ProjectsView({
                         <div className="flex items-center justify-end gap-1">
                           {activeTab === 'active' ? (
                             <>
+                              {p.type === 'recurring' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenRenewCycleForProject(p)}
+                                  className="p-1 text-cyan-600 dark:text-cyan-400 hover:text-cyan-800 hover:bg-cyan-50 dark:hover:bg-cyan-950/50 rounded-xs"
+                                  title="Generate Recurring Sprint Cycle"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => onOpenCreateTaskForProject(p.id || p._id)}
@@ -645,6 +699,16 @@ export function ProjectsView({
                     {activeTab === 'active' ? (
                       <div className="flex items-center gap-1">
                         <AvatarGroup userIds={teamIds} max={3} size="xs" />
+                        {p.type === 'recurring' && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRenewCycleForProject(p)}
+                            className="p-1 text-cyan-600 dark:text-cyan-400 hover:text-cyan-800 hover:bg-cyan-50 dark:hover:bg-cyan-950/50 rounded-xs"
+                            title="Generate Recurring Sprint Cycle"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {can('projects.delete') && (
                           <button
                             type="button"
@@ -681,6 +745,119 @@ export function ProjectsView({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ─── MODAL: Generate Recurring Cycle From Portfolio ───────────────────── */}
+      {projectToRenew && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isRenewingCycle) setProjectToRenew(null);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-150"
+        >
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-cyan-100 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300 rounded-lg">
+                  <RefreshCw className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+                    Generate Recurring Sprint Cycle
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Launch an upcoming cycle on demand with cloned deliverables
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isRenewingCycle}
+                onClick={() => setProjectToRenew(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-sm"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                  Base Project
+                </label>
+                <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg font-medium text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                  <span className="truncate">{projectToRenew.name}</span>
+                  <span className="font-mono text-[11px] font-bold text-cyan-600 dark:text-cyan-400">{projectToRenew.code}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                  Select Target Month / Year
+                </label>
+                <select
+                  value={selectedCycleMonth}
+                  onChange={(e) => setSelectedCycleMonth(e.target.value)}
+                  disabled={isRenewingCycle}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-cyan-300 dark:border-cyan-700 rounded-lg text-xs font-semibold text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-cyan-500"
+                >
+                  {availableCycleMonths.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="p-3 bg-cyan-50/70 dark:bg-cyan-950/40 border border-cyan-200/80 dark:border-cyan-800 rounded-lg space-y-1.5 text-[11px] text-cyan-950 dark:text-cyan-200">
+                <div className="flex items-center gap-1.5 font-bold text-cyan-900 dark:text-cyan-100">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                  <span>Automated Protection Rules</span>
+                </div>
+                <ul className="space-y-1 text-slate-600 dark:text-slate-300 list-disc pl-4 leading-relaxed">
+                  <li>
+                    Generating <strong>{selectedCycleMonth}</strong> will immediately duplicate all deliverables from the parent/template with status set to <strong>Not Started</strong>.
+                  </li>
+                  <li>
+                    The automated background scheduler will detect that <strong>{selectedCycleMonth}</strong> is already active and will <strong>skip</strong> auto-generating it on the scheduled cutoff day.
+                  </li>
+                  <li>
+                    If this month’s project is deleted before the scheduled cutoff date, the background engine will automatically create it fresh on schedule.
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                disabled={isRenewingCycle}
+                onClick={() => setProjectToRenew(null)}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isRenewingCycle || !selectedCycleMonth}
+                onClick={handleConfirmRenewCycle}
+                className="px-4 py-1.5 text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 active:bg-cyan-800 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                {isRenewingCycle ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Generate {selectedCycleMonth}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
