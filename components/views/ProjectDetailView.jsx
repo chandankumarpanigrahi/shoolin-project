@@ -67,25 +67,7 @@ export function ProjectDetailView({
     ];
   }, [getTaskStatuses]);
 
-  const [expandedTasks, setExpandedTasks] = useState({
-    'task-100': true,
-    'task-101': true,
-    'task-102': true,
-    'task-107': true,
-    'task-110': true,
-    'task-200': true,
-    'task-203': true,
-    'task-206': true,
-    'task-300': true,
-    'task-303': true,
-    'task-400': true,
-    'task-402': true,
-    'task-500': true,
-    'task-503': true,
-    'task-600': true,
-    'task-700': true,
-    'task-my-1': true
-  });
+  const [expandedTasks, setExpandedTasks] = useState({});
 
   const [taskSearch, setTaskSearch] = useState('');
   const [taskFilterStatus, setTaskFilterStatus] = useState('ALL');
@@ -334,18 +316,27 @@ export function ProjectDetailView({
         : (project.priority || 'Medium');
 
   const toggleTaskExpand = (taskId) => {
-    setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }));
+    setExpandedTasks(prev => {
+      const current = prev[taskId] !== undefined ? !!prev[taskId] : false;
+      return { ...prev, [taskId]: !current };
+    });
   };
 
   const collapseAll = () => {
     const allIds = {};
-    projectTasks.forEach(t => { allIds[t.id] = false; });
+    projectTasks.forEach(t => {
+      const tid = t.id || t._id;
+      if (tid) allIds[tid] = false;
+    });
     setExpandedTasks(allIds);
   };
 
   const expandAll = () => {
     const allIds = {};
-    projectTasks.forEach(t => { allIds[t.id] = true; });
+    projectTasks.forEach(t => {
+      const tid = t.id || t._id;
+      if (tid) allIds[tid] = true;
+    });
     setExpandedTasks(allIds);
   };
 
@@ -453,10 +444,12 @@ export function ProjectDetailView({
 
   // Recursive task tree row renderer
   const renderTaskNode = (task, level = 0) => {
-    const isDragOver = dragOverId === task.id;
+    const taskIdKey = task.id || task._id;
+    const isDragOver = dragOverId === task.id || dragOverId === task._id;
     const children = projectTasks.filter(t => isChildTask(t, task, projectTasks));
     const hasChildren = children.length > 0;
-    const isExpanded = expandedTasks[task.id] !== undefined ? !!expandedTasks[task.id] : true;
+    // Subtasks closed (collapsed) by default like in templates / blueprints
+    const isExpanded = expandedTasks[taskIdKey] !== undefined ? !!expandedTasks[taskIdKey] : false;
     const assignee = task.assignedTo ? resolveUserObject(task.assignedTo, users) : null;
     const assigneeDisplayName = assignee ? assignee.name : 'Unassigned';
 
@@ -494,7 +487,7 @@ export function ProjectDetailView({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    toggleTaskExpand(task.id);
+                    toggleTaskExpand(taskIdKey);
                   }}
                   className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                 >

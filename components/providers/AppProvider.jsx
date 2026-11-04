@@ -2334,12 +2334,13 @@ export function AppProvider({ children }) {
         );
         const finalAssignees = filteredAssignedTeam.length > 0 ? filteredAssignedTeam : assignedTeam;
 
-        const tasksWithAssignees = rawTasks.map((t, idx) => ({
+        const tasksWithAssignees = rawTasks.map((t) => ({
           ...t,
           projectId: projItem.id || projItem._id,
           projectCode: projItem.code,
-          assignees: finalAssignees,
-          assigneeId: finalAssignees.length > 0 ? finalAssignees[idx % finalAssignees.length] : null,
+          assignedTo: null,
+          assignees: [],
+          assigneeId: null,
         }));
 
         try {
