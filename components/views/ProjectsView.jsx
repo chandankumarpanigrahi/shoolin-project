@@ -493,16 +493,20 @@ export function ProjectsView({
                       {/* Type */}
                       <td className="py-3 px-3 whitespace-nowrap">
                         <ProjectTypeBadge type={p.type || 'one-time'} size="xs" />
-                        {p.type === 'recurring' && p.recurringConfig && (
-                          <div className="text-[10px] text-cyan-700 dark:text-cyan-400 mt-0.5 font-medium leading-tight">
-                            <span>{p.recurringConfig.currentCycle || `Monthly (${p.recurringConfig.monthlyDay || 1}st)`}</span>
-                            {p.recurringConfig.nextCycleDate && (
-                              <span className="block text-[9px] text-slate-500 dark:text-slate-400">
-                                Next: {p.recurringConfig.nextCycleDate}
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        {p.type === 'recurring' && p.recurringConfig && (() => {
+                          const nameMonthMatch = String(p.name || '').match(/\(([A-Za-z]+(?:\s+\d{4})?)\)/);
+                          const ownCycle = nameMonthMatch ? nameMonthMatch[1] : (p.recurringConfig.currentCycle || p.recurringConfig.startMonth || `Monthly (${p.recurringConfig.monthlyDay || 1}st)`);
+                          return (
+                            <div className="text-[10px] text-cyan-700 dark:text-cyan-400 mt-0.5 font-medium leading-tight">
+                              <span className="font-semibold">{ownCycle}</span>
+                              {p.recurringConfig.nextCycleDate && (
+                                <span className="block text-[9px] text-slate-500 dark:text-slate-400">
+                                  Next: {p.recurringConfig.nextCycleDate}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Owner */}

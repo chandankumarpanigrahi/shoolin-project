@@ -814,11 +814,15 @@ export function ProjectDetailView({
                       <RefreshCw className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                       <span>Recurring Cadence: {project.recurringConfig.frequency || 'Monthly'}</span>
                     </div>
-                    {project.recurringConfig.currentCycle && (
-                      <span className="text-[11px] font-bold text-cyan-800 dark:text-cyan-300 bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-cyan-200 dark:border-cyan-700">
-                        Cycle: {project.recurringConfig.currentCycle}
-                      </span>
-                    )}
+                    {(() => {
+                      const nameMonthMatch = String(project.name || '').match(/\(([A-Za-z]+(?:\s+\d{4})?)\)/);
+                      const ownCycle = nameMonthMatch ? nameMonthMatch[1] : (project.recurringConfig?.currentCycle || project.recurringConfig?.startMonth || 'Active');
+                      return (
+                        <span className="text-[11px] font-bold text-cyan-800 dark:text-cyan-300 bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-cyan-200 dark:border-cyan-700">
+                          Cycle: {ownCycle}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-cyan-900 dark:text-cyan-200">
                     <div>

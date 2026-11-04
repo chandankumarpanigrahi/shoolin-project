@@ -657,6 +657,26 @@ export function AppProvider({ children }) {
       // Sync live collections directly from MongoDB backend
       const loadLiveMongoDBData = async () => {
         try {
+          // Priority 1: Fast-sync live projects & tasks immediately without waiting for secondary masters
+          api.projects.getAll({ includeDeleted: true }).then((dbProjects) => {
+            if (Array.isArray(dbProjects)) {
+              const normalizedProjects = dbProjects.map((p) => ({
+                ...p,
+                ownerId: p.ownerId || p.owner,
+                owner: p.ownerId || p.owner,
+                managerId: p.managerId || p.manager,
+                manager: p.managerId || p.manager,
+                teamIds: p.teamIds || p.team || [],
+                team: p.teamIds || p.team || [],
+              }));
+              setProjects(normalizedProjects);
+            }
+          }).catch(() => {});
+
+          api.tasks.getAll(null, { includeDeletedProjects: true }).then((dbTasks) => {
+            if (Array.isArray(dbTasks)) setTasks(dbTasks);
+          }).catch(() => {});
+
           const [
             dbProjects,
             dbTasks,
